@@ -1,36 +1,199 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TEDxFPTUniversityHCMC 2026 - Admin Dashboard
 
-## Getting Started
+> **Theme:** Finding Flow
+> **Payment Method:** Manual Bank Transfer with Admin Confirmation
 
-First, run the development server:
+## 🎯 Overview
+
+Admin dashboard and API system for TEDxFPTUniversityHCMC 2026 event ticketing platform. Built with Next.js App Router, designed for manual bank transfer payment flow with admin verification.
+
+## 💳 LUỒNG NGHIỆP VỤ - MANUAL BANK TRANSFER
+
+### 1️⃣ User Đặt Vé
+
+- User chọn sự kiện và ghế ngồi
+- Nhập thông tin: Tên, Email, SĐT
+- Hệ thống tạo **ORDER** với status `PENDING`
+- Ghế được đánh dấu `RESERVED`
+- Hiển thị thông tin chuyển khoản:
+  - **Ngân hàng**: Vietcombank
+  - **Số TK**: 1234567890
+  - **Tên TK**: TEDxFPTUniversityHCMC
+  - **Nội dung CK**: **ORDER_CODE** (VD: ORD-2026-ABC123)
+
+### 2️⃣ User Chuyển Khoản
+
+- User mở app ngân hàng
+- Chuyển khoản đúng số tiền
+- Ghi đúng nội dung: ORDER_CODE
+- Chờ admin xác nhận (< 30 phút)
+
+### 3️⃣ Admin Xác Nhận Thanh Toán
+
+1. Admin đăng nhập: `/admin/login`
+2. Vào trang **Quản lý Đơn hàng**: `/admin/orders`
+3. Lọc đơn hàng `PENDING`
+4. Đối soát thủ công qua app ngân hàng
+5. Click nút **"Xác nhận TT"**
+
+### 4️⃣ Hệ Thống Xử Lý (Tự Động)
+
+- ✅ Order: `PENDING` → `PAID`
+- ✅ Payment: `PENDING` → `COMPLETED`
+- ✅ Seats: `RESERVED` → `SOLD`
+- ✅ Generate QR Code
+- ✅ Gửi email vé cho khách
+- ✅ Ghi audit log
+
+### 5️⃣ Email Vé Gửi Đến Khách
+
+- Thông tin sự kiện
+- Thông tin ghế ngồi
+- Mã đơn hàng
+- **QR Code** để check-in
+
+## 🚀 Quick Start
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Setup Environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```env
+DATABASE_URL="mysql://root:password@localhost:3306/tedx_ticketing"
+JWT_SECRET="your-super-secret-jwt-key-min-32-characters"
+REDIS_URL="redis://localhost:6379"  # Optional
+EMAIL_PROVIDER="mock"
+PAYMENT_PROVIDER="mock"
+NODE_ENV="development"
+```
+
+### 3. Setup Database
+
+```bash
+# Generate Prisma Client
+npx prisma generate
+
+# Run migrations
+npx prisma migrate deploy
+
+# Seed database (includes mockup data from web-client)
+npm run db:seed
+```
+
+### 4. Start Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Admin: http://localhost:3002/admin/login
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🔐 Default Login
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+Email: admin@tedxfptuhcm.com
+Password: admin123456
+```
 
-## Learn More
+## 📊 Seed Data
 
-To learn more about Next.js, take a look at the following resources:
+The seed script creates:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Roles**: SUPER_ADMIN, ADMIN, STAFF, USER
+2. **Admin User**: admin@tedxfptuhcm.com
+3. **Email Templates**: ticket_confirmation
+4. **Events** (from web-client mockup):
+   - TEDxFPTUniversityHCMC 2026: Finding Flow (March 15, 2026)
+   - TEDxYouth@Saigon (April 20, 2026)
+5. **Seats**: 96 seats per event (8 rows × 12 seats)
+   - Rows A-B: VIP (2,500,000 VND)
+   - Rows C-H: Standard (1,500,000 VND)
+   - 11 seats pre-sold for Event 1
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📚 API Endpoints
 
-## Deploy on Vercel
+### Public APIs
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Create Order**
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```http
+POST /api/orders
+{
+  "eventId": "uuid",
+  "seatIds": ["uuid1", "uuid2"],
+  "customerName": "Nguyen Van A",
+  "customerEmail": "email@example.com",
+  "customerPhone": "0901234567"
+}
+```
+
+### Admin APIs (Requires JWT)
+
+**List Orders**
+
+```http
+GET /api/admin/orders?status=PENDING
+Authorization: Bearer <token>
+```
+
+**Confirm Payment** (CRITICAL)
+
+```http
+POST /api/admin/orders/:id/confirm
+Authorization: Bearer <token>
+{
+  "transactionId": "MANUAL-1234567890",
+  "notes": "Đã xác nhận chuyển khoản"
+}
+```
+
+## 🏗️ Project Structure
+
+```
+web-admin/
+├── src/
+│   ├── app/
+│   │   ├── admin/
+│   │   │   ├── login/         # Admin login
+│   │   │   ├── dashboard/     # Dashboard
+│   │   │   └── orders/        # Orders management (CRITICAL)
+│   │   └── api/
+│   │       ├── auth/          # Authentication
+│   │       ├── orders/        # Create order
+│   │       ├── events/        # Event management
+│   │       └── admin/orders/  # Admin order APIs
+│   └── lib/
+│       ├── prisma.ts          # Database client
+│       ├── redis.ts           # Redis (with mock)
+│       ├── auth.ts            # JWT
+│       ├── mail.ts            # Email
+│       └── qrcode.ts          # QR code
+├── prisma/
+│   └── schema.prisma
+└── scripts/
+    └── seed.ts
+```
+
+## 🔧 Scripts
+
+```bash
+npm run dev              # Development server (port 3002)
+npm run build            # Build for production
+npm start                # Start production server
+npm run db:seed          # Seed database
+npx prisma studio        # Open Prisma Studio
+```
+
+## 📝 License
+
+MIT

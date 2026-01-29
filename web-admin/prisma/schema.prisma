@@ -1,0 +1,268 @@
+// Prisma Schema for TEDx Ticketing Platform
+// Optimized for serverless, high-concurrency ticket sales
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTHENTICATION & AUTHORIZATION
+// ============================================
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // SUPER_ADMIN, ADMIN, STAFF, USER
+  description String?
+  permissions String?  @db.Text // JSON array of permissions
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String?   @map("password_hash")
+  fullName     String    @map("full_name")
+  phoneNumber  String?   @map("phone_number")
+  roleId       String    @map("role_id")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  role      Role       @relation(fields: [roleId], references: [id])
+  orders    Order[]
+  auditLogs AuditLog[]
+
+  @@index([email])
+  @@index([roleId])
+  @@map("users")
+}
+
+// ============================================
+// EVENTS
+// ============================================
+
+model Event {
+  id             String    @id @default(uuid())
+  name           String
+  slug           String    @unique
+  description    String?   @db.Text
+  venue          String
+  eventDate      DateTime  @map("event_date")
+  doorsOpenTime  DateTime  @map("doors_open_time")
+  startTime      DateTime  @map("start_time")
+  endTime        DateTime  @map("end_time")
+  status         String    @default("DRAFT") // DRAFT, PUBLISHED, CANCELLED, COMPLETED
+  maxCapacity    Int       @map("max_capacity")
+  availableSeats Int       @map("available_seats")
+  bannerImageUrl String?   @map("banner_image_url")
+  thumbnailUrl   String?   @map("thumbnail_url")
+  isPublished    Boolean   @default(false) @map("is_published")
+  publishedAt    DateTime? @map("published_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  seatLayouts SeatLayout[]
+  seats       Seat[]
+  orders      Order[]
+
+  @@index([slug])
+  @@index([status])
+  @@index([eventDate])
+  @@map("events")
+}
+
+// ============================================
+// SEAT MANAGEMENT
+// ============================================
+
+model SeatLayout {
+  id         String   @id @default(uuid())
+  eventId    String   @map("event_id")
+  name       String
+  layoutData String   @db.Text // JSON: seat map configuration
+  totalSeats Int      @map("total_seats")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@map("seat_layouts")
+}
+
+model Seat {
+  id         String  @id @default(uuid())
+  eventId    String  @map("event_id")
+  seatNumber String  @map("seat_number")
+  row        String
+  col        String
+  section    String
+  seatType   String  @map("seat_type") // VIP, REGULAR, STUDENT
+  price      Decimal @db.Decimal(10, 2)
+  status     String  @default("AVAILABLE") // AVAILABLE, LOCKED, SOLD, RESERVED
+  positionX  Int?    @map("position_x")
+  positionY  Int?    @map("position_y")
+  isDisabled Boolean @default(false) @map("is_disabled")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  event      Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@unique([eventId, seatNumber])
+  @@index([eventId, status])
+  @@index([seatType])
+  @@map("seats")
+}
+
+// ============================================
+// ORDERS & PAYMENTS
+// ============================================
+
+model Order {
+  id                 String    @id @default(uuid())
+  orderNumber        String    @unique @map("order_number")
+  userId             String?   @map("user_id")
+  eventId            String    @map("event_id")
+  totalAmount        Decimal   @map("total_amount") @db.Decimal(10, 2)
+  status             String    @default("PENDING") // PENDING, PAID, FAILED, EXPIRED, CANCELLED
+  customerEmail      String    @map("customer_email")
+  customerName       String    @map("customer_name")
+  customerPhone      String?   @map("customer_phone")
+  expiresAt          DateTime? @map("expires_at")
+  paidAt             DateTime? @map("paid_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancellationReason String?   @map("cancellation_reason") @db.Text
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event      Event       @relation(fields: [eventId], references: [id])
+  orderItems OrderItem[]
+  payment    Payment?
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([customerEmail])
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String   @map("order_id")
+  seatId     String   @map("seat_id")
+  price      Decimal  @db.Decimal(10, 2)
+  seatNumber String   @map("seat_number")
+  seatType   String   @map("seat_type")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seat  Seat  @relation(fields: [seatId], references: [id])
+
+  @@index([orderId])
+  @@index([seatId])
+  @@map("order_items")
+}
+
+model Payment {
+  id                String    @id @default(uuid())
+  orderId           String    @unique @map("order_id")
+  paymentMethod     String    @map("payment_method") // BANK_TRANSFER, CREDIT_CARD, VNPAY, MOMO, ZALOPAY
+  amount            Decimal   @db.Decimal(10, 2)
+  status            String    @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
+  transactionId     String?   @unique @map("transaction_id")
+  paymentGateway    String?   @map("payment_gateway")
+  paymentSessionId  String?   @unique @map("payment_session_id") // Stripe session, VNPay txnRef, etc.
+  paymentProof      String?   @map("payment_proof") // URL to uploaded proof
+  webhookReceived   Boolean   @default(false) @map("webhook_received")
+  webhookProcessed  Boolean   @default(false) @map("webhook_processed")
+  webhookData       String?   @map("webhook_data") @db.Text // JSON
+  paidAt            DateTime? @map("paid_at")
+  refundedAt        DateTime? @map("refunded_at")
+  refundReason      String?   @map("refund_reason") @db.Text
+  metadata          String?   @db.Text // JSON for additional payment data
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status])
+  @@index([transactionId])
+  @@index([paymentSessionId])
+  @@map("payments")
+}
+
+// ============================================
+// EMAIL TEMPLATES
+// ============================================
+
+model EmailTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  subject     String
+  htmlContent String   @map("html_content") @db.Text
+  textContent String?  @map("text_content") @db.Text
+  variables   String?  @db.Text // JSON array of variable names
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
+}
+
+model EmailLog {
+  id          String    @id @default(uuid())
+  to          String
+  subject     String
+  htmlContent String    @map("html_content") @db.Text
+  status      String    @default("PENDING") // PENDING, SENT, FAILED
+  provider    String? // resend, sendgrid, mock
+  providerId  String?   @map("provider_id") // Email ID from provider
+  error       String?   @db.Text
+  sentAt      DateTime? @map("sent_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([to])
+  @@index([status])
+  @@map("email_logs")
+}
+
+// ============================================
+// AUDIT LOGS
+// ============================================
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.
+  entity    String // User, Event, Order, etc.
+  entityId  String?  @map("entity_id")
+  changes   String?  @db.Text // JSON of changes
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent") @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
