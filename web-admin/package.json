@@ -17,7 +17,6 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/utilities": "^3.2.2",
     "@prisma/client": "^6.2.0",
-    "@types/bcryptjs": "^3.0.0",
     "@upstash/redis": "^1.34.3",
     "antd": "^6.2.2",
     "bcryptjs": "^3.0.3",

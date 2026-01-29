@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -9,9 +9,56 @@ import {
   Check,
   Star,
   Ticket,
+  Loader2,
 } from "lucide-react";
 import { Button, Card, Seat, SeatLegend } from "@/components";
-import { getEventById, Seat as SeatType, TicketType } from "@/lib/mock-data";
+
+// Types for API response
+interface TicketType {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  subtitle?: string;
+  benefits?: string[];
+  color?: string;
+  icon?: string;
+}
+
+interface SeatType {
+  id: string;
+  row: string;
+  number: number;
+  section?: string;
+  status: "available" | "selected" | "sold";
+  ticketTypeId: string;
+  seatType?: "VIP" | "STANDARD" | "ECONOMY";
+  price: number;
+}
+
+interface SeatRow {
+  row: string;
+  seats: SeatType[];
+}
+
+interface EventData {
+  id: string;
+  name: string;
+  slug: string;
+  tagline: string;
+  description: string | null;
+  date: string;
+  time: string;
+  venue: string;
+  location: string;
+  ticketTypes: TicketType[];
+  seatMap: SeatRow[];
+  stats: {
+    total: number;
+    available: number;
+    sold: number;
+  };
+}
 
 export default function SeatSelectionPage({
   params,
@@ -19,17 +66,57 @@ export default function SeatSelectionPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const event = getEventById(id);
+  const [event, setEvent] = useState<EventData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedTicketType, setSelectedTicketType] =
     useState<TicketType | null>(null);
   const [selectedSeats, setSelectedSeats] = useState<SeatType[]>([]);
 
-  if (!event) {
+  useEffect(() => {
+    const fetchEvent = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/events/${id}`);
+        const data = await res.json();
+
+        if (!data.success) {
+          setError(data.error || "Không thể tải dữ liệu sự kiện");
+          return;
+        }
+
+        setEvent(data.data);
+      } catch (err) {
+        console.error("Error fetching event:", err);
+        setError("Đã xảy ra lỗi khi tải dữ liệu");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvent();
+  }, [id]);
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-red-500 animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Đang tải dữ liệu...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error or not found state
+  if (error || !event) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">
-            Không tìm thấy sự kiện
+            {error || "Không tìm thấy sự kiện"}
           </h1>
           <Link href="/">
             <Button>Quay về trang chủ</Button>
@@ -154,8 +241,8 @@ export default function SeatSelectionPage({
                   </div>
                 )}
 
-                {/* VIP Badge */}
-                {ticket.id === "vip" && (
+                {/* VIP Badge - show for ticket types with VIP in name */}
+                {ticket.name.toLowerCase().includes("vip") && (
                   <div className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-[10px] sm:text-xs font-bold rounded-full mb-2 sm:mb-3 shadow-lg">
                     <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                     VIP
@@ -168,39 +255,21 @@ export default function SeatSelectionPage({
                       {ticket.name}
                     </h3>
                     <p className="text-xs sm:text-sm text-gray-400 mb-3 sm:mb-4">
-                      {ticket.description}
+                      {ticket.subtitle || ticket.description}
                     </p>
                     <ul className="text-xs sm:text-sm text-gray-300 space-y-1.5 sm:space-y-2">
-                      {ticket.id === "vip" ? (
-                        <>
-                          <li className="flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />{" "}
-                            Ghế hạng nhất (Hàng A-B)
+                      {ticket.benefits && ticket.benefits.length > 0 ? (
+                        ticket.benefits.map((benefit, idx) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 shrink-0" />
+                            {benefit}
                           </li>
-                          <li className="flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />{" "}
-                            Gặp gỡ diễn giả
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />{" "}
-                            Tiệc tối độc quyền
-                          </li>
-                        </>
+                        ))
                       ) : (
-                        <>
-                          <li className="flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />{" "}
-                            Ghế tiêu chuẩn (Hàng C-H)
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />{" "}
-                            Tham gia tất cả các phiên
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />{" "}
-                            Bao gồm bữa trưa
-                          </li>
-                        </>
+                        <li className="flex items-center gap-2">
+                          <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 shrink-0" />
+                          {ticket.description}
+                        </li>
                       )}
                     </ul>
                   </div>
@@ -310,9 +379,26 @@ export default function SeatSelectionPage({
                   </p>
                   <div className="min-w-[600px] sm:min-w-[500px] space-y-3 sm:space-y-3 px-2">
                     {event.seatMap.map((row) => {
-                      const isVIPRow = ["A", "B"].includes(row.row);
-                      const rowDisabled =
-                        selectedTicketType?.id === "vip" ? !isVIPRow : isVIPRow;
+                      // Check if this row contains VIP seats based on seatType from DB
+                      const hasVIPSeats = row.seats.some(
+                        (s) => s.seatType === "VIP",
+                      );
+                      // Determine if row should be disabled based on selected ticket type
+                      const isVIPTicketSelected =
+                        selectedTicketType?.name
+                          .toLowerCase()
+                          .includes("vip") ?? false;
+                      const rowDisabled = isVIPTicketSelected
+                        ? !hasVIPSeats
+                        : hasVIPSeats;
+
+                      // Split seats into LEFT and RIGHT sections
+                      const leftSeats = row.seats
+                        .filter((s) => s.section === "LEFT")
+                        .sort((a, b) => a.number - b.number);
+                      const rightSeats = row.seats
+                        .filter((s) => s.section === "RIGHT")
+                        .sort((a, b) => a.number - b.number);
 
                       return (
                         <div
@@ -320,30 +406,56 @@ export default function SeatSelectionPage({
                           className={`flex items-center gap-2 sm:gap-3 transition-opacity duration-300 ${rowDisabled && selectedTicketType ? "opacity-30" : ""}`}
                         >
                           <span
-                            className={`w-6 sm:w-8 text-center font-bold text-sm sm:text-base ${isVIPRow ? "text-orange-400" : "text-gray-500"}`}
+                            className={`w-6 sm:w-8 text-center font-bold text-sm sm:text-base ${hasVIPSeats ? "text-orange-400" : "text-gray-500"}`}
                           >
                             {row.row}
                           </span>
-                          <div className="flex gap-1 sm:gap-2 flex-1 justify-center seat-grid-mobile">
-                            {row.seats.map((seat) => (
-                              <Seat
-                                key={seat.id}
-                                {...seat}
-                                status={
-                                  selectedSeats.some((s) => s.id === seat.id)
-                                    ? "selected"
-                                    : seat.status
-                                }
-                                onSelect={
-                                  rowDisabled && selectedTicketType
-                                    ? undefined
-                                    : handleSeatSelect
-                                }
-                              />
-                            ))}
+                          <div className="flex gap-1 sm:gap-2 flex-1 justify-center items-center">
+                            {/* LEFT section */}
+                            <div className="flex gap-1 sm:gap-2">
+                              {leftSeats.map((seat) => (
+                                <Seat
+                                  key={seat.id}
+                                  {...seat}
+                                  status={
+                                    selectedSeats.some((s) => s.id === seat.id)
+                                      ? "selected"
+                                      : seat.status
+                                  }
+                                  onSelect={
+                                    rowDisabled && selectedTicketType
+                                      ? undefined
+                                      : handleSeatSelect
+                                  }
+                                />
+                              ))}
+                            </div>
+                            {/* Aisle */}
+                            <div className="w-6 sm:w-10 flex items-center justify-center">
+                              <div className="w-px h-6 bg-white/10" />
+                            </div>
+                            {/* RIGHT section */}
+                            <div className="flex gap-1 sm:gap-2">
+                              {rightSeats.map((seat) => (
+                                <Seat
+                                  key={seat.id}
+                                  {...seat}
+                                  status={
+                                    selectedSeats.some((s) => s.id === seat.id)
+                                      ? "selected"
+                                      : seat.status
+                                  }
+                                  onSelect={
+                                    rowDisabled && selectedTicketType
+                                      ? undefined
+                                      : handleSeatSelect
+                                  }
+                                />
+                              ))}
+                            </div>
                           </div>
                           <span
-                            className={`w-6 sm:w-8 text-center font-bold text-sm sm:text-base ${isVIPRow ? "text-orange-400" : "text-gray-500"}`}
+                            className={`w-6 sm:w-8 text-center font-bold text-sm sm:text-base ${hasVIPSeats ? "text-orange-400" : "text-gray-500"}`}
                           >
                             {row.row}
                           </span>

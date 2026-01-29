@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { Bell, Search } from 'lucide-react';
+import { useState, useSyncExternalStore } from "react";
+import { Bell, Search } from "lucide-react";
 
 interface User {
   fullName: string;
@@ -9,15 +9,20 @@ interface User {
   role: string;
 }
 
-export default function AdminHeader() {
-  const [user, setUser] = useState<User | null>(null);
+// Helper to read user from localStorage without triggering React Compiler warning
+function getUserFromStorage(): User | null {
+  if (typeof window === "undefined") return null;
+  const userData = localStorage.getItem("user");
+  return userData ? JSON.parse(userData) : null;
+}
 
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
-  }, []);
+export default function AdminHeader() {
+  // Use useSyncExternalStore to avoid setState in useEffect warning
+  const user = useSyncExternalStore(
+    () => () => {}, // subscribe (no-op for localStorage)
+    getUserFromStorage, // getSnapshot
+    () => null, // getServerSnapshot
+  );
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -46,12 +51,16 @@ export default function AdminHeader() {
           <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
             <div className="w-8 h-8 bg-[#e62b1e] rounded-full flex items-center justify-center">
               <span className="text-white text-sm font-bold">
-                {user?.fullName?.charAt(0) || 'A'}
+                {user?.fullName?.charAt(0) || "A"}
               </span>
             </div>
             <div className="hidden sm:block">
-              <p className="text-sm font-medium text-gray-900">{user?.fullName || 'Admin'}</p>
-              <p className="text-xs text-gray-500">{user?.role || 'Super Admin'}</p>
+              <p className="text-sm font-medium text-gray-900">
+                {user?.fullName || "Admin"}
+              </p>
+              <p className="text-xs text-gray-500">
+                {user?.role || "Super Admin"}
+              </p>
             </div>
           </div>
         </div>
@@ -59,4 +68,3 @@ export default function AdminHeader() {
     </header>
   );
 }
-

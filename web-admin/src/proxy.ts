@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require authentication
@@ -18,15 +18,15 @@ export function middleware(request: NextRequest) {
   // Token validation will be done client-side or in API routes
   if (pathname.startsWith('/admin')) {
     const token = request.cookies.get('token')?.value;
-    console.log('[Middleware] Path:', pathname, '| Token exists:', !!token);
+    console.log('[Proxy] Path:', pathname, '| Token exists:', !!token);
 
     if (!token) {
-      console.log('[Middleware] No token, redirecting to login');
+      console.log('[Proxy] No token, redirecting to login');
       return NextResponse.redirect(new URL('/admin/login', request.url));
     }
 
     // Token exists, allow access
-    console.log('[Middleware] Token exists, allowing access');
+    console.log('[Proxy] Token exists, allowing access');
     return NextResponse.next();
   }
 

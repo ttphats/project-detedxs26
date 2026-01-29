@@ -12,6 +12,7 @@ interface SeatProps {
   number: number;
   status: "available" | "selected" | "sold";
   price: number;
+  seatType?: "VIP" | "STANDARD" | "ECONOMY";
   onSelect?: (id: string) => void;
 }
 
@@ -21,6 +22,7 @@ export default function Seat({
   number,
   status,
   price,
+  seatType = "STANDARD",
   onSelect,
 }: SeatProps) {
   const handleClick = () => {
@@ -29,28 +31,37 @@ export default function Seat({
     }
   };
 
-  // Get colors from shared config
-  const availableColors = SEAT_COLORS.STANDARD;
+  // Get colors from shared config based on seat type
+  const availableColors = SEAT_COLORS[seatType] || SEAT_COLORS.STANDARD;
   const selectedColors = SELECTED_SEAT_COLORS;
   const soldColors = SOLD_SEAT_COLORS;
 
+  // VIP hover colors
+  const isVIP = seatType === "VIP";
+  const hoverBack = isVIP
+    ? "group-hover:from-yellow-300 group-hover:to-orange-400"
+    : "group-hover:from-emerald-300 group-hover:to-emerald-400";
+  const hoverCushion = isVIP
+    ? "group-hover:from-orange-400 group-hover:to-orange-500"
+    : "group-hover:from-emerald-400 group-hover:to-emerald-500";
+
   // Status-based styling for the seat back (top part)
   const backStyles = {
-    available: `bg-gradient-to-b ${availableColors.back} group-hover:from-emerald-300 group-hover:to-emerald-400`,
+    available: `bg-gradient-to-b ${availableColors.back} ${hoverBack}`,
     selected: `bg-gradient-to-b ${selectedColors.back} shadow-lg ${selectedColors.glow}`,
     sold: `bg-gradient-to-b ${soldColors.back}`,
   };
 
   // Status-based styling for the seat cushion (bottom part)
   const cushionStyles = {
-    available: `bg-gradient-to-b ${availableColors.cushion} group-hover:from-emerald-400 group-hover:to-emerald-500`,
+    available: `bg-gradient-to-b ${availableColors.cushion} ${hoverCushion}`,
     selected: `bg-gradient-to-b ${selectedColors.cushion}`,
     sold: `bg-gradient-to-b ${soldColors.cushion}`,
   };
 
   // Status-based styling for armrests
   const armrestStyles = {
-    available: `${availableColors.armrest} group-hover:bg-emerald-500`,
+    available: `${availableColors.armrest} ${isVIP ? "group-hover:bg-orange-500" : "group-hover:bg-emerald-500"}`,
     selected: selectedColors.armrest,
     sold: soldColors.armrest,
   };

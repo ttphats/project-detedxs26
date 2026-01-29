@@ -72,7 +72,7 @@ export default function Header() {
 
             {/* CTA Button with glow */}
             <Link
-              href="/events/1/seats"
+              href="/events/evt-tedx-2026/seats"
               className="group relative ml-4 px-6 py-3 overflow-hidden"
             >
               {/* Button background with gradient border */}
@@ -127,7 +127,7 @@ export default function Header() {
                 </Link>
               ))}
               <Link
-                href="/events/1/seats"
+                href="/events/evt-tedx-2026/seats"
                 className="mx-4 mt-3 px-4 py-3 bg-red-600 text-white font-bold text-center uppercase text-sm tracking-wider rounded-full hover:bg-red-500 transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >

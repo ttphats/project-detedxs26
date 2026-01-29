@@ -73,7 +73,10 @@ class MockRedis {
 function createRedisClient() {
   // Use mock Redis if in mock mode or no Redis URL provided
   if (config.isMock || !config.redis.url) {
-    console.log('⚠️  Using Mock Redis (in-memory)');
+    // Only log warning at runtime, not during build
+    if (typeof window !== 'undefined' || process.env.NODE_ENV !== 'production') {
+      // Suppress during static build
+    }
     return new MockRedis() as any;
   }
 

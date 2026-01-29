@@ -157,7 +157,7 @@ const tedxTimeline: TimelineItem[] = [
 
 export const events: Event[] = [
   {
-    id: '1',
+    id: 'evt-tedx-2026',
     name: 'TEDxFPTUniversityHCMC 2026: Finding Flow',
     tagline: 'Finding Flow',
     description: 'TEDxFPTUniversityHCMC 2026: Finding Flow brings together visionaries, innovators, and change-makers to share groundbreaking ideas about achieving flow states in work, creativity, and life. Join us for an unforgettable day of powerful talks, creative performances, and meaningful connections that will transform the way you see the world.',
