@@ -40,7 +40,7 @@ function generateSeatsFromSection(section: LayoutSection): GeneratedSeat[] {
 
 // Compare old seats vs new seats
 function compareSeats(oldSeats: Seat[], newSeats: GeneratedSeat[]) {
-  const oldSeatMap = new Map(oldSeats.map(s => [s.seat_key, s]));
+  const oldSeatMap = new Map(oldSeats.filter(s => s.seat_key).map(s => [s.seat_key!, s]));
   const newSeatMap = new Map(newSeats.map(s => [s.seat_key, s]));
 
   const toKeep: Seat[] = [];

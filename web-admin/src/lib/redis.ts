@@ -11,10 +11,11 @@ class MockRedis {
     }
 
     const expiresAt = options?.ex ? Date.now() + options.ex * 1000 : undefined;
+    const ttl = options?.ex;
     this.store.set(key, { value, expiresAt });
-    
-    if (expiresAt) {
-      setTimeout(() => this.store.delete(key), options.ex! * 1000);
+
+    if (expiresAt && ttl) {
+      setTimeout(() => this.store.delete(key), ttl * 1000);
     }
 
     return 'OK';

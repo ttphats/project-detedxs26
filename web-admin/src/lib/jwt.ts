@@ -20,6 +20,6 @@ export function verifyTokenEdge(token: string): JWTPayload {
 }
 
 export function signTokenEdge(payload: JWTPayload, expiresIn: string = '7d'): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
 }
 

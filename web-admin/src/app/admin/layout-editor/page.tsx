@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { AdminLayout } from "@/components/admin";
 import {
   Button,
@@ -11,34 +12,69 @@ import {
   Tag,
   Tooltip,
   Segmented,
+  Select,
+  Modal,
+  Input,
+  Table,
+  Popconfirm,
 } from "antd";
 import {
   SaveOutlined,
   ClearOutlined,
   CheckSquareOutlined,
+  ReloadOutlined,
+  TableOutlined,
+  CloudUploadOutlined,
+  HistoryOutlined,
+  DeleteOutlined,
+  CheckCircleOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 
 // Types
 type SeatType = "VIP" | "STANDARD" | "ECONOMY" | "DISABLED";
 
+// Local seat for rendering
 interface Seat {
-  id: string; // "A-1", "A-2", etc.
+  id: string;
   row: string;
   col: number;
   side: "left" | "right";
   type: SeatType;
+  seat_number: string;
 }
 
 interface LayoutConfig {
   rows: number;
   leftSeats: number;
   rightSeats: number;
-  aisleWidth: number; // Visual spacing in pixels
+  aisleWidth: number;
 }
 
 interface EventOption {
   id: string;
   name: string;
+}
+
+interface TicketType {
+  id: string;
+  name: string;
+  price: number;
+  color: string;
+}
+
+interface LayoutVersion {
+  id: string;
+  event_id: string;
+  version_name: string;
+  description: string | null;
+  layout_config: LayoutConfig;
+  seats_data: Seat[];
+  status: "DRAFT" | "PUBLISHED";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
 }
 
 // Constants
@@ -73,116 +109,301 @@ const SEAT_COLORS: Record<
   },
 };
 
-// Generate sample 100 seats layout
-const generateSampleLayout = (): { config: LayoutConfig; seats: Seat[] } => {
-  const config: LayoutConfig = {
-    rows: 10,
-    leftSeats: 5,
-    rightSeats: 5,
-    aisleWidth: 60,
-  };
+// Default config
+const DEFAULT_CONFIG: LayoutConfig = {
+  rows: 10,
+  leftSeats: 5,
+  rightSeats: 5,
+  aisleWidth: 60,
+};
 
+// Generate seats from config
+const generateSeatsFromConfig = (
+  cfg: LayoutConfig,
+  defaultType: SeatType = "STANDARD",
+): Seat[] => {
   const seats: Seat[] = [];
-  for (let r = 0; r < config.rows; r++) {
-    const rowLabel = ROW_LABELS[r];
+  for (let r = 0; r < cfg.rows; r++) {
+    const rowLabel = ROW_LABELS[r] || `R${r + 1}`;
     // Left side
-    for (let c = 1; c <= config.leftSeats; c++) {
+    for (let c = 1; c <= cfg.leftSeats; c++) {
       seats.push({
         id: `${rowLabel}-L${c}`,
         row: rowLabel,
         col: c,
         side: "left",
-        type: r < 2 ? "VIP" : "STANDARD", // First 2 rows are VIP
+        type: defaultType,
+        seat_number: `${rowLabel}${c}`,
       });
     }
     // Right side
-    for (let c = 1; c <= config.rightSeats; c++) {
+    for (let c = 1; c <= cfg.rightSeats; c++) {
       seats.push({
         id: `${rowLabel}-R${c}`,
         row: rowLabel,
-        col: c,
+        col: c + cfg.leftSeats,
         side: "right",
-        type: r < 2 ? "VIP" : "STANDARD",
+        type: defaultType,
+        seat_number: `${rowLabel}${c + cfg.leftSeats}`,
       });
     }
   }
-
-  return { config, seats };
+  return seats;
 };
 
 export default function LayoutEditorPage() {
-  // Load sample data on init
-  const sample = generateSampleLayout();
-
-  // Layout config state
-  const [config, setConfig] = useState<LayoutConfig>(sample.config);
-  const [seats, setSeats] = useState<Seat[]>(sample.seats);
+  // Layout state
+  const [config, setConfig] = useState<LayoutConfig>(DEFAULT_CONFIG);
+  const [seats, setSeats] = useState<Seat[]>([]);
   const [events, setEvents] = useState<EventOption[]>([]);
+  const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Version management
+  const [versions, setVersions] = useState<LayoutVersion[]>([]);
+  const [currentVersion, setCurrentVersion] = useState<LayoutVersion | null>(
+    null,
+  );
+  const [showVersionsModal, setShowVersionsModal] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [versionName, setVersionName] = useState("");
+  const [versionDescription, setVersionDescription] = useState("");
 
   // Selection state
   const [selectedSeats, setSelectedSeats] = useState<Set<string>>(new Set());
   const [isMultiSelect, setIsMultiSelect] = useState(false);
   const [currentType, setCurrentType] = useState<SeatType>("STANDARD");
 
-  // View mode
-  const [viewMode, setViewMode] = useState<"edit" | "preview">("edit");
-
-  // Fetch events
-  const fetchEvents = useCallback(async () => {
+  // Fetch events and versions
+  const fetchData = useCallback(async (eventId?: string) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/layouts");
-      const data = await res.json();
-      if (data.success) {
-        setEvents(data.data.events);
-        if (!selectedEvent && data.data.events.length > 0) {
-          setSelectedEvent(data.data.events[0].id);
+      // Fetch events list first
+      const eventsRes = await fetch("/api/admin/seats");
+      const eventsData = await eventsRes.json();
+      if (eventsData.success) {
+        setEvents(eventsData.data.events || []);
+        if (!eventId && eventsData.data.events?.length > 0) {
+          eventId = eventsData.data.events[0].id;
+          setSelectedEvent(eventId);
+        }
+      }
+
+      if (!eventId) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch versions for selected event
+      const versionsRes = await fetch(
+        `/api/admin/layout-versions?eventId=${eventId}`,
+      );
+      const versionsData = await versionsRes.json();
+      if (versionsData.success) {
+        setVersions(versionsData.data.versions || []);
+        setTicketTypes(versionsData.data.ticketTypes || []);
+
+        // Load active version or latest draft
+        const activeVersion = versionsData.data.versions?.find(
+          (v: LayoutVersion) => v.is_active,
+        );
+        const latestDraft = versionsData.data.versions?.find(
+          (v: LayoutVersion) => v.status === "DRAFT",
+        );
+
+        if (activeVersion) {
+          loadVersion(activeVersion);
+        } else if (latestDraft) {
+          loadVersion(latestDraft);
+        } else {
+          // No versions, load seats from database
+          try {
+            const seatsRes = await fetch(`/api/admin/seats?eventId=${eventId}`);
+            const seatsData = await seatsRes.json();
+            if (seatsData.success && seatsData.data.seats?.length > 0) {
+              // Convert DB seats to layout format
+              const dbSeats = seatsData.data.seats;
+              const convertedSeats: Seat[] = dbSeats.map((s: any) => ({
+                id: s.id,
+                row: s.row,
+                col: parseInt(s.col),
+                side: s.section === "LEFT" ? "left" : "right",
+                type: s.seat_type as SeatType,
+                seat_number: s.seat_number,
+              }));
+
+              // Calculate config from seats
+              const rows = new Set(dbSeats.map((s: any) => s.row)).size;
+              const leftSeats =
+                dbSeats.filter((s: any) => s.section === "LEFT").length /
+                  rows || 5;
+              const rightSeats =
+                dbSeats.filter((s: any) => s.section === "RIGHT").length /
+                  rows || 5;
+
+              setConfig({
+                rows,
+                leftSeats: Math.round(leftSeats),
+                rightSeats: Math.round(rightSeats),
+                aisleWidth: 60,
+              });
+              setSeats(convertedSeats);
+              setCurrentVersion(null);
+            } else {
+              // No seats in DB, create default layout
+              const defaultSeats = generateSeatsFromConfig(DEFAULT_CONFIG);
+              setConfig(DEFAULT_CONFIG);
+              setSeats(defaultSeats);
+              setCurrentVersion(null);
+            }
+          } catch (err) {
+            console.error("Failed to load seats from DB:", err);
+            const defaultSeats = generateSeatsFromConfig(DEFAULT_CONFIG);
+            setConfig(DEFAULT_CONFIG);
+            setSeats(defaultSeats);
+            setCurrentVersion(null);
+          }
         }
       }
     } catch (error) {
-      console.error("Failed to fetch events:", error);
+      console.error("Failed to fetch data:", error);
+      message.error("Lỗi khi tải dữ liệu");
     } finally {
       setLoading(false);
     }
-  }, [selectedEvent]);
+  }, []);
+
+  // Load a version
+  const loadVersion = (version: LayoutVersion) => {
+    setConfig(version.layout_config);
+    setSeats(version.seats_data);
+    setCurrentVersion(version);
+    setHasChanges(false);
+  };
 
   useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+    fetchData();
+  }, []);
+
+  // Refetch when event changes
+  useEffect(() => {
+    if (selectedEvent) {
+      fetchData(selectedEvent);
+    }
+  }, [selectedEvent]);
 
   // Regenerate seats when config changes
   const regenerateSeats = useCallback(() => {
-    const newSeats: Seat[] = [];
-    for (let r = 0; r < config.rows; r++) {
-      const rowLabel = ROW_LABELS[r] || `R${r + 1}`;
-      // Left side
-      for (let c = 1; c <= config.leftSeats; c++) {
-        newSeats.push({
-          id: `${rowLabel}-L${c}`,
-          row: rowLabel,
-          col: c,
-          side: "left",
-          type: "STANDARD",
-        });
-      }
-      // Right side
-      for (let c = 1; c <= config.rightSeats; c++) {
-        newSeats.push({
-          id: `${rowLabel}-R${c}`,
-          row: rowLabel,
-          col: c,
-          side: "right",
-          type: "STANDARD",
-        });
-      }
-    }
+    const newSeats = generateSeatsFromConfig(config);
     setSeats(newSeats);
     setSelectedSeats(new Set());
     setHasChanges(true);
   }, [config]);
+
+  // Save draft
+  const handleSaveDraft = async () => {
+    if (!selectedEvent) {
+      message.error("Vui lòng chọn sự kiện");
+      return;
+    }
+    if (!versionName.trim()) {
+      message.error("Vui lòng nhập tên version");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        event_id: selectedEvent,
+        version_name: versionName.trim(),
+        description: versionDescription.trim() || null,
+        layout_config: config,
+        seats_data: seats,
+      };
+
+      let res;
+      if (currentVersion && currentVersion.status === "DRAFT") {
+        // Update existing draft
+        res = await fetch(`/api/admin/layout-versions/${currentVersion.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        // Create new draft
+        res = await fetch("/api/admin/layout-versions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      const data = await res.json();
+      if (data.success) {
+        message.success("Đã lưu draft thành công!");
+        setShowSaveModal(false);
+        setVersionName("");
+        setVersionDescription("");
+        setHasChanges(false);
+        fetchData(selectedEvent);
+      } else {
+        message.error(data.error || "Lỗi khi lưu draft");
+      }
+    } catch (error) {
+      console.error("Save draft error:", error);
+      message.error("Lỗi khi lưu draft");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Publish version
+  const handlePublish = async (versionId: string) => {
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/layout-versions/${versionId}/publish`,
+        {
+          method: "POST",
+        },
+      );
+      const data = await res.json();
+      if (data.success) {
+        message.success(data.message || "Đã publish thành công!");
+        setShowVersionsModal(false);
+        fetchData(selectedEvent);
+      } else {
+        message.error(data.error || "Lỗi khi publish");
+      }
+    } catch (error) {
+      console.error("Publish error:", error);
+      message.error("Lỗi khi publish");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete version
+  const handleDeleteVersion = async (versionId: string) => {
+    try {
+      const res = await fetch(`/api/admin/layout-versions?id=${versionId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        message.success("Đã xóa version!");
+        fetchData(selectedEvent);
+      } else {
+        message.error(data.error || "Lỗi khi xóa");
+      }
+    } catch (error) {
+      console.error("Delete error:", error);
+      message.error("Lỗi khi xóa");
+    }
+  };
 
   // Handle seat click
   const handleSeatClick = (seatId: string) => {
@@ -328,25 +549,88 @@ export default function LayoutEditorPage() {
               Thiết kế Layout Ghế
             </h1>
             <p className="text-gray-500">
-              Cấu hình số ghế trái/phải và thiết lập hạng vé cho từng ghế
+              Thiết lập layout và publish để đồng bộ với bảng Seats
+              {currentVersion && (
+                <span className="ml-2">
+                  | Version: <strong>{currentVersion.version_name}</strong>
+                  {currentVersion.is_active && (
+                    <Tag color="green" className="ml-1">
+                      Active
+                    </Tag>
+                  )}
+                  {currentVersion.status === "DRAFT" && (
+                    <Tag color="orange" className="ml-1">
+                      Draft
+                    </Tag>
+                  )}
+                </span>
+              )}
             </p>
           </div>
-          <Space>
-            <Segmented
-              value={viewMode}
-              onChange={(v) => setViewMode(v as "edit" | "preview")}
-              options={[
-                { label: "Chỉnh sửa", value: "edit" },
-                { label: "Xem trước", value: "preview" },
-              ]}
-            />
-            {hasChanges && (
-              <Button type="primary" icon={<SaveOutlined />}>
-                Lưu Layout
-              </Button>
-            )}
+          <Space wrap>
+            <Link href="/admin/seats">
+              <Button icon={<TableOutlined />}>Quản lý Seats</Button>
+            </Link>
+            <Button
+              icon={<HistoryOutlined />}
+              onClick={() => setShowVersionsModal(true)}
+            >
+              Versions ({versions.length})
+            </Button>
+            <Button
+              icon={<CheckSquareOutlined />}
+              onClick={() => {
+                // Open layout preview page in new tab
+                const eventId = selectedEvent || "evt-tedx-2026";
+                window.open(
+                  `/admin/layout-preview?eventId=${eventId}`,
+                  "_blank",
+                );
+              }}
+            >
+              Xem trước
+            </Button>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={() => {
+                if (currentVersion?.status === "DRAFT") {
+                  setVersionName(currentVersion.version_name);
+                  setVersionDescription(currentVersion.description || "");
+                }
+                setShowSaveModal(true);
+              }}
+              disabled={!hasChanges && !seats.length}
+            >
+              Lưu Draft
+            </Button>
           </Space>
         </div>
+
+        {/* Event Selector */}
+        <Card size="small">
+          <div className="flex items-center gap-4">
+            <span className="font-medium">Sự kiện:</span>
+            <Select
+              style={{ width: 300 }}
+              value={selectedEvent}
+              onChange={(v) => setSelectedEvent(v)}
+              options={events.map((e) => ({ label: e.name, value: e.id }))}
+              placeholder="Chọn sự kiện"
+              loading={loading}
+            />
+            {ticketTypes.length > 0 && (
+              <div className="flex gap-2 ml-4">
+                <span className="text-gray-500">Giá vé:</span>
+                {ticketTypes.map((tt) => (
+                  <Tag key={tt.id} color={tt.color}>
+                    {tt.name}: {tt.price.toLocaleString("vi-VN")}đ
+                  </Tag>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
 
         {/* Config Panel */}
         <Card title="Cấu hình Layout" size="small">
@@ -417,90 +701,81 @@ export default function LayoutEditorPage() {
         </Card>
 
         {/* Selection Tools */}
-        {viewMode === "edit" && (
-          <Card title="Công cụ chọn ghế" size="small">
-            <div className="flex flex-wrap gap-4 items-center">
+        <Card title="Công cụ chọn ghế" size="small">
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Chế độ:</span>
+              <Segmented
+                value={isMultiSelect ? "multi" : "single"}
+                onChange={(v) => setIsMultiSelect(v === "multi")}
+                options={[
+                  { label: "Click đổi loại", value: "single" },
+                  { label: "Chọn nhiều", value: "multi" },
+                ]}
+              />
+            </div>
+
+            {!isMultiSelect && (
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Chế độ:</span>
+                <span className="text-sm font-medium">Loại ghế:</span>
                 <Segmented
-                  value={isMultiSelect ? "multi" : "single"}
-                  onChange={(v) => setIsMultiSelect(v === "multi")}
+                  value={currentType}
+                  onChange={(v) => setCurrentType(v as SeatType)}
                   options={[
-                    { label: "Click đổi loại", value: "single" },
-                    { label: "Chọn nhiều", value: "multi" },
+                    { label: "VIP", value: "VIP" },
+                    { label: "Tiêu chuẩn", value: "STANDARD" },
+                    { label: "Phổ thông", value: "ECONOMY" },
+                    { label: "Vô hiệu", value: "DISABLED" },
                   ]}
                 />
               </div>
+            )}
 
-              {!isMultiSelect && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Loại ghế:</span>
-                  <Segmented
-                    value={currentType}
-                    onChange={(v) => setCurrentType(v as SeatType)}
-                    options={[
-                      { label: "VIP", value: "VIP" },
-                      { label: "Tiêu chuẩn", value: "STANDARD" },
-                      { label: "Phổ thông", value: "ECONOMY" },
-                      { label: "Vô hiệu", value: "DISABLED" },
-                    ]}
-                  />
-                </div>
-              )}
-
-              {isMultiSelect && (
-                <>
+            {isMultiSelect && (
+              <>
+                <Button icon={<CheckSquareOutlined />} onClick={selectAllSeats}>
+                  Chọn tất cả
+                </Button>
+                <Button icon={<ClearOutlined />} onClick={clearSelection}>
+                  Bỏ chọn ({selectedSeats.size})
+                </Button>
+                <div className="border-l pl-4 flex gap-2">
+                  <span className="text-sm font-medium self-center">
+                    Đặt loại:
+                  </span>
                   <Button
-                    icon={<CheckSquareOutlined />}
-                    onClick={selectAllSeats}
+                    size="small"
+                    onClick={() => applyTypeToSelected("VIP")}
                   >
-                    Chọn tất cả
+                    VIP
                   </Button>
-                  <Button icon={<ClearOutlined />} onClick={clearSelection}>
-                    Bỏ chọn ({selectedSeats.size})
+                  <Button
+                    size="small"
+                    onClick={() => applyTypeToSelected("STANDARD")}
+                  >
+                    Tiêu chuẩn
                   </Button>
-                  <div className="border-l pl-4 flex gap-2">
-                    <span className="text-sm font-medium self-center">
-                      Đặt loại:
-                    </span>
-                    <Button
-                      size="small"
-                      onClick={() => applyTypeToSelected("VIP")}
-                    >
-                      VIP
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => applyTypeToSelected("STANDARD")}
-                    >
-                      Tiêu chuẩn
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => applyTypeToSelected("ECONOMY")}
-                    >
-                      Phổ thông
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => applyTypeToSelected("DISABLED")}
-                    >
-                      Vô hiệu
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </Card>
-        )}
+                  <Button
+                    size="small"
+                    onClick={() => applyTypeToSelected("ECONOMY")}
+                  >
+                    Phổ thông
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => applyTypeToSelected("DISABLED")}
+                  >
+                    Vô hiệu
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
 
         {/* Seat Layout */}
         <Card
-          title={
-            viewMode === "edit"
-              ? "Sơ đồ ghế (Click để thay đổi loại)"
-              : "Xem trước"
-          }
+          title="Sơ đồ ghế (Click để thay đổi loại)"
           className="overflow-auto"
         >
           <div className="min-h-[500px] bg-gradient-to-b from-gray-900 to-black rounded-xl p-6 relative overflow-hidden">
@@ -600,6 +875,175 @@ export default function LayoutEditorPage() {
           </div>
         </Card>
       </div>
+
+      {/* Save Draft Modal */}
+      <Modal
+        title={
+          currentVersion?.status === "DRAFT"
+            ? "Cập nhật Draft"
+            : "Lưu Draft mới"
+        }
+        open={showSaveModal}
+        onCancel={() => setShowSaveModal(false)}
+        onOk={handleSaveDraft}
+        okText="Lưu"
+        cancelText="Hủy"
+        confirmLoading={saving}
+      >
+        <div className="space-y-4 py-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Tên version *
+            </label>
+            <Input
+              value={versionName}
+              onChange={(e) => setVersionName(e.target.value)}
+              placeholder="VD: Layout v1.0, Draft 2025..."
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Mô tả</label>
+            <Input.TextArea
+              value={versionDescription}
+              onChange={(e) => setVersionDescription(e.target.value)}
+              placeholder="Mô tả về version này..."
+              rows={3}
+            />
+          </div>
+          <div className="bg-gray-50 p-3 rounded text-sm">
+            <p>
+              <strong>Layout:</strong> {config.rows} hàng ×{" "}
+              {config.leftSeats + config.rightSeats} ghế/hàng
+            </p>
+            <p>
+              <strong>Tổng ghế:</strong> {seats.length}
+            </p>
+            <p>
+              <strong>Phân loại:</strong> {getSeatStats().VIP} VIP,{" "}
+              {getSeatStats().STANDARD} Standard, {getSeatStats().ECONOMY}{" "}
+              Economy
+            </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Versions Modal */}
+      <Modal
+        title="Quản lý Versions"
+        open={showVersionsModal}
+        onCancel={() => setShowVersionsModal(false)}
+        footer={null}
+        width={800}
+      >
+        <Table
+          dataSource={versions}
+          rowKey="id"
+          size="small"
+          pagination={false}
+          columns={[
+            {
+              title: "Tên version",
+              dataIndex: "version_name",
+              key: "version_name",
+              render: (name: string, record: LayoutVersion) => (
+                <div>
+                  <strong>{name}</strong>
+                  {record.description && (
+                    <p className="text-gray-500 text-xs">
+                      {record.description}
+                    </p>
+                  )}
+                </div>
+              ),
+            },
+            {
+              title: "Trạng thái",
+              dataIndex: "status",
+              key: "status",
+              width: 120,
+              render: (status: string, record: LayoutVersion) => (
+                <div className="space-x-1">
+                  {status === "PUBLISHED" ? (
+                    <Tag color="blue">Published</Tag>
+                  ) : (
+                    <Tag color="orange">Draft</Tag>
+                  )}
+                  {record.is_active && <Tag color="green">Active</Tag>}
+                </div>
+              ),
+            },
+            {
+              title: "Ghế",
+              key: "seats",
+              width: 80,
+              render: (_: unknown, record: LayoutVersion) => (
+                <span>{record.seats_data?.length || 0}</span>
+              ),
+            },
+            {
+              title: "Ngày tạo",
+              dataIndex: "created_at",
+              key: "created_at",
+              width: 150,
+              render: (date: string) =>
+                new Date(date).toLocaleDateString("vi-VN"),
+            },
+            {
+              title: "Hành động",
+              key: "actions",
+              width: 200,
+              render: (_: unknown, record: LayoutVersion) => (
+                <Space size="small">
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      loadVersion(record);
+                      setShowVersionsModal(false);
+                      message.success(
+                        `Đã load version: ${record.version_name}`,
+                      );
+                    }}
+                  >
+                    Load
+                  </Button>
+                  {record.status === "DRAFT" && (
+                    <Popconfirm
+                      title="Publish version này?"
+                      description="Sẽ cập nhật bảng Seats theo layout này"
+                      onConfirm={() => handlePublish(record.id)}
+                      okText="Publish"
+                      cancelText="Hủy"
+                    >
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<CloudUploadOutlined />}
+                      >
+                        Publish
+                      </Button>
+                    </Popconfirm>
+                  )}
+                  {!record.is_active && (
+                    <Popconfirm
+                      title="Xóa version này?"
+                      onConfirm={() => handleDeleteVersion(record.id)}
+                      okText="Xóa"
+                      cancelText="Hủy"
+                    >
+                      <Button size="small" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  )}
+                </Space>
+              ),
+            },
+          ]}
+        />
+        {versions.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            Chưa có version nào. Tạo layout và lưu draft để bắt đầu.
+          </div>
+        )}
+      </Modal>
     </AdminLayout>
   );
 }

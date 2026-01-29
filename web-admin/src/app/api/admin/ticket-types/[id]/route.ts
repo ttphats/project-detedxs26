@@ -42,7 +42,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, price, color, icon, max_quantity, is_active, sort_order } = body;
+    const { name, description, subtitle, benefits, price, color, icon, max_quantity, is_active, sort_order } = body;
 
     const ticketType = await queryOne<TicketType>('SELECT * FROM ticket_types WHERE id = ?', [id]);
     if (!ticketType) {
@@ -62,6 +62,14 @@ export async function PUT(
     if (description !== undefined) {
       updates.push('description = ?');
       params_arr.push(description);
+    }
+    if (subtitle !== undefined) {
+      updates.push('subtitle = ?');
+      params_arr.push(subtitle);
+    }
+    if (benefits !== undefined) {
+      updates.push('benefits = ?');
+      params_arr.push(JSON.stringify(benefits));
     }
     if (price !== undefined) {
       updates.push('price = ?');

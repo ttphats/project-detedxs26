@@ -28,9 +28,10 @@ const confirmPaymentSchema = z.object({
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: orderId } = await params;
     const authHeader = request.headers.get('authorization');
     const user = await getAuthUser(authHeader);
 
@@ -48,8 +49,6 @@ export async function POST(
     // Parse input
     const body = await request.json();
     const input = confirmPaymentSchema.parse(body);
-
-    const orderId = params.id;
 
     // Process payment confirmation in transaction
     const result = await prisma.$transaction(async (tx) => {

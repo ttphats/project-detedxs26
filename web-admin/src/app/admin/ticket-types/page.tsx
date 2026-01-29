@@ -22,6 +22,7 @@ import {
   EditOutlined,
   DeleteOutlined,
   ReloadOutlined,
+  MinusCircleOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
@@ -31,6 +32,8 @@ interface TicketType {
   event_name: string;
   name: string;
   description: string | null;
+  subtitle: string | null;
+  benefits: string[] | null;
   price: number;
   color: string;
   icon: string;
@@ -56,18 +59,28 @@ export default function TicketTypesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
-  const fetchData = async () => {
+  const fetchData = async (eventId?: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (selectedEvent) params.set("eventId", selectedEvent);
+      if (eventId) params.set("eventId", eventId);
       const res = await fetch(`/api/admin/ticket-types?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
         setTicketTypes(data.data.ticketTypes);
         setEvents(data.data.events);
-        if (!selectedEvent && data.data.events.length > 0) {
-          setSelectedEvent(data.data.events[0].id);
+        // Auto-select first event if none selected
+        if (!eventId && data.data.events.length > 0) {
+          const firstEventId = data.data.events[0].id;
+          setSelectedEvent(firstEventId);
+          // Fetch again with the selected event
+          const res2 = await fetch(
+            `/api/admin/ticket-types?eventId=${firstEventId}`,
+          );
+          const data2 = await res2.json();
+          if (data2.success) {
+            setTicketTypes(data2.data.ticketTypes);
+          }
         }
       }
     } catch (error) {
@@ -78,8 +91,9 @@ export default function TicketTypesPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [selectedEvent]);
+    fetchData(selectedEvent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const formatVND = (price: number) => `${price.toLocaleString("vi-VN")} ₫`;
 
@@ -117,7 +131,15 @@ export default function TicketTypesPage() {
 
   const handleEdit = (record: TicketType) => {
     setEditingId(record.id);
-    form.setFieldsValue(record);
+    // Parse benefits if it's a string (from DB JSON)
+    const benefits =
+      typeof record.benefits === "string"
+        ? JSON.parse(record.benefits)
+        : record.benefits || [];
+    form.setFieldsValue({
+      ...record,
+      benefits,
+    });
     setIsModalOpen(true);
   };
 
@@ -142,12 +164,36 @@ export default function TicketTypesPage() {
     {
       title: "Loại vé",
       key: "name",
+      width: 300,
       render: (_, record) => (
-        <Space>
-          <span style={{ fontSize: 20 }}>{record.icon}</span>
+        <Space align="start">
+          <span style={{ fontSize: 24 }}>{record.icon}</span>
           <div>
-            <div className="font-bold">{record.name}</div>
-            <div className="text-gray-500 text-xs">{record.description}</div>
+            <div className="font-bold text-base">{record.name}</div>
+            {record.subtitle && (
+              <div className="text-gray-600 text-sm">{record.subtitle}</div>
+            )}
+            {record.benefits &&
+              (() => {
+                const benefits =
+                  typeof record.benefits === "string"
+                    ? JSON.parse(record.benefits)
+                    : record.benefits;
+                return (
+                  benefits.length > 0 && (
+                    <div className="mt-1">
+                      {benefits.slice(0, 2).map((b: string, i: number) => (
+                        <Tag key={i} color="blue" className="text-xs mb-1">
+                          {b}
+                        </Tag>
+                      ))}
+                      {benefits.length > 2 && (
+                        <Tag color="default">+{benefits.length - 2}</Tag>
+                      )}
+                    </div>
+                  )
+                );
+              })()}
           </div>
         </Space>
       ),
@@ -232,7 +278,7 @@ export default function TicketTypesPage() {
             </p>
           </div>
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={fetchData}>
+            <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>
               Làm mới
             </Button>
             <Button
@@ -263,7 +309,10 @@ export default function TicketTypesPage() {
             <Select
               style={{ width: 300 }}
               value={selectedEvent}
-              onChange={setSelectedEvent}
+              onChange={(value) => {
+                setSelectedEvent(value);
+                fetchData(value);
+              }}
               options={events.map((e) => ({ label: e.name, value: e.id }))}
               placeholder="Chọn sự kiện"
             />
@@ -299,11 +348,51 @@ export default function TicketTypesPage() {
               label="Tên loại vé"
               rules={[{ required: true, message: "Vui lòng nhập tên" }]}
             >
-              <Input placeholder="VD: VIP, Standard, Economy..." />
+              <Input placeholder="VD: VIP Experience, Standard Pass..." />
             </Form.Item>
-            <Form.Item name="description" label="Mô tả">
-              <Input.TextArea rows={2} placeholder="Mô tả về loại vé..." />
+            <Form.Item name="subtitle" label="Tiêu đề phụ (hiển thị trên web)">
+              <Input placeholder="VD: Premium seating, Speaker meet & greet..." />
             </Form.Item>
+            <Form.Item name="description" label="Mô tả chi tiết">
+              <Input.TextArea
+                rows={2}
+                placeholder="Mô tả chi tiết về loại vé..."
+              />
+            </Form.Item>
+
+            {/* Benefits List */}
+            <Form.Item label="Quyền lợi (Benefits)">
+              <Form.List name="benefits">
+                {(fields, { add, remove }) => (
+                  <>
+                    {fields.map(({ key, name, ...restField }) => (
+                      <div key={key} className="flex items-center gap-2 mb-2">
+                        <Form.Item
+                          {...restField}
+                          name={name}
+                          className="flex-1 mb-0"
+                        >
+                          <Input placeholder="VD: Ghế hạng nhất (Hàng A-B)" />
+                        </Form.Item>
+                        <MinusCircleOutlined
+                          className="text-red-500 cursor-pointer text-lg"
+                          onClick={() => remove(name)}
+                        />
+                      </div>
+                    ))}
+                    <Button
+                      type="dashed"
+                      onClick={() => add()}
+                      block
+                      icon={<PlusOutlined />}
+                    >
+                      Thêm quyền lợi
+                    </Button>
+                  </>
+                )}
+              </Form.List>
+            </Form.Item>
+
             <div className="grid grid-cols-2 gap-4">
               <Form.Item
                 name="price"
@@ -314,10 +403,6 @@ export default function TicketTypesPage() {
                   min={0}
                   step={100000}
                   style={{ width: "100%" }}
-                  formatter={(v) =>
-                    `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-                  }
-                  parser={(v) => v?.replace(/,/g, "") as unknown as number}
                   addonAfter="₫"
                 />
               </Form.Item>
@@ -340,12 +425,7 @@ export default function TicketTypesPage() {
                 <InputNumber min={0} style={{ width: "100%" }} />
               </Form.Item>
             </div>
-            <Form.Item
-              name="is_active"
-              label="Trạng thái"
-              valuePropName="checked"
-              initialValue={true}
-            >
+            <Form.Item name="is_active" label="Trạng thái" initialValue={true}>
               <Select
                 options={[
                   { label: "Hoạt động", value: true },

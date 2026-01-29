@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AdminLayout } from "@/components/admin";
 import {
   Table,
@@ -24,6 +25,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   ReloadOutlined,
+  LayoutOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
@@ -238,6 +240,17 @@ export default function SeatsPage() {
 
   const columns: ColumnsType<Seat> = [
     {
+      title: "ID",
+      dataIndex: "id",
+      key: "id",
+      width: 100,
+      render: (id: string) => (
+        <span className="font-mono text-xs text-gray-500">
+          {id.slice(0, 8)}...
+        </span>
+      ),
+    },
+    {
       title: "Ghế",
       dataIndex: "seat_number",
       key: "seat_number",
@@ -247,6 +260,12 @@ export default function SeatsPage() {
           <span style={{ color: "#888" }}>Hàng {record.row}</span>
         </span>
       ),
+    },
+    {
+      title: "Section",
+      dataIndex: "section",
+      key: "section",
+      render: (section: string) => <Tag color="blue">{section}</Tag>,
     },
     { title: "Sự kiện", dataIndex: "event_name", key: "event_name" },
     {
@@ -303,9 +322,20 @@ export default function SeatsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Quản lý ghế</h1>
-            <p className="text-gray-600 mt-1">Quản lý ghế cho tất cả sự kiện</p>
+            <p className="text-gray-600 mt-1">
+              Quản lý ghế cho tất cả sự kiện • Data đồng bộ với{" "}
+              <Link
+                href="/admin/layout-editor"
+                className="text-blue-600 hover:underline"
+              >
+                Layout
+              </Link>
+            </p>
           </div>
           <Space>
+            <Link href="/admin/layout-editor">
+              <Button icon={<LayoutOutlined />}>Xem Layout</Button>
+            </Link>
             <Button icon={<ReloadOutlined />} onClick={fetchSeats}>
               Làm mới
             </Button>
@@ -521,12 +551,6 @@ export default function SeatsPage() {
                 min={0}
                 step={100000}
                 style={{ width: "100%" }}
-                formatter={(value) =>
-                  `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-                }
-                parser={(value) =>
-                  value?.replace(/,/g, "") as unknown as number
-                }
                 addonAfter="₫"
               />
             </Form.Item>

@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { event_id, name, description, price, color, icon, max_quantity, sort_order } = body;
+    const { event_id, name, description, subtitle, benefits, price, color, icon, max_quantity, sort_order } = body;
 
     if (!event_id || !name) {
       return NextResponse.json(
@@ -54,13 +54,15 @@ export async function POST(request: NextRequest) {
 
     const id = randomUUID();
     await execute(
-      `INSERT INTO ticket_types (id, event_id, name, description, price, color, icon, max_quantity, sort_order) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ticket_types (id, event_id, name, description, subtitle, benefits, price, color, icon, max_quantity, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         event_id,
         name,
         description || null,
+        subtitle || null,
+        benefits ? JSON.stringify(benefits) : null,
         price || 0,
         color || '#10b981',
         icon || '🎫',

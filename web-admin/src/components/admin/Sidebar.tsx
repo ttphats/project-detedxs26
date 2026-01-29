@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Calendar,
-  Armchair,
   ShoppingCart,
   Mail,
   Users,
@@ -19,8 +18,7 @@ const menuItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/events", label: "Events", icon: Calendar },
   { href: "/admin/ticket-types", label: "Ticket Types", icon: Ticket },
-  { href: "/admin/layout-editor", label: "Layout Editor", icon: Grid3X3 },
-  { href: "/admin/seats", label: "Seats", icon: Armchair },
+  { href: "/admin/layout-editor", label: "Seats & Layout", icon: Grid3X3 },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { href: "/admin/email-templates", label: "Email Templates", icon: Mail },
   { href: "/admin/users", label: "Users", icon: Users },

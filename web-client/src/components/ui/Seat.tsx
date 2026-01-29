@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  SEAT_COLORS,
+  SOLD_SEAT_COLORS,
+  SELECTED_SEAT_COLORS,
+} from "@/lib/seat-styles";
+
 interface SeatProps {
   id: string;
   row: string;
@@ -23,28 +29,30 @@ export default function Seat({
     }
   };
 
+  // Get colors from shared config
+  const availableColors = SEAT_COLORS.STANDARD;
+  const selectedColors = SELECTED_SEAT_COLORS;
+  const soldColors = SOLD_SEAT_COLORS;
+
   // Status-based styling for the seat back (top part)
   const backStyles = {
-    available:
-      "bg-gradient-to-b from-emerald-400 to-emerald-500 group-hover:from-emerald-300 group-hover:to-emerald-400",
-    selected:
-      "bg-gradient-to-b from-red-500 to-red-600 shadow-lg shadow-red-500/50",
-    sold: "bg-gradient-to-b from-gray-600 to-gray-700",
+    available: `bg-gradient-to-b ${availableColors.back} group-hover:from-emerald-300 group-hover:to-emerald-400`,
+    selected: `bg-gradient-to-b ${selectedColors.back} shadow-lg ${selectedColors.glow}`,
+    sold: `bg-gradient-to-b ${soldColors.back}`,
   };
 
   // Status-based styling for the seat cushion (bottom part)
   const cushionStyles = {
-    available:
-      "bg-gradient-to-b from-emerald-500 to-emerald-600 group-hover:from-emerald-400 group-hover:to-emerald-500",
-    selected: "bg-gradient-to-b from-red-600 to-red-700",
-    sold: "bg-gradient-to-b from-gray-700 to-gray-800",
+    available: `bg-gradient-to-b ${availableColors.cushion} group-hover:from-emerald-400 group-hover:to-emerald-500`,
+    selected: `bg-gradient-to-b ${selectedColors.cushion}`,
+    sold: `bg-gradient-to-b ${soldColors.cushion}`,
   };
 
   // Status-based styling for armrests
   const armrestStyles = {
-    available: "bg-emerald-600 group-hover:bg-emerald-500",
-    selected: "bg-red-700",
-    sold: "bg-gray-800",
+    available: `${availableColors.armrest} group-hover:bg-emerald-500`,
+    selected: selectedColors.armrest,
+    sold: soldColors.armrest,
   };
 
   return (
@@ -93,18 +101,29 @@ export default function Seat({
 }
 
 export function SeatLegend() {
+  // Use shared config colors
+  const availableColors = SEAT_COLORS.STANDARD;
+  const selectedColors = SELECTED_SEAT_COLORS;
+  const soldColors = SOLD_SEAT_COLORS;
+
   return (
     <div className="flex items-center gap-6 justify-center py-4">
       <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-md bg-emerald-500" />
+        <div
+          className={`w-6 h-6 rounded-md bg-gradient-to-b ${availableColors.back}`}
+        />
         <span className="text-sm text-gray-300">Trống</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-md bg-red-600 ring-2 ring-red-400 shadow-lg shadow-red-500/50" />
+        <div
+          className={`w-6 h-6 rounded-md bg-gradient-to-b ${selectedColors.back} ring-2 ring-red-400 shadow-lg ${selectedColors.glow}`}
+        />
         <span className="text-sm text-gray-300">Đã chọn</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-md bg-gray-600" />
+        <div
+          className={`w-6 h-6 rounded-md bg-gradient-to-b ${soldColors.back}`}
+        />
         <span className="text-sm text-gray-300">Đã bán</span>
       </div>
     </div>
