@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { Bell, Search } from "lucide-react";
 
 interface User {
@@ -9,20 +9,21 @@ interface User {
   role: string;
 }
 
-// Helper to read user from localStorage without triggering React Compiler warning
-function getUserFromStorage(): User | null {
-  if (typeof window === "undefined") return null;
-  const userData = localStorage.getItem("user");
-  return userData ? JSON.parse(userData) : null;
-}
-
 export default function AdminHeader() {
-  // Use useSyncExternalStore to avoid setState in useEffect warning
-  const user = useSyncExternalStore(
-    () => () => {}, // subscribe (no-op for localStorage)
-    getUserFromStorage, // getSnapshot
-    () => null, // getServerSnapshot
-  );
+  const [user, setUser] = useState<User | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch {
+        // Invalid JSON, ignore
+      }
+    }
+  }, []);
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">

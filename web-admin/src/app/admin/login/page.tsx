@@ -105,13 +105,6 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p>Default credentials:</p>
-          <p className="font-mono text-xs mt-1">
-            admin@tedxfptuhcm.com / admin123456
-          </p>
-        </div>
       </div>
     </div>
   );
