@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, query, queryOne, Seat } from '@/lib/db';
+import { execute, query, queryOne, Seat, SeatLock } from '@/lib/db';
 import { randomUUID } from 'crypto';
 import { generateAccessToken, generateTicketUrl } from '@/lib/ticket-token';
 
@@ -19,6 +19,7 @@ interface CreateOrderBody {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  sessionId?: string; // For lock verification
 }
 
 /**
@@ -28,7 +29,7 @@ interface CreateOrderBody {
 export async function POST(request: NextRequest) {
   try {
     const body: CreateOrderBody = await request.json();
-    const { eventId, seatIds, customerName, customerEmail, customerPhone } = body;
+    const { eventId, seatIds, customerName, customerEmail, customerPhone, sessionId } = body;
 
     // Validate required fields
     if (!eventId || !seatIds?.length || !customerName || !customerEmail || !customerPhone) {
@@ -81,6 +82,27 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
+    // Verify seat locks if sessionId provided
+    if (sessionId) {
+      // Check if all seats are locked by this session
+      const locks = await query<SeatLock>(
+        `SELECT seat_id, session_id FROM seat_locks WHERE seat_id IN (${placeholders}) AND expires_at > NOW()`,
+        seatIds
+      );
+
+      // Check for seats locked by other sessions
+      const lockedByOthers = locks.filter((l) => l.session_id !== sessionId);
+      if (lockedByOthers.length > 0) {
+        const lockedSeatNumbers = seats
+          .filter((s) => lockedByOthers.some((l) => l.seat_id === s.id))
+          .map((s) => s.seat_number);
+        return NextResponse.json({
+          success: false,
+          error: `Seats ${lockedSeatNumbers.join(', ')} are being selected by another customer`,
+        }, { status: 409 });
+      }
+    }
+
     // Calculate total amount
     const totalAmount = seats.reduce((sum, seat) => sum + Number(seat.price), 0);
     const orderNumber = generateOrderNumber();
@@ -101,8 +123,8 @@ export async function POST(request: NextRequest) {
     for (const seat of seats) {
       const orderItemId = randomUUID();
       await execute(
-        `INSERT INTO order_items (id, order_id, seat_id, price, seat_number, seat_type, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        `INSERT INTO order_items (id, order_id, seat_id, price, seat_number, seat_type, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [orderItemId, orderId, seat.id, seat.price, seat.seat_number, seat.seat_type]
       );
     }
@@ -118,6 +140,12 @@ export async function POST(request: NextRequest) {
     // Mark seats as RESERVED
     await execute(
       `UPDATE seats SET status = 'RESERVED', updated_at = NOW() WHERE id IN (${placeholders})`,
+      seatIds
+    );
+
+    // Release seat locks (seats are now RESERVED in DB)
+    await execute(
+      `DELETE FROM seat_locks WHERE seat_id IN (${placeholders})`,
       seatIds
     );
 

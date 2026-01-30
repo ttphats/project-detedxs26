@@ -5,8 +5,9 @@ import { extractVariables } from '@/lib/email/service';
 
 interface DBEmailTemplate {
   id: string;
-  purpose: string;
   name: string;
+  category: string;
+  description: string | null;
   subject: string;
   html_content: string;
   text_content: string | null;
@@ -21,8 +22,9 @@ interface DBEmailTemplate {
 function formatTemplate(t: DBEmailTemplate) {
   return {
     id: t.id,
-    purpose: t.purpose,
     name: t.name,
+    category: t.category,
+    description: t.description,
     subject: t.subject,
     htmlContent: t.html_content,
     textContent: t.text_content,
@@ -77,7 +79,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, subject, htmlContent, textContent } = body;
+    const { name, category, description, subject, htmlContent, textContent } = body;
 
     const template = await queryOne<DBEmailTemplate>(
       'SELECT * FROM email_templates WHERE id = ?',
@@ -93,10 +95,10 @@ export async function PUT(
 
     // If template is active, clone it as new version
     if (template.is_active) {
-      // Get max version for this purpose
+      // Get max version for this template name
       const maxVersionResult = await queryOne<{ maxVersion: number }>(
-        'SELECT MAX(version) as maxVersion FROM email_templates WHERE purpose = ?',
-        [template.purpose]
+        'SELECT MAX(version) as maxVersion FROM email_templates WHERE name LIKE ?',
+        [`${template.name}%`]
       );
       const newVersion = (maxVersionResult?.maxVersion || 0) + 1;
 
@@ -106,12 +108,13 @@ export async function PUT(
       const newVariables = extractVariables(newHtmlContent);
 
       await execute(
-        `INSERT INTO email_templates (id, purpose, name, subject, html_content, text_content, variables, is_active, version, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())`,
+        `INSERT INTO email_templates (id, name, category, description, subject, html_content, text_content, variables, is_active, version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())`,
         [
           newId,
-          template.purpose,
-          name ?? template.name,
+          (name ?? template.name) + ` v${newVersion}`,
+          category ?? template.category,
+          description ?? template.description,
           subject ?? template.subject,
           newHtmlContent,
           textContent ?? template.text_content,
@@ -140,6 +143,14 @@ export async function PUT(
     if (name !== undefined) {
       updates.push('name = ?');
       params_arr.push(name);
+    }
+    if (category !== undefined) {
+      updates.push('category = ?');
+      params_arr.push(category);
+    }
+    if (description !== undefined) {
+      updates.push('description = ?');
+      params_arr.push(description);
     }
     if (subject !== undefined) {
       updates.push('subject = ?');

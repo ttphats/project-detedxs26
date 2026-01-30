@@ -55,18 +55,53 @@ function LayoutPreviewLoading() {
 
 function LayoutPreviewContent() {
   const searchParams = useSearchParams();
+  const mode = searchParams.get("mode"); // "editor" means preview from editor with current state
   const eventId = searchParams.get("eventId") || "evt-tedx-2026";
 
   const [seats, setSeats] = useState<Seat[]>([]);
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [eventName, setEventName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isEditorPreview, setIsEditorPreview] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch seats
+        // Check if preview mode from editor (with current editing state)
+        if (mode === "editor") {
+          const previewDataStr = sessionStorage.getItem("layout-preview-data");
+          if (previewDataStr) {
+            const previewData = JSON.parse(previewDataStr);
+            // Convert editor seat format to preview seat format
+            const convertedSeats: Seat[] = previewData.seats.map((s: any) => ({
+              id: s.id,
+              seat_number: s.seat_number,
+              row: s.row,
+              col: s.col,
+              section: s.side === "left" ? "LEFT" : "RIGHT",
+              seat_type: s.type as SeatType,
+              status: "AVAILABLE", // In editor preview, all seats are available
+              price: 0, // Will show from ticket types
+            }));
+            setSeats(convertedSeats);
+            setEventName(previewData.versionName || "Preview từ Editor");
+            setIsEditorPreview(true);
+
+            // Still fetch ticket types from API for pricing info
+            const ttRes = await fetch(
+              `/api/admin/ticket-types?eventId=${previewData.eventId || eventId}`,
+            );
+            const ttData = await ttRes.json();
+            if (ttData.success) {
+              setTicketTypes(ttData.data.ticketTypes || []);
+            }
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Default: Fetch from database
         const seatsRes = await fetch(`/api/admin/seats?eventId=${eventId}`);
         const seatsData = await seatsRes.json();
         if (seatsData.success) {
@@ -90,7 +125,7 @@ function LayoutPreviewContent() {
       }
     };
     fetchData();
-  }, [eventId]);
+  }, [eventId, mode]);
 
   // Group seats by row AND section (LEFT/RIGHT)
   const seatsByRowAndSection = seats.reduce(
@@ -125,6 +160,19 @@ function LayoutPreviewContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-black to-gray-900">
+      {/* Editor Preview Banner */}
+      {isEditorPreview && (
+        <div className="bg-gradient-to-r from-yellow-500/20 via-orange-500/20 to-yellow-500/20 border-b border-yellow-500/30">
+          <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-center gap-2 text-yellow-400 text-sm">
+            <span className="animate-pulse">🔧</span>
+            <span className="font-medium">
+              Preview từ Editor - Hiển thị trạng thái đang chỉnh sửa (chưa lưu
+              vào database)
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-black/50 backdrop-blur-sm border-b border-white/10 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -139,6 +187,11 @@ function LayoutPreviewContent() {
             <div className="h-6 w-px bg-white/20" />
             <h1 className="text-xl font-bold text-white">
               Preview: <span className="text-red-500">{eventName}</span>
+              {isEditorPreview && (
+                <span className="ml-2 text-xs font-normal text-yellow-400 bg-yellow-500/20 px-2 py-0.5 rounded">
+                  Editor Mode
+                </span>
+              )}
             </h1>
           </div>
           <div className="text-sm text-gray-400">Tổng: {seats.length} ghế</div>

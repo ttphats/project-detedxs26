@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, execute, queryOne } from '@/lib/db';
 import { randomUUID } from 'crypto';
-import { EMAIL_PURPOSE, EmailPurpose, REQUIRED_VARIABLES } from '@/lib/email/types';
 import { extractVariables } from '@/lib/email/service';
+
+// Template categories
+const TEMPLATE_CATEGORIES = ['ORDER', 'EVENT', 'NOTIFICATION', 'GENERAL'] as const;
+type TemplateCategory = typeof TEMPLATE_CATEGORIES[number];
 
 interface DBEmailTemplate {
   id: string;
-  purpose: string;
   name: string;
+  category: string;
+  description: string | null;
   subject: string;
   html_content: string;
   text_content: string | null;
@@ -19,46 +23,51 @@ interface DBEmailTemplate {
   updated_at: string;
 }
 
+function formatTemplate(t: DBEmailTemplate) {
+  return {
+    id: t.id,
+    name: t.name,
+    category: t.category,
+    description: t.description,
+    subject: t.subject,
+    htmlContent: t.html_content,
+    textContent: t.text_content,
+    variables: t.variables ? JSON.parse(t.variables) : [],
+    isActive: Boolean(t.is_active),
+    version: t.version,
+    createdBy: t.created_by,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+  };
+}
+
 // GET /api/admin/email-templates - List all templates
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const purpose = searchParams.get('purpose');
+    const category = searchParams.get('category');
     const activeOnly = searchParams.get('activeOnly') === 'true';
 
     let sql = 'SELECT * FROM email_templates WHERE 1=1';
     const params: unknown[] = [];
 
-    if (purpose) {
-      sql += ' AND purpose = ?';
-      params.push(purpose);
+    if (category) {
+      sql += ' AND category = ?';
+      params.push(category);
     }
 
     if (activeOnly) {
       sql += ' AND is_active = 1';
     }
 
-    sql += ' ORDER BY purpose, version DESC';
+    sql += ' ORDER BY category, name, version DESC';
 
     const templates = await query<DBEmailTemplate>(sql, params);
 
     return NextResponse.json({
       success: true,
-      data: templates.map(t => ({
-        id: t.id,
-        purpose: t.purpose,
-        name: t.name,
-        subject: t.subject,
-        htmlContent: t.html_content,
-        textContent: t.text_content,
-        variables: t.variables ? JSON.parse(t.variables) : [],
-        isActive: Boolean(t.is_active),
-        version: t.version,
-        createdBy: t.created_by,
-        createdAt: t.created_at,
-        updatedAt: t.updated_at,
-      })),
-      purposes: Object.values(EMAIL_PURPOSE),
+      data: templates.map(formatTemplate),
+      categories: TEMPLATE_CATEGORIES,
     });
   } catch (error: unknown) {
     console.error('Get email templates error:', error);
@@ -73,20 +82,20 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { purpose, name, subject, htmlContent, textContent } = body;
+    const { name, category = 'GENERAL', description, subject, htmlContent, textContent } = body;
 
     // Validate required fields
-    if (!purpose || !name || !subject || !htmlContent) {
+    if (!name || !subject || !htmlContent) {
       return NextResponse.json(
-        { success: false, error: 'Purpose, name, subject, and HTML content are required' },
+        { success: false, error: 'Name, subject, and HTML content are required' },
         { status: 400 }
       );
     }
 
-    // Validate purpose is valid
-    if (!Object.values(EMAIL_PURPOSE).includes(purpose as EmailPurpose)) {
+    // Validate category is valid
+    if (!TEMPLATE_CATEGORIES.includes(category as TemplateCategory)) {
       return NextResponse.json(
-        { success: false, error: `Invalid purpose: ${purpose}` },
+        { success: false, error: `Invalid category: ${category}. Valid: ${TEMPLATE_CATEGORIES.join(', ')}` },
         { status: 400 }
       );
     }
@@ -94,32 +103,22 @@ export async function POST(request: NextRequest) {
     // Auto-extract variables from HTML
     const variables = extractVariables(htmlContent);
 
-    // Check required variables for purpose
-    const requiredVars = REQUIRED_VARIABLES[purpose as EmailPurpose] || [];
-    const missingVars = requiredVars.filter(v => !variables.includes(v));
-    if (missingVars.length > 0) {
-      return NextResponse.json({
-        success: false,
-        error: `Template is missing required variables for ${purpose}: ${missingVars.join(', ')}`,
-        missingVariables: missingVars,
-      }, { status: 400 });
-    }
-
-    // Get max version for this purpose
+    // Get max version for this template name
     const maxVersionResult = await queryOne<{ maxVersion: number }>(
-      'SELECT MAX(version) as maxVersion FROM email_templates WHERE purpose = ?',
-      [purpose]
+      'SELECT MAX(version) as maxVersion FROM email_templates WHERE name LIKE ?',
+      [`${name}%`]
     );
     const version = (maxVersionResult?.maxVersion || 0) + 1;
 
     const id = randomUUID();
     await execute(
-      `INSERT INTO email_templates (id, purpose, name, subject, html_content, text_content, variables, is_active, version, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())`,
+      `INSERT INTO email_templates (id, name, category, description, subject, html_content, text_content, variables, is_active, version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())`,
       [
         id,
-        purpose,
         name,
+        category,
+        description || null,
         subject,
         htmlContent,
         textContent || null,
@@ -135,18 +134,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: template ? {
-        id: template.id,
-        purpose: template.purpose,
-        name: template.name,
-        subject: template.subject,
-        htmlContent: template.html_content,
-        variables: template.variables ? JSON.parse(template.variables) : [],
-        isActive: Boolean(template.is_active),
-        version: template.version,
-        createdAt: template.created_at,
-        updatedAt: template.updated_at,
-      } : null,
+      data: template ? formatTemplate(template) : null,
       message: 'Template created successfully',
     }, { status: 201 });
   } catch (error: unknown) {
