@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Check Seat Locks</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    pre {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .error {
+      color: #ff6b6b;
+    }
+    .success {
+      color: #51cf66;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 Seat Locks Debugger</h1>
+  
+  <div>
+    <button onclick="checkAllLocks()">Check All Locks in DB</button>
+    <button onclick="checkMyLocks()">Check My Locks</button>
+    <button onclick="checkSeatsAPI()">Check Seats API</button>
+    <button onclick="clearExpiredLocks()">Clear Expired Locks</button>
+  </div>
+
+  <div id="output"></div>
+
+  <script>
+    const output = document.getElementById('output');
+    const sessionId = sessionStorage.getItem('seat_session_id') || 'NO_SESSION';
+
+    function log(message, type = 'info') {
+      const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+      output.innerHTML += `<pre class="${className}">${message}</pre>`;
+    }
+
+    async function checkAllLocks() {
+      output.innerHTML = '<h2>All Locks in Database:</h2>';
+      try {
+        const res = await fetch('/api/debug/seat-locks');
+        const data = await res.json();
+        log(JSON.stringify(data, null, 2), data.success ? 'success' : 'error');
+      } catch (err) {
+        log('Error: ' + err.message, 'error');
+      }
+    }
+
+    async function checkMyLocks() {
+      output.innerHTML = `<h2>My Locks (Session: ${sessionId.substring(0, 20)}...):</h2>`;
+      try {
+        const res = await fetch(`/api/seats/lock?sessionId=${sessionId}&eventId=evt-tedx-2026`);
+        const data = await res.json();
+        log(JSON.stringify(data, null, 2), data.success ? 'success' : 'error');
+      } catch (err) {
+        log('Error: ' + err.message, 'error');
+      }
+    }
+
+    async function checkSeatsAPI() {
+      output.innerHTML = `<h2>Seats API Response (Session: ${sessionId.substring(0, 20)}...):</h2>`;
+      try {
+        const res = await fetch(`/api/events/evt-tedx-2026/seats?sessionId=${sessionId}`);
+        const data = await res.json();
+        
+        if (data.success) {
+          const allSeats = data.data.seatMap.flatMap(row => row.seats);
+          const lockedSeats = allSeats.filter(s => s.status === 'locked' || s.status === 'locked_by_me');
+          
+          log(`Total seats: ${allSeats.length}`, 'info');
+          log(`Locked seats: ${lockedSeats.length}`, lockedSeats.length > 0 ? 'success' : 'info');
+          
+          if (lockedSeats.length > 0) {
+            log('\nLocked seats details:', 'success');
+            log(JSON.stringify(lockedSeats.map(s => ({
+              seatNumber: s.seatNumber,
+              status: s.status,
+              lockExpiresAt: s.lockExpiresAt
+            })), null, 2), 'success');
+          }
+        } else {
+          log(JSON.stringify(data, null, 2), 'error');
+        }
+      } catch (err) {
+        log('Error: ' + err.message, 'error');
+      }
+    }
+
+    async function clearExpiredLocks() {
+      output.innerHTML = '<h2>Clearing Expired Locks:</h2>';
+      try {
+        const res = await fetch('/api/debug/seat-locks', { method: 'DELETE' });
+        const data = await res.json();
+        log(JSON.stringify(data, null, 2), data.success ? 'success' : 'error');
+      } catch (err) {
+        log('Error: ' + err.message, 'error');
+      }
+    }
+
+    // Auto-check on load
+    log(`Session ID: ${sessionId}\n`, 'info');
+  </script>
+</body>
+</html>
+
