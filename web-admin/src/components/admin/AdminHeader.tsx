@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Search } from "lucide-react";
+import { Bell, Search, LogOut } from "lucide-react";
 
 interface User {
   fullName: string;
@@ -24,6 +24,13 @@ export default function AdminHeader() {
       }
     }
   }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    document.cookie = "token=; path=/; max-age=0";
+    window.location.href = "/admin/login";
+  };
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -63,6 +70,14 @@ export default function AdminHeader() {
                 {user?.role || "Super Admin"}
               </p>
             </div>
+            {/* Logout button */}
+            <button
+              onClick={handleLogout}
+              className="ml-2 p-2 text-gray-400 hover:text-[#e62b1e] hover:bg-red-50 rounded-lg transition-colors"
+              title="Đăng xuất"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>

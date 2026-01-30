@@ -1,10 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { randomBytes, createHash } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser, requireAdmin } from '@/lib/auth';
-import { sendTicketEmail } from '@/lib/mail';
+import { sendEmailByPurpose } from '@/lib/email/service';
+import { BUSINESS_EVENTS } from '@/lib/email/types';
 import { generateTicketQRCode } from '@/lib/qrcode';
 import { successResponse, errorResponse, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError } from '@/lib/utils';
+import { getRequestInfo } from '@/lib/audit-logger';
+
+/**
+ * Generate access token for ticketless authentication
+ * @returns Object with plain token and hashed token
+ */
+function generateAccessToken(): { token: string; hash: string } {
+  const token = randomBytes(32).toString('hex'); // 256-bit entropy
+  const hash = createHash('sha256').update(token).digest('hex');
+  return { token, hash };
+}
+
+/**
+ * Generate ticket URL with access token
+ */
+function generateTicketUrl(orderNumber: string, token: string): string {
+  const baseUrl = process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:3000';
+  return `${baseUrl}/ticket/${orderNumber}?token=${token}`;
+}
 
 const confirmPaymentSchema = z.object({
   transactionId: z.string().optional(),
@@ -119,21 +140,38 @@ export async function POST(
         },
       });
 
-      // Create audit log
+      // Get request info with device parsing
+      const reqInfo = getRequestInfo(request);
+
+      // Create audit log with new format (inside transaction)
       await tx.auditLog.create({
         data: {
           userId: user.userId,
-          action: 'CONFIRM_PAYMENT',
-          entity: 'Order',
+          userRole: user.roleName,
+          action: 'CONFIRM',
+          entity: 'PAYMENT',
           entityId: orderId,
-          changes: JSON.stringify({
-            orderNumber: order.orderNumber,
-            status: 'PENDING -> PAID',
-            transactionId: input.transactionId,
-            notes: input.notes,
+          oldValue: JSON.stringify({
+            orderStatus: order.status,
+            paymentStatus: order.payment?.status,
+            seatStatus: 'RESERVED',
           }),
-          ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
-          userAgent: request.headers.get('user-agent') || undefined,
+          newValue: JSON.stringify({
+            orderStatus: 'PAID',
+            paymentStatus: 'COMPLETED',
+            seatStatus: 'SOLD',
+            transactionId: input.transactionId,
+          }),
+          metadata: JSON.stringify({
+            orderNumber: order.orderNumber,
+            customerEmail: order.customerEmail,
+            totalAmount: Number(order.totalAmount),
+            seatCount: seatIds.length,
+            notes: input.notes,
+            device: reqInfo.device,
+          }),
+          ipAddress: reqInfo.ipAddress,
+          userAgent: reqInfo.userAgent,
         },
       });
 
@@ -146,24 +184,83 @@ export async function POST(
       result.order.eventId
     );
 
-    // Send ticket email (fire and forget)
-    sendTicketEmail({
+    // Generate access token for ticket URL (if not exists)
+    // This allows user to access ticket via email link
+    let ticketUrl: string;
+    const { token: accessToken, hash: accessTokenHash } = generateAccessToken();
+
+    // Store QR code URL and access token hash in order
+    await prisma.order.update({
+      where: { id: result.order.id },
+      data: {
+        qrCodeUrl,
+        accessTokenHash, // Store new token hash (overwrites old if exists)
+      },
+    });
+
+    // Generate ticket URL with the new token
+    ticketUrl = generateTicketUrl(result.order.orderNumber, accessToken);
+
+    // Format event date for Vietnamese locale
+    const eventDate = new Date(result.order.event.eventDate);
+    const formattedDate = eventDate.toLocaleDateString('vi-VN', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    // NO SPAM FLOW: Send email via new template system
+    // businessEvent: PAYMENT_CONFIRMED - Admin confirmed payment
+    // triggeredBy: Admin user ID who clicked "Confirm Payment"
+    // orderId: For anti-spam check (only 1 email per purpose per order)
+    sendEmailByPurpose({
+      purpose: 'TICKET_CONFIRMED',
+      businessEvent: BUSINESS_EVENTS.PAYMENT_CONFIRMED,
+      orderId: result.order.id,
+      triggeredBy: user.userId,
       to: result.order.customerEmail,
-      customerName: result.order.customerName,
-      eventName: result.order.event.name,
-      eventDate: result.order.event.eventDate.toISOString(),
-      eventVenue: result.order.event.venue,
-      orderNumber: result.order.orderNumber,
-      seats: result.order.orderItems.map((item) => ({
-        seatNumber: item.seat.seatNumber,
-        seatType: item.seat.seatType,
-        price: Number(item.price),
-      })),
-      totalAmount: Number(result.order.totalAmount),
-      qrCodeUrl,
+      data: {
+        customerName: result.order.customerName,
+        eventName: result.order.event.name,
+        eventDate: formattedDate,
+        eventTime: formattedTime,
+        eventVenue: result.order.event.venue,
+        orderNumber: result.order.orderNumber,
+        seats: result.order.orderItems.map((item) => ({
+          seatNumber: item.seat.seatNumber,
+          seatType: item.seat.seatType,
+          section: item.seat.section,
+          row: item.seat.row,
+          price: Number(item.price),
+        })),
+        totalAmount: Number(result.order.totalAmount),
+        qrCodeUrl,
+        ticketUrl,
+      },
+      metadata: {
+        seatsCount: result.order.orderItems.length,
+        confirmedBy: user.userId,
+      },
     })
-      .then(() => {
-        console.log(`✅ Ticket email sent to ${result.order.customerEmail}`);
+      .then(async (emailResult) => {
+        if (emailResult.success) {
+          // Update email_sent_at after successful email send
+          await prisma.order.update({
+            where: { id: result.order.id },
+            data: { emailSentAt: new Date() },
+          });
+          console.log(`✅ Ticket email sent to ${result.order.customerEmail} at ${new Date().toISOString()}`);
+          console.log(`📧 Ticket URL: ${ticketUrl}`);
+        } else if (emailResult.skipped) {
+          console.log(`⏭️ Email skipped (anti-spam): ${emailResult.error}`);
+        } else {
+          console.error(`❌ Failed to send email: ${emailResult.error}`);
+        }
       })
       .catch((err) => {
         console.error('❌ Failed to send ticket email:', err);

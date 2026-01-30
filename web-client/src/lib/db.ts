@@ -87,3 +87,17 @@ export interface TicketType {
   sort_order: number;
 }
 
+export interface Speaker {
+  id: string;
+  event_id: string;
+  name: string;
+  title: string | null;
+  company: string | null;
+  bio: string | null;
+  image_url: string | null;
+  topic: string | null;
+  social_links: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+

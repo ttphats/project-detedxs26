@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { unlockSeats } from '@/lib/redis';
-import { sendTicketEmail } from '@/lib/mail';
+import { sendEmailByPurpose } from '@/lib/email/service';
+import { BUSINESS_EVENTS } from '@/lib/email/types';
 import { generateTicketQRCode } from '@/lib/qrcode';
 import { successResponse, errorResponse } from '@/lib/utils';
 import { config } from '@/lib/env';
@@ -182,21 +183,51 @@ async function processPaymentConfirmation(
     // Generate QR code
     const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId);
 
-    // Send ticket email (fire and forget)
-    sendTicketEmail({
+    // Format event date
+    const eventDate = new Date(order.event.eventDate);
+    const formattedDate = eventDate.toLocaleDateString('vi-VN', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    // Generate ticket URL (no token for webhook - admin will need to resend with token)
+    const ticketUrl = `${process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:3000'}/ticket/${order.orderNumber}`;
+
+    // NO SPAM FLOW: Webhook is a valid business event (payment gateway confirmed)
+    // businessEvent: PAYMENT_CONFIRMED - Automated payment gateway confirmation
+    // triggeredBy: 'SYSTEM' - No admin user
+    sendEmailByPurpose({
+      purpose: 'TICKET_CONFIRMED',
+      businessEvent: BUSINESS_EVENTS.PAYMENT_CONFIRMED,
+      orderId: order.id,
+      triggeredBy: 'SYSTEM', // Webhook is automated
       to: order.customerEmail,
-      customerName: order.customerName,
-      eventName: order.event.name,
-      eventDate: order.event.eventDate.toISOString(),
-      eventVenue: order.event.venue,
-      orderNumber: order.orderNumber,
-      seats: order.orderItems.map((item) => ({
-        seatNumber: item.seatNumber,
-        seatType: item.seatType,
-        price: Number(item.price),
-      })),
-      totalAmount: Number(order.totalAmount),
-      qrCodeUrl,
+      data: {
+        customerName: order.customerName,
+        eventName: order.event.name,
+        eventDate: formattedDate,
+        eventTime: formattedTime,
+        eventVenue: order.event.venue,
+        orderNumber: order.orderNumber,
+        seats: order.orderItems.map((item) => ({
+          seatNumber: item.seatNumber,
+          seatType: item.seatType,
+          price: Number(item.price),
+        })),
+        totalAmount: Number(order.totalAmount),
+        qrCodeUrl,
+        ticketUrl,
+      },
+      metadata: {
+        source: 'payment_webhook',
+        provider: config.payment.provider,
+      },
     }).catch((err) => {
       console.error('Failed to send ticket email:', err);
     });

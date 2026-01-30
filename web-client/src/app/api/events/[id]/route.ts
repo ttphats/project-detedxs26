@@ -55,7 +55,8 @@ export async function GET(
       .map(row => ({
         row,
         seats: seatsByRow[row].map(seat => ({
-          id: seat.seat_number,
+          id: seat.id,  // Use UUID for API calls
+          seatNumber: seat.seat_number,  // For display (e.g., "B6")
           row: seat.row,
           number: seat.col,
           section: seat.section,

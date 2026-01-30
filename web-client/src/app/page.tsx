@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Calendar,
@@ -11,13 +11,136 @@ import {
   Play,
   ArrowRight,
   X,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components";
-import { events } from "@/lib/mock-data";
+import { events as mockEvents, Speaker, TimelineItem } from "@/lib/mock-data";
+
+interface FeaturedEvent {
+  id: string;
+  name: string;
+  slug: string;
+  tagline: string;
+  description: string;
+  date: string;
+  time: string;
+  venue: string;
+  location: string;
+  bannerImageUrl: string | null;
+  thumbnailUrl: string | null;
+  speakerCount: number;
+  background: {
+    type: string;
+    value: string;
+    overlay: string;
+  };
+  highlights: { icon: string; text: string }[];
+  timeline: TimelineItem[];
+}
 
 export default function Home() {
-  const featuredEvent = events[0];
+  const [featuredEvent, setFeaturedEvent] = useState<FeaturedEvent | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
+  const [speakers, setSpeakers] = useState<Speaker[]>([]);
+
+  // Fetch featured event from API
+  useEffect(() => {
+    const fetchFeaturedEvent = async () => {
+      try {
+        const res = await fetch("/api/events?featured=true");
+        const data = await res.json();
+        if (data.success && data.data) {
+          // Merge with mock timeline since API doesn't have it yet
+          const mock = mockEvents[0];
+          setFeaturedEvent({
+            ...data.data,
+            timeline: data.data.timeline || mock.timeline,
+          });
+        } else {
+          // Fallback to mock data
+          const mock = mockEvents[0];
+          setFeaturedEvent({
+            id: mock.id,
+            name: mock.name,
+            slug: mock.id,
+            tagline: mock.tagline,
+            description: mock.description,
+            date: mock.date,
+            time: mock.time,
+            venue: mock.venue,
+            location: mock.location,
+            bannerImageUrl: mock.background.value,
+            thumbnailUrl:
+              "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&h=600&fit=crop",
+            speakerCount: mock.speakers.length,
+            background: mock.background,
+            highlights: mock.highlights,
+            timeline: mock.timeline,
+          });
+          setSpeakers(mock.speakers);
+        }
+      } catch (error) {
+        console.error("Failed to fetch featured event:", error);
+        // Fallback to mock data
+        const mock = mockEvents[0];
+        setFeaturedEvent({
+          id: mock.id,
+          name: mock.name,
+          slug: mock.id,
+          tagline: mock.tagline,
+          description: mock.description,
+          date: mock.date,
+          time: mock.time,
+          venue: mock.venue,
+          location: mock.location,
+          bannerImageUrl: mock.background.value,
+          thumbnailUrl:
+            "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&h=600&fit=crop",
+          speakerCount: mock.speakers.length,
+          background: mock.background,
+          highlights: mock.highlights,
+          timeline: mock.timeline,
+        });
+        setSpeakers(mock.speakers);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchFeaturedEvent();
+  }, []);
+
+  // Fetch speakers when featuredEvent is loaded
+  useEffect(() => {
+    if (!featuredEvent) return;
+
+    const fetchSpeakers = async () => {
+      try {
+        const res = await fetch(`/api/events/${featuredEvent.id}/speakers`);
+        const data = await res.json();
+        if (data.success && data.data.length > 0) {
+          setSpeakers(data.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch speakers:", error);
+      }
+    };
+    fetchSpeakers();
+  }, [featuredEvent?.id]);
+
+  // Loading state
+  if (loading || !featuredEvent) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-red-500 animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Đang tải...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-black overflow-hidden">
@@ -186,7 +309,10 @@ export default function Home() {
                 {/* Main image with effects */}
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-red-500/30 group">
                   <img
-                    src="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&h=600&fit=crop"
+                    src={
+                      featuredEvent.thumbnailUrl ||
+                      "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&h=600&fit=crop"
+                    }
                     alt="TEDx Stage"
                     className="w-full h-auto transition-transform duration-700 group-hover:scale-105"
                   />
@@ -206,7 +332,7 @@ export default function Home() {
                   <div className="absolute bottom-6 left-6 right-6 flex gap-4">
                     <div className="flex-1 glass-dark rounded-xl p-4 animate-fade-in-up delay-600 hover:bg-white/10 transition-colors">
                       <p className="text-3xl font-black text-white">
-                        {featuredEvent.speakers.length}+
+                        {featuredEvent.speakerCount || speakers.length}+
                       </p>
                       <p className="text-gray-400 text-sm uppercase tracking-wide">
                         Speakers
@@ -296,7 +422,7 @@ export default function Home() {
 
         {/* Speaker Cards - Mobile: Card style, Desktop: Row style */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-4 px-4 py-8">
-          {featuredEvent.speakers.map((speaker, index) => (
+          {speakers.map((speaker, index) => (
             <div
               key={speaker.id}
               className="group relative rounded-2xl overflow-hidden bg-black border border-red-500/20 shadow-lg shadow-red-500/10 hover:shadow-red-500/20 transition-all duration-300"
@@ -346,7 +472,7 @@ export default function Home() {
 
         {/* Speaker Rows - Desktop only */}
         <div className="hidden lg:block">
-          {featuredEvent.speakers.map((speaker, index) => (
+          {speakers.map((speaker, index) => (
             <div
               key={speaker.id}
               className="speaker-row group relative min-h-[70vh] flex items-center border-t border-white/5 overflow-hidden"
@@ -602,8 +728,8 @@ export default function Home() {
             READY TO BE INSPIRED?
           </h2>
           <p className="text-xl text-white/80 mb-8 animate-fade-in-up delay-100">
-            Join {featuredEvent.speakers.length}+ speakers and 500+ attendees
-            for a day of ideas worth spreading.
+            Join {featuredEvent.speakerCount || speakers.length}+ speakers and
+            500+ attendees for a day of ideas worth spreading.
           </p>
           <Link href={`/events/${featuredEvent.id}/seats`}>
             <Button

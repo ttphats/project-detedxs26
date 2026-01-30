@@ -12,15 +12,19 @@ import {
   LogOut,
   Ticket,
   Grid3X3,
+  Mic2,
+  History,
 } from "lucide-react";
 
 const menuItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/events", label: "Events", icon: Calendar },
   { href: "/admin/ticket-types", label: "Ticket Types", icon: Ticket },
+  { href: "/admin/speakers", label: "Speakers", icon: Mic2 },
   { href: "/admin/layout-editor", label: "Seats & Layout", icon: Grid3X3 },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { href: "/admin/email-templates", label: "Email Templates", icon: Mail },
+  { href: "/admin/audit-logs", label: "Audit Logs", icon: History },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
