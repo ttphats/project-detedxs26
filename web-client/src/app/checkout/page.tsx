@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,8 +12,34 @@ import {
   Ticket,
   QrCode,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
-import { getEventById, Seat } from "@/lib/mock-data";
+
+// Type definitions for event data
+interface Seat {
+  id: string;
+  seatNumber: string;
+  row: string;
+  number: number;
+  section: string;
+  status: string;
+  ticketTypeId: string;
+  seatType: string;
+  price: number;
+}
+
+interface SeatRow {
+  row: string;
+  seats: Seat[];
+}
+
+interface EventData {
+  id: string;
+  name: string;
+  venue: string;
+  eventDate: string;
+  seatMap: SeatRow[];
+}
 
 // Bank account info for transfer
 const bankInfo = {
@@ -38,13 +64,36 @@ function CheckoutContent() {
   const [timeLeft, setTimeLeft] = useState(COUNTDOWN_DURATION);
   const [isExpired, setIsExpired] = useState(false);
   const [orderCode, setOrderCode] = useState("TKH000000");
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [event, setEvent] = useState<EventData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Generate order code only on client side to avoid hydration mismatch
+  // Fetch event data from API
   useEffect(() => {
-    setOrderCode(
-      `TKH${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-    );
-  }, []);
+    const fetchEvent = async () => {
+      if (!eventId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/events/${eventId}`);
+        const data = await res.json();
+
+        if (data.success) {
+          setEvent(data.data);
+        } else {
+          console.error("Failed to fetch event:", data.error);
+        }
+      } catch (err) {
+        console.error("Error fetching event:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvent();
+  }, [eventId]);
 
   // Countdown timer effect
   useEffect(() => {
@@ -73,14 +122,13 @@ function CheckoutContent() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const event = eventId ? getEventById(eventId) : null;
+  // Get selected seats from event data
   const selectedSeats: Seat[] = event
     ? event.seatMap
         .flatMap((row) => row.seats)
         .filter((seat) => seatIds.includes(seat.id))
     : [];
   const totalPrice = selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
-  const totalPriceVND = totalPrice * 24000; // Convert to VND
   const transferContent = `Nap quy khach hang id ${orderCode}`;
 
   const copyToClipboard = (text: string, field: string) => {
@@ -94,10 +142,58 @@ function CheckoutContent() {
       alert("Vui lòng điền đầy đủ thông tin");
       return;
     }
+
     setIsProcessing(true);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    router.push(`/order-success?code=${orderCode}&seats=${seatIds.join(",")}`);
+    setOrderError(null);
+
+    try {
+      // Call API to create order
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          eventId,
+          seatIds,
+          customerName: formData.name,
+          customerEmail: formData.email,
+          customerPhone: formData.phone,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to create order");
+      }
+
+      // Navigate to success page with order details
+      router.push(
+        `/order-success?code=${data.data.orderNumber}&seats=${seatIds.join(",")}&event=${eventId}`,
+      );
+    } catch (error: unknown) {
+      console.error("Order creation error:", error);
+      setOrderError(
+        error instanceof Error
+          ? error.message
+          : "Có lỗi xảy ra khi tạo đơn hàng",
+      );
+      setIsProcessing(false);
+    }
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-red-500 animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Đang tải thông tin đơn hàng...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!event || selectedSeats.length === 0) {
     return (
@@ -366,11 +462,11 @@ function CheckoutContent() {
                       <p className="text-sm text-red-400 mb-1">Số tiền</p>
                       <div className="flex items-center gap-2">
                         <span className="text-2xl font-black text-red-500">
-                          {totalPriceVND.toLocaleString("vi-VN")}đ
+                          {totalPrice.toLocaleString("vi-VN")}đ
                         </span>
                         <button
                           onClick={() =>
-                            copyToClipboard(totalPriceVND.toString(), "amount")
+                            copyToClipboard(totalPrice.toString(), "amount")
                           }
                           className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
                         >
@@ -466,11 +562,10 @@ function CheckoutContent() {
                       className="flex justify-between text-sm py-2 border-b border-white/5"
                     >
                       <span className="text-gray-300">
-                        Ghế {seat.row}
-                        {seat.number}
+                        Ghế {seat.seatNumber}
                       </span>
                       <span className="font-medium text-white">
-                        {(seat.price * 24000).toLocaleString("vi-VN")}đ
+                        {seat.price.toLocaleString("vi-VN")}đ
                       </span>
                     </div>
                   ))}
@@ -480,7 +575,7 @@ function CheckoutContent() {
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-white">Tổng cộng</span>
                     <span className="text-2xl font-black text-red-500">
-                      {totalPriceVND.toLocaleString("vi-VN")}đ
+                      {totalPrice.toLocaleString("vi-VN")}đ
                     </span>
                   </div>
                 </div>
@@ -498,6 +593,16 @@ function CheckoutContent() {
                     </div>
                   </div>
                 </div>
+
+                {/* Error message */}
+                {orderError && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-4">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-5 h-5 text-red-500 mt-0.5" />
+                      <p className="text-sm text-red-400">{orderError}</p>
+                    </div>
+                  </div>
+                )}
 
                 <button
                   onClick={handleConfirmPayment}

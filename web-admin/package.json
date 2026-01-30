@@ -20,6 +20,7 @@
     "@upstash/redis": "^1.34.3",
     "antd": "^6.2.2",
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.9.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.563.0",
     "mysql2": "^3.16.2",

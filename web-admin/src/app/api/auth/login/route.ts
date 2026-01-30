@@ -6,7 +6,7 @@ import { checkRateLimit } from '@/lib/redis';
 import { successResponse, errorResponse, UnauthorizedError } from '@/lib/utils';
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email format'),
+  username: z.string().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
@@ -27,14 +27,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const input = loginSchema.parse(body);
 
-    // Find user
+    // Find user by username
     const user = await prisma.user.findUnique({
-      where: { email: input.email },
+      where: { username: input.username },
       include: { role: true },
     });
 
     if (!user || !user.passwordHash) {
-      throw new UnauthorizedError('Invalid email or password');
+      throw new UnauthorizedError('Invalid username or password');
     }
 
     if (!user.isActive) {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     const isPasswordValid = await comparePassword(input.password, user.passwordHash);
 
     if (!isPasswordValid) {
-      throw new UnauthorizedError('Invalid email or password');
+      throw new UnauthorizedError('Invalid username or password');
     }
 
     // Update last login
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     // Generate JWT token
     const token = signToken({
       userId: user.id,
-      email: user.email,
+      email: user.email || '',
       roleId: user.roleId,
       roleName: user.role.name,
     });
