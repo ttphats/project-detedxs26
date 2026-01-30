@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test INSERT Lock</title>
+</head>
+<body>
+  <h1>Test INSERT Lock</h1>
+  <button onclick="testInsert()">Test INSERT</button>
+  <pre id="result"></pre>
+
+  <script>
+    async function testInsert() {
+      const result = document.getElementById('result')
+      result.textContent = 'Testing...'
+
+      try {
+        // Test INSERT directly
+        const response = await fetch('/api/seats/lock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: '3f616_next_dist_mead4735___js:2385',
+            seatIds: ['test-seat-id-123'],
+            sessionId: 'test-session-' + Date.now(),
+            ticketTypeId: null
+          })
+        })
+
+        const data = await response.json()
+        
+        // Check database
+        const dbResponse = await fetch('/api/debug/seat-locks')
+        const dbData = await dbResponse.json()
+
+        result.textContent = JSON.stringify({
+          lockResponse: data,
+          databaseCheck: dbData
+        }, null, 2)
+      } catch (error) {
+        result.textContent = 'Error: ' + error.message
+      }
+    }
+  </script>
+</body>
+</html>
+
