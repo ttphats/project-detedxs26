@@ -38,6 +38,39 @@ interface FeaturedEvent {
   timeline: TimelineItem[];
 }
 
+// Helper function to get timeline type styles
+const getTimelineTypeStyle = (type: string) => {
+  const lowerType = type.toLowerCase();
+  const styles: Record<string, { mobile: string; desktop: string }> = {
+    talk: {
+      mobile: "bg-red-500/20 text-red-400 border border-red-500/30",
+      desktop: "bg-red-600/20 text-red-500",
+    },
+    break: {
+      mobile: "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30",
+      desktop: "bg-yellow-600/20 text-yellow-500",
+    },
+    checkin: {
+      mobile: "bg-green-500/20 text-green-400 border border-green-500/30",
+      desktop: "bg-green-600/20 text-green-500",
+    },
+    networking: {
+      mobile: "bg-blue-500/20 text-blue-400 border border-blue-500/30",
+      desktop: "bg-blue-600/20 text-blue-500",
+    },
+    performance: {
+      mobile: "bg-purple-500/20 text-purple-400 border border-purple-500/30",
+      desktop: "bg-purple-600/20 text-purple-500",
+    },
+  };
+  return (
+    styles[lowerType] || {
+      mobile: "bg-gray-500/20 text-gray-400 border border-gray-500/30",
+      desktop: "bg-gray-600/20 text-gray-500",
+    }
+  );
+};
+
 export default function Home() {
   const [featuredEvent, setFeaturedEvent] = useState<FeaturedEvent | null>(
     null,
@@ -45,6 +78,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
   // Fetch featured event from API
   useEffect(() => {
@@ -130,6 +164,38 @@ export default function Home() {
     fetchSpeakers();
   }, [featuredEvent?.id]);
 
+  // Fetch timeline when featuredEvent is loaded
+  useEffect(() => {
+    if (!featuredEvent) return;
+
+    const fetchTimeline = async () => {
+      try {
+        const res = await fetch(`/api/events/${featuredEvent.id}/timeline`);
+        const data = await res.json();
+        if (data.success && data.data.length > 0) {
+          // Transform API format - use type directly from database (lowercase)
+          const transformed: TimelineItem[] = data.data.map((item: any) => ({
+            id: item.id,
+            time: item.startTime,
+            title: item.title,
+            description: item.description || "",
+            type: item.type.toLowerCase(),
+            speakerId: item.speakerName ? item.id : undefined,
+          }));
+          setTimeline(transformed);
+        } else {
+          // Fallback to mock timeline
+          setTimeline(featuredEvent.timeline);
+        }
+      } catch (error) {
+        console.error("Failed to fetch timeline:", error);
+        // Fallback to mock timeline
+        setTimeline(featuredEvent.timeline);
+      }
+    };
+    fetchTimeline();
+  }, [featuredEvent?.id, featuredEvent?.timeline]);
+
   // Loading state
   if (loading || !featuredEvent) {
     return (
@@ -145,7 +211,7 @@ export default function Home() {
   return (
     <div className="bg-black overflow-hidden">
       {/* Hero Section - Creative with animations */}
-      <section className="relative min-h-[auto] sm:min-h-screen overflow-hidden">
+      <section className="relative min-h-auto sm:min-h-screen overflow-hidden">
         {/* Animated Background Elements */}
         <div className="absolute inset-0">
           {/* Main background image */}
@@ -156,13 +222,13 @@ export default function Home() {
             }}
           />
           {/* Gradient overlays */}
-          <div className="absolute inset-0 bg-gradient-to-br from-black via-black/90 to-red-950/30" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-br from-black via-black/90 to-red-950/30" />
+          <div className="absolute inset-0 bg-linear-to-t from-black via-transparent to-transparent" />
 
           {/* Animated blobs */}
-          <div className="blob blob-red w-[600px] h-[600px] -top-40 -right-40 animate-morph" />
+          <div className="blob blob-red w-150 h-150 -top-40 -right-40 animate-morph" />
           <div
-            className="blob blob-orange w-[400px] h-[400px] bottom-20 left-20 animate-morph"
+            className="blob blob-orange w-100 h-100 bottom-20 left-20 animate-morph"
             style={{ animationDelay: "-4s" }}
           />
 
@@ -316,7 +382,7 @@ export default function Home() {
                     alt="TEDx Stage"
                     className="w-full h-auto transition-transform duration-700 group-hover:scale-105"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+                  <div className="absolute inset-0 bg-linear-to-t from-black via-transparent to-transparent" />
                   <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent" />
 
                   {/* Animated scan line effect */}
@@ -438,7 +504,7 @@ export default function Home() {
                   className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 group-hover:scale-105"
                 />
                 {/* Dark overlay with gradient */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent" />
+                <div className="absolute inset-0 bg-linear-to-t from-black via-black/70 to-transparent" />
 
                 {/* Red accent line */}
                 <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-600 via-red-500 to-transparent" />
@@ -514,13 +580,13 @@ export default function Home() {
                 <div
                   className={`w-1/2 flex ${index % 2 === 1 ? "justify-start" : "justify-end"}`}
                 >
-                  <div className="relative w-[400px] transition-transform duration-700 group-hover:translate-x-[-20px]">
+                  <div className="relative w-100 transition-transform duration-700 group-hover:-translate-x-5">
                     <img
                       src={speaker.image}
                       alt={speaker.name}
                       className="speaker-cutout w-full h-auto grayscale group-hover:grayscale-0 transition-all duration-700"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-red-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+                    <div className="absolute inset-0 bg-linear-to-t from-red-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
                   </div>
                 </div>
               </div>
@@ -554,7 +620,7 @@ export default function Home() {
             <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gradient-to-b from-red-600 via-red-500/50 to-transparent" />
 
             <div className="space-y-6">
-              {featuredEvent.timeline.slice(0, 8).map((item, index) => (
+              {timeline.map((item, index) => (
                 <div key={item.id} className="relative pl-10 group">
                   {/* Animated dot with glow */}
                   <div className="absolute left-2.5 top-4 w-3 h-3 rounded-full bg-red-600 shadow-lg shadow-red-500/50 group-hover:scale-125 transition-transform duration-300">
@@ -565,7 +631,7 @@ export default function Home() {
                   <div className="absolute left-[18px] top-5 w-4 h-0.5 bg-gradient-to-r from-red-600/50 to-transparent" />
 
                   {/* Content Card */}
-                  <div className="relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm border border-red-500/20 p-4 rounded-2xl overflow-hidden group-hover:border-red-500/40 transition-all duration-300">
+                  <div className="relative bg-linear-to-br from-white/10 to-white/5 backdrop-blur-sm border border-red-500/20 p-4 rounded-2xl overflow-hidden group-hover:border-red-500/40 transition-all duration-300">
                     {/* Glow effect on hover */}
                     <div className="absolute -inset-1 bg-red-600/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
@@ -581,15 +647,7 @@ export default function Home() {
                           </span>
                         </div>
                         <span
-                          className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg ${
-                            item.type === "talk"
-                              ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                              : item.type === "break"
-                                ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                                : item.type === "networking"
-                                  ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                                  : "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                          }`}
+                          className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg ${getTimelineTypeStyle(item.type).mobile}`}
                         >
                           {item.type}
                         </span>
@@ -617,7 +675,7 @@ export default function Home() {
             {/* Vertical line */}
             <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-px vertical-timeline-line" />
 
-            {featuredEvent.timeline.slice(0, 8).map((item, index) => (
+            {timeline.map((item, index) => (
               <div
                 key={item.id}
                 className={`relative flex items-center mb-16 animate-fade-in-up ${
@@ -640,15 +698,7 @@ export default function Home() {
                     </h4>
                     <p className="text-gray-400 text-sm">{item.description}</p>
                     <span
-                      className={`inline-block mt-3 px-3 py-1 text-xs uppercase tracking-wide rounded-full ${
-                        item.type === "talk"
-                          ? "bg-red-600/20 text-red-500"
-                          : item.type === "break"
-                            ? "bg-yellow-600/20 text-yellow-500"
-                            : item.type === "networking"
-                              ? "bg-blue-600/20 text-blue-500"
-                              : "bg-purple-600/20 text-purple-500"
-                      }`}
+                      className={`inline-block mt-3 px-3 py-1 text-xs uppercase tracking-wide rounded-full ${getTimelineTypeStyle(item.type).desktop}`}
                     >
                       {item.type}
                     </span>

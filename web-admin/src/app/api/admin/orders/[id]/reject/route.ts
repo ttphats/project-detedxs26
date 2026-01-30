@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser, requireAdmin } from '@/lib/auth';
-import { sendEmailByPurpose } from '@/lib/email/service';
+import { sendEmailByPurpose, sendEmailByTemplate } from '@/lib/email/service';
 import { BUSINESS_EVENTS } from '@/lib/email/types';
 import { successResponse, errorResponse, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError } from '@/lib/utils';
 import { logPaymentAction, getRequestInfo } from '@/lib/audit-logger';
@@ -10,6 +10,7 @@ import { logPaymentAction, getRequestInfo } from '@/lib/audit-logger';
 const rejectPaymentSchema = z.object({
   reason: z.string().min(1, 'Reason is required'),
   notes: z.string().optional(),
+  templateId: z.string().optional(), // Optional: use specific template instead of default
 });
 
 /**
@@ -148,27 +149,47 @@ export async function POST(
       return { order, updatedOrder, releasedSeats: seatIds.length };
     });
 
-    // NO SPAM FLOW: Send PAYMENT_REJECTED email when admin rejects
-    // businessEvent: PAYMENT_REJECTED - Admin rejected payment
-    // triggeredBy: Admin user ID who clicked "Reject Payment"
-    sendEmailByPurpose({
-      purpose: 'PAYMENT_REJECTED',
-      businessEvent: BUSINESS_EVENTS.PAYMENT_REJECTED,
-      orderId: result.order.id,
-      triggeredBy: user.userId,
-      to: result.order.customerEmail,
-      data: {
-        customerName: result.order.customerName,
-        orderNumber: result.order.orderNumber,
-        reason: input.reason,
-        eventName: result.order.event.name,
-      },
-      metadata: {
-        rejectedBy: user.userId,
-        notes: input.notes,
-        releasedSeats: result.releasedSeats,
-      },
-    })
+    // Prepare email data
+    const emailData = {
+      customerName: result.order.customerName,
+      orderNumber: result.order.orderNumber,
+      reason: input.reason,
+      eventName: result.order.event.name,
+      orderStatus: 'CANCELLED',
+    };
+
+    // NO SPAM FLOW: Send email via template or purpose
+    // If templateId is provided, use that template; otherwise use default purpose
+    const emailPromise = input.templateId
+      ? sendEmailByTemplate({
+          templateId: input.templateId,
+          businessEvent: BUSINESS_EVENTS.PAYMENT_REJECTED,
+          orderId: result.order.id,
+          triggeredBy: user.userId,
+          to: result.order.customerEmail,
+          data: emailData,
+          metadata: {
+            rejectedBy: user.userId,
+            notes: input.notes,
+            releasedSeats: result.releasedSeats,
+            templateId: input.templateId,
+          },
+        })
+      : sendEmailByPurpose({
+          purpose: 'PAYMENT_REJECTED',
+          businessEvent: BUSINESS_EVENTS.PAYMENT_REJECTED,
+          orderId: result.order.id,
+          triggeredBy: user.userId,
+          to: result.order.customerEmail,
+          data: emailData,
+          metadata: {
+            rejectedBy: user.userId,
+            notes: input.notes,
+            releasedSeats: result.releasedSeats,
+          },
+        });
+
+    emailPromise
       .then((emailResult) => {
         if (emailResult.success) {
           console.log(`📧 Rejection email sent to ${result.order.customerEmail}`);

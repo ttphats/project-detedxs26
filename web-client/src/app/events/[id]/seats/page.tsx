@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -10,8 +10,21 @@ import {
   Star,
   Ticket,
   Loader2,
+  Clock,
+  AlertTriangle,
 } from "lucide-react";
 import { Button, Card, Seat, SeatLegend } from "@/components";
+
+// Generate or get session ID for seat locking
+function getSessionId(): string {
+  if (typeof window === "undefined") return "";
+  let sessionId = sessionStorage.getItem("seat_session_id");
+  if (!sessionId) {
+    sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    sessionStorage.setItem("seat_session_id", sessionId);
+  }
+  return sessionId;
+}
 
 // Types for API response
 interface TicketType {
@@ -30,10 +43,11 @@ interface SeatType {
   row: string;
   number: number;
   section?: string;
-  status: "available" | "selected" | "sold";
+  status: "available" | "selected" | "sold" | "locked" | "locked_by_me";
   ticketTypeId: string;
   seatType?: "VIP" | "STANDARD" | "ECONOMY";
   price: number;
+  lockExpiresAt?: string | null;
 }
 
 interface SeatRow {
@@ -69,16 +83,33 @@ export default function SeatSelectionPage({
   const [event, setEvent] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTicketType, setSelectedTicketType] =
-    useState<TicketType | null>(null);
   const [selectedSeats, setSelectedSeats] = useState<SeatType[]>([]);
 
+  // Seat locking states
+  const [sessionId, setSessionId] = useState<string>("");
+  const [lockExpiresAt, setLockExpiresAt] = useState<Date | null>(null);
+  const [lockCountdown, setLockCountdown] = useState<number>(0);
+  const [lockError, setLockError] = useState<string | null>(null);
+  const [locking, setLocking] = useState<string | null>(null); // seatId being locked
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initialize session ID on mount
   useEffect(() => {
-    const fetchEvent = async () => {
+    setSessionId(getSessionId());
+  }, []);
+
+  // Fetch event data and restore locks (after sessionId is set)
+  useEffect(() => {
+    if (!sessionId) return; // Wait for sessionId to be set
+
+    const fetchEventAndRestoreLocks = async () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/events/${id}`);
+
+        // Fetch event data
+        const res = await fetch(`/api/events/${id}?sessionId=${sessionId}`);
         const data = await res.json();
 
         if (!data.success) {
@@ -87,6 +118,43 @@ export default function SeatSelectionPage({
         }
 
         setEvent(data.data);
+
+        // Restore locks from this session (for tab sync)
+        const locksRes = await fetch(
+          `/api/seats/lock?sessionId=${sessionId}&eventId=${id}`,
+        );
+        const locksData = await locksRes.json();
+
+        if (locksData.success && locksData.data.locks.length > 0) {
+          const locks = locksData.data.locks;
+          // Restore selected seats from locks
+          const restoredSeats: SeatType[] = locks.map(
+            (lock: {
+              id: string;
+              row: string;
+              number: number;
+              section?: string;
+              seatType: string;
+              price: number;
+              ticketTypeId: string;
+            }) => ({
+              id: lock.id,
+              row: lock.row,
+              number: lock.number,
+              section: lock.section,
+              status: "selected" as const,
+              seatType: lock.seatType,
+              price: lock.price,
+              ticketTypeId: lock.ticketTypeId,
+            }),
+          );
+          setSelectedSeats(restoredSeats);
+
+          // Restore expiration
+          if (locksData.data.expiresAt) {
+            setLockExpiresAt(new Date(locksData.data.expiresAt));
+          }
+        }
       } catch (err) {
         console.error("Error fetching event:", err);
         setError("Đã xảy ra lỗi khi tải dữ liệu");
@@ -95,8 +163,149 @@ export default function SeatSelectionPage({
       }
     };
 
-    fetchEvent();
-  }, [id]);
+    fetchEventAndRestoreLocks();
+  }, [id, sessionId]);
+
+  // BroadcastChannel for syncing between tabs
+  useEffect(() => {
+    if (!sessionId || typeof window === "undefined") return;
+
+    const channel = new BroadcastChannel(`seat_selection_${id}`);
+
+    channel.onmessage = (event) => {
+      const { type, data } = event.data;
+
+      if (type === "SEATS_UPDATED") {
+        // Another tab updated seats, refresh our state
+        setSelectedSeats(data.selectedSeats || []);
+        if (data.expiresAt) {
+          setLockExpiresAt(new Date(data.expiresAt));
+        } else {
+          setLockExpiresAt(null);
+        }
+      } else if (type === "SEATS_CLEARED") {
+        // Another tab cleared all seats
+        setSelectedSeats([]);
+        setLockExpiresAt(null);
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, [id, sessionId]);
+
+  // Polling to refresh seat status every 2 seconds (faster updates for locked seats)
+  useEffect(() => {
+    if (!id || loading) return;
+
+    const refreshSeats = async () => {
+      try {
+        const res = await fetch(
+          `/api/events/${id}/seats?sessionId=${sessionId}`,
+        );
+        const data = await res.json();
+        if (data.success && event) {
+          // Update seat map with current status including locks
+          setEvent((prev) =>
+            prev ? { ...prev, seatMap: data.data.seatMap } : prev,
+          );
+        }
+      } catch (err) {
+        console.error("Error refreshing seats:", err);
+      }
+    };
+
+    pollingRef.current = setInterval(refreshSeats, 2000);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [id, loading, sessionId, event]);
+
+  // Lock countdown timer
+  useEffect(() => {
+    if (!lockExpiresAt) {
+      setLockCountdown(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remaining = Math.max(
+        0,
+        Math.floor((lockExpiresAt.getTime() - Date.now()) / 1000),
+      );
+      setLockCountdown(remaining);
+
+      if (remaining <= 0) {
+        // Lock expired, clear selections
+        setSelectedSeats([]);
+        setLockExpiresAt(null);
+        setLockError("Thời gian giữ ghế đã hết. Vui lòng chọn lại.");
+      }
+    };
+
+    updateCountdown();
+    countdownRef.current = setInterval(updateCountdown, 1000);
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [lockExpiresAt]);
+
+  // Cleanup locks on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (selectedSeats.length > 0 && sessionId) {
+        // Use sendBeacon for reliable delivery on page close
+        // sendBeacon only supports POST, so use dedicated /api/seats/unlock endpoint
+        const data = JSON.stringify({
+          seatIds: selectedSeats.map((s) => s.id),
+          sessionId,
+        });
+        navigator.sendBeacon("/api/seats/unlock", data);
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      // Also cleanup on component unmount
+      if (selectedSeats.length > 0 && sessionId) {
+        fetch("/api/seats/lock", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seatIds: selectedSeats.map((s) => s.id),
+            sessionId,
+          }),
+        }).catch(() => {});
+      }
+    };
+  }, [selectedSeats, sessionId]);
+
+  // Helper to broadcast seat changes to other tabs
+  const broadcastSeatChange = useCallback(
+    (newSelectedSeats: SeatType[], expiresAt: Date | null) => {
+      if (typeof window === "undefined") return;
+      try {
+        const channel = new BroadcastChannel(`seat_selection_${id}`);
+        if (newSelectedSeats.length > 0) {
+          channel.postMessage({
+            type: "SEATS_UPDATED",
+            data: {
+              selectedSeats: newSelectedSeats,
+              expiresAt: expiresAt?.toISOString(),
+            },
+          });
+        } else {
+          channel.postMessage({ type: "SEATS_CLEARED", data: {} });
+        }
+        channel.close();
+      } catch (err) {
+        // BroadcastChannel not supported
+      }
+    },
+    [id],
+  );
 
   // Loading state
   if (loading) {
@@ -126,32 +335,91 @@ export default function SeatSelectionPage({
     );
   }
 
-  const handleTicketSelect = (ticketType: TicketType) => {
-    setSelectedTicketType(ticketType);
-    setSelectedSeats([]); // Reset seats when ticket type changes
+  const handleSeatSelect = async (seatId: string) => {
+    if (!sessionId) return;
+    if (locking) return; // Prevent double-clicking
+
+    const allSeats = event!.seatMap.flatMap((row) => row.seats);
+    const seat = allSeats.find((s) => s.id === seatId);
+    if (!seat || seat.status === "sold" || seat.status === "locked") return;
+
+    const isSelected = selectedSeats.some((s) => s.id === seatId);
+    setLockError(null);
+
+    if (isSelected) {
+      // Unlock this seat
+      setLocking(seatId);
+      try {
+        await fetch("/api/seats/lock", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seatIds: [seatId],
+            sessionId,
+          }),
+        });
+        const newSelectedSeats = selectedSeats.filter((s) => s.id !== seatId);
+        setSelectedSeats(newSelectedSeats);
+        // If no more seats selected, clear lock expiration
+        const newExpiresAt = newSelectedSeats.length > 0 ? lockExpiresAt : null;
+        if (newSelectedSeats.length === 0) {
+          setLockExpiresAt(null);
+        }
+        // Broadcast to other tabs
+        broadcastSeatChange(newSelectedSeats, newExpiresAt);
+      } catch (err) {
+        console.error("Error unlocking seat:", err);
+        setLockError("Không thể bỏ chọn ghế. Vui lòng thử lại.");
+      } finally {
+        setLocking(null);
+      }
+    } else {
+      // Lock this seat
+      setLocking(seatId);
+      try {
+        const res = await fetch("/api/seats/lock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId: id,
+            seatIds: [...selectedSeats.map((s) => s.id), seatId],
+            sessionId,
+          }),
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          setLockError(data.error || "Không thể giữ ghế. Vui lòng thử lại.");
+          return;
+        }
+
+        // Use seat's own price and type from database
+        const seatWithPrice = {
+          ...seat,
+          ticketTypeId: seat.seatType?.toLowerCase() || "standard",
+          price: seat.price,
+        };
+
+        const newSelectedSeats = [...selectedSeats, seatWithPrice];
+        const newExpiresAt = new Date(data.data.expiresAt);
+        setSelectedSeats(newSelectedSeats);
+        setLockExpiresAt(newExpiresAt);
+        // Broadcast to other tabs
+        broadcastSeatChange(newSelectedSeats, newExpiresAt);
+      } catch (err) {
+        console.error("Error locking seat:", err);
+        setLockError("Không thể giữ ghế. Vui lòng thử lại.");
+      } finally {
+        setLocking(null);
+      }
+    }
   };
 
-  const handleSeatSelect = (seatId: string) => {
-    if (!selectedTicketType) return;
-
-    const allSeats = event.seatMap.flatMap((row) => row.seats);
-    const seat = allSeats.find((s) => s.id === seatId);
-    if (!seat || seat.status === "sold") return;
-
-    // Create a new seat with the selected ticket type's price
-    const seatWithTicketPrice = {
-      ...seat,
-      ticketTypeId: selectedTicketType.id,
-      price: selectedTicketType.price,
-    };
-
-    setSelectedSeats((prev) => {
-      const isSelected = prev.some((s) => s.id === seatId);
-      if (isSelected) {
-        return prev.filter((s) => s.id !== seatId);
-      }
-      return [...prev, seatWithTicketPrice];
-    });
+  // Format countdown timer
+  const formatCountdown = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const totalPrice = selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
@@ -198,6 +466,38 @@ export default function SeatSelectionPage({
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Lock countdown timer - Fixed position */}
+        {selectedSeats.length > 0 && lockCountdown > 0 && (
+          <div className="fixed top-20 right-4 z-50 animate-fade-in">
+            <div
+              className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-lg ${
+                lockCountdown <= 60 ? "bg-red-600/90" : "bg-yellow-600/90"
+              }`}
+            >
+              <Clock className="w-4 h-4 text-white" />
+              <span className="text-white font-bold text-sm">
+                Giữ ghế: {formatCountdown(lockCountdown)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Lock error notification */}
+        {lockError && (
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-fade-in-down">
+            <div className="flex items-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg shadow-lg">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <span className="text-sm font-medium">{lockError}</span>
+              <button
+                onClick={() => setLockError(null)}
+                className="ml-2 text-white/80 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-6 sm:mb-10 animate-fade-in-down">
           <Link
@@ -211,96 +511,95 @@ export default function SeatSelectionPage({
             {event.name}
           </h1>
           <p className="text-gray-400 text-sm sm:text-lg">
-            Chọn loại vé và ghế ngồi của bạn
+            Chọn ghế ngồi của bạn
           </p>
         </div>
 
-        {/* Step 1: Ticket Type Selection */}
-        <div className="mb-6 sm:mb-10 animate-fade-in-up">
-          <h2 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
-            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-red-600 text-white rounded-full flex items-center justify-center text-xs sm:text-sm font-bold shadow-lg shadow-red-500/30">
-              1
-            </span>
-            Chọn loại vé
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-            {event.ticketTypes.map((ticket) => (
-              <div
-                key={ticket.id}
-                onClick={() => handleTicketSelect(ticket)}
-                className={`relative p-4 sm:p-6 rounded-xl sm:rounded-2xl border-2 cursor-pointer transition-all duration-300 hover-lift glass-panel mobile-tap-feedback ${
-                  selectedTicketType?.id === ticket.id
-                    ? "border-red-600 shadow-lg shadow-red-500/30"
-                    : "border-white/10 hover:border-red-500/50"
-                }`}
-              >
-                {/* Selected Indicator */}
-                {selectedTicketType?.id === ticket.id && (
-                  <div className="absolute top-3 right-3 sm:top-4 sm:right-4 w-6 h-6 sm:w-8 sm:h-8 bg-red-600 rounded-full flex items-center justify-center animate-scale-in shadow-lg shadow-red-500/50">
-                    <Check className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+        {/* Ticket Types Description */}
+        <div className="mb-6 sm:mb-8 animate-fade-in">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {event.ticketTypes.map((ticketType) => {
+              const isVIP = ticketType.name.toUpperCase().includes("VIP");
+              return (
+                <div
+                  key={ticketType.id}
+                  className={`glass-panel rounded-xl p-4 sm:p-5 border ${
+                    isVIP
+                      ? "border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-yellow-500/5"
+                      : "border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-green-500/5"
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          isVIP
+                            ? "bg-gradient-to-br from-yellow-400 to-orange-500"
+                            : "bg-gradient-to-br from-emerald-400 to-emerald-600"
+                        }`}
+                      >
+                        {isVIP ? (
+                          <Star className="w-5 h-5 text-white" />
+                        ) : (
+                          <Ticket className="w-5 h-5 text-white" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-white text-lg">
+                          {ticketType.name}
+                        </h3>
+                        {ticketType.subtitle && (
+                          <p className="text-xs text-gray-400">
+                            {ticketType.subtitle}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p
+                        className={`font-black text-xl ${
+                          isVIP ? "text-orange-400" : "text-emerald-400"
+                        }`}
+                      >
+                        {ticketType.price.toLocaleString("vi-VN")}đ
+                      </p>
+                    </div>
                   </div>
-                )}
-
-                {/* VIP Badge - show for ticket types with VIP in name */}
-                {ticket.name.toLowerCase().includes("vip") && (
-                  <div className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-[10px] sm:text-xs font-bold rounded-full mb-2 sm:mb-3 shadow-lg">
-                    <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                    VIP
-                  </div>
-                )}
-
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 pr-8 sm:pr-0">
-                    <h3 className="text-lg sm:text-xl font-bold text-white mb-1">
-                      {ticket.name}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-gray-400 mb-3 sm:mb-4">
-                      {ticket.subtitle || ticket.description}
-                    </p>
-                    <ul className="text-xs sm:text-sm text-gray-300 space-y-1.5 sm:space-y-2">
-                      {ticket.benefits && ticket.benefits.length > 0 ? (
-                        ticket.benefits.map((benefit, idx) => (
-                          <li key={idx} className="flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 shrink-0" />
-                            {benefit}
-                          </li>
-                        ))
-                      ) : (
-                        <li className="flex items-center gap-2">
-                          <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 shrink-0" />
-                          {ticket.description}
+                  {ticketType.benefits && ticketType.benefits.length > 0 && (
+                    <ul className="space-y-1.5">
+                      {ticketType.benefits.slice(0, 4).map((benefit, idx) => (
+                        <li
+                          key={idx}
+                          className="flex items-center gap-2 text-sm text-gray-300"
+                        >
+                          <Check
+                            className={`w-4 h-4 flex-shrink-0 ${
+                              isVIP ? "text-orange-400" : "text-emerald-400"
+                            }`}
+                          />
+                          <span>{benefit}</span>
+                        </li>
+                      ))}
+                      {ticketType.benefits.length > 4 && (
+                        <li className="text-xs text-gray-500 pl-6">
+                          +{ticketType.benefits.length - 4} quyền lợi khác
                         </li>
                       )}
                     </ul>
-                  </div>
-                  <div className="text-right ml-2 sm:ml-4">
-                    <p className="text-xl sm:text-2xl md:text-3xl font-black text-red-500">
-                      {ticket.price.toLocaleString("vi-VN")}đ
-                    </p>
-                    <p className="text-xs sm:text-sm text-gray-500">/người</p>
-                  </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Step 2: Seat Selection */}
-        <div
-          className={`transition-all duration-500 ${selectedTicketType ? "opacity-100" : "opacity-50 pointer-events-none"}`}
-        >
+        {/* Seat Selection */}
+        <div className="transition-all duration-500">
           <h2 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3 flex-wrap">
-            <span
-              className={`w-8 h-8 sm:w-10 sm:h-10 ${selectedTicketType ? "bg-red-600 shadow-lg shadow-red-500/30" : "bg-gray-700"} text-white rounded-full flex items-center justify-center text-xs sm:text-sm font-bold`}
-            >
-              2
+            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-red-600 shadow-lg shadow-red-500/30 text-white rounded-full flex items-center justify-center text-xs sm:text-sm font-bold">
+              1
             </span>
             <span>Chọn ghế ngồi</span>
-            {!selectedTicketType && (
-              <span className="text-xs sm:text-sm font-normal text-gray-500 w-full sm:w-auto sm:ml-2">
-                (Vui lòng chọn loại vé trước)
-              </span>
-            )}
           </h2>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">
@@ -383,14 +682,6 @@ export default function SeatSelectionPage({
                       const hasVIPSeats = row.seats.some(
                         (s) => s.seatType === "VIP",
                       );
-                      // Determine if row should be disabled based on selected ticket type
-                      const isVIPTicketSelected =
-                        selectedTicketType?.name
-                          .toLowerCase()
-                          .includes("vip") ?? false;
-                      const rowDisabled = isVIPTicketSelected
-                        ? !hasVIPSeats
-                        : hasVIPSeats;
 
                       // Split seats into LEFT and RIGHT sections
                       const leftSeats = row.seats
@@ -403,7 +694,7 @@ export default function SeatSelectionPage({
                       return (
                         <div
                           key={row.row}
-                          className={`flex items-center gap-2 sm:gap-3 transition-opacity duration-300 ${rowDisabled && selectedTicketType ? "opacity-30" : ""}`}
+                          className="flex items-center gap-2 sm:gap-3 transition-opacity duration-300"
                         >
                           <span
                             className={`w-6 sm:w-8 text-center font-bold text-sm sm:text-base ${hasVIPSeats ? "text-orange-400" : "text-gray-500"}`}
@@ -422,11 +713,7 @@ export default function SeatSelectionPage({
                                       ? "selected"
                                       : seat.status
                                   }
-                                  onSelect={
-                                    rowDisabled && selectedTicketType
-                                      ? undefined
-                                      : handleSeatSelect
-                                  }
+                                  onSelect={handleSeatSelect}
                                 />
                               ))}
                             </div>
@@ -445,11 +732,7 @@ export default function SeatSelectionPage({
                                       ? "selected"
                                       : seat.status
                                   }
-                                  onSelect={
-                                    rowDisabled && selectedTicketType
-                                      ? undefined
-                                      : handleSeatSelect
-                                  }
+                                  onSelect={handleSeatSelect}
                                 />
                               ))}
                             </div>
@@ -537,6 +820,26 @@ export default function SeatSelectionPage({
                       Đã bán
                     </span>
                   </div>
+
+                  {/* Locked seat */}
+                  <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+                    <div className="relative w-7 h-9 flex flex-col items-center opacity-60">
+                      {/* Seat back */}
+                      <div className="w-5 h-4 rounded-t-md bg-gradient-to-b from-amber-500 to-amber-600 border-t border-l border-r border-white/10" />
+                      {/* Seat cushion */}
+                      <div className="w-6 h-3 rounded-b-sm bg-gradient-to-b from-amber-600 to-amber-700 border-b border-l border-r border-white/10" />
+                      {/* Armrests */}
+                      <div className="absolute bottom-0 -left-0.5 w-0.5 h-2 rounded-b-sm bg-amber-700" />
+                      <div className="absolute bottom-0 -right-0.5 w-0.5 h-2 rounded-b-sm bg-amber-700" />
+                      {/* Clock indicator */}
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center">
+                        <Clock className="w-2 h-2 text-white" />
+                      </div>
+                    </div>
+                    <span className="text-gray-300 text-sm font-medium">
+                      Đang giữ
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -556,23 +859,6 @@ export default function SeatSelectionPage({
                     Tóm tắt đặt vé
                   </h2>
 
-                  {/* Selected Ticket Type */}
-                  {selectedTicketType && (
-                    <div className="relative p-4 bg-gradient-to-r from-red-600/20 to-red-600/10 rounded-xl mb-4 border border-red-500/30 overflow-hidden">
-                      <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-full blur-xl" />
-                      <p className="text-sm text-gray-400">Loại vé đã chọn</p>
-                      <p className="font-bold text-white text-lg">
-                        {selectedTicketType.name}
-                      </p>
-                      <p className="text-red-500 font-bold text-xl">
-                        {selectedTicketType.price.toLocaleString("vi-VN")}đ
-                        <span className="text-sm font-normal text-gray-400">
-                          /ghế
-                        </span>
-                      </p>
-                    </div>
-                  )}
-
                   {selectedSeats.length === 0 ? (
                     <p className="text-gray-500 text-center py-8">
                       Chưa chọn ghế nào
@@ -591,8 +877,14 @@ export default function SeatSelectionPage({
                                 Ghế {seat.row}
                                 {seat.number}
                               </span>
-                              <span className="text-sm text-gray-400 ml-2">
-                                ({selectedTicketType?.name})
+                              <span
+                                className={`text-xs ml-2 px-2 py-0.5 rounded-full ${
+                                  seat.seatType === "VIP"
+                                    ? "bg-orange-500/20 text-orange-400"
+                                    : "bg-emerald-500/20 text-emerald-400"
+                                }`}
+                              >
+                                {seat.seatType || "STANDARD"}
                               </span>
                             </div>
                             <span className="font-semibold text-red-500">
@@ -627,7 +919,7 @@ export default function SeatSelectionPage({
                     <Link
                       href={
                         selectedSeats.length > 0
-                          ? `/checkout?event=${id}&seats=${selectedSeats.map((s) => s.id).join(",")}&ticket=${selectedTicketType?.id}`
+                          ? `/checkout?event=${id}&seats=${selectedSeats.map((s) => s.id).join(",")}`
                           : "#"
                       }
                     >
@@ -672,9 +964,9 @@ export default function SeatSelectionPage({
                 </div>
                 <div>
                   <p className="text-xs text-gray-400">
-                    {selectedTicketType
-                      ? selectedTicketType.name
-                      : "Chưa chọn loại vé"}
+                    {selectedSeats.length > 0
+                      ? `${selectedSeats.filter((s) => s.seatType === "VIP").length > 0 ? "VIP" : ""}${selectedSeats.filter((s) => s.seatType === "VIP").length > 0 && selectedSeats.filter((s) => s.seatType !== "VIP").length > 0 ? " + " : ""}${selectedSeats.filter((s) => s.seatType !== "VIP").length > 0 ? "STANDARD" : ""}`
+                      : "Chọn ghế để đặt vé"}
                   </p>
                   <p className="text-white font-bold">
                     {selectedSeats.length > 0 ? (
@@ -710,7 +1002,7 @@ export default function SeatSelectionPage({
             <Link
               href={
                 selectedSeats.length > 0
-                  ? `/checkout?event=${id}&seats=${selectedSeats.map((s) => s.id).join(",")}&ticket=${selectedTicketType?.id}`
+                  ? `/checkout?event=${id}&seats=${selectedSeats.map((s) => s.id).join(",")}`
                   : "#"
               }
             >

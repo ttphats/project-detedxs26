@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, Event, TicketType, Seat } from '@/lib/db';
+import { query, Event, TicketType, Seat, SeatLock } from '@/lib/db';
 
 // GET /api/events/[id] - Get event details with seats and ticket types
 export async function GET(
@@ -8,6 +8,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('sessionId');
 
     // Get event by ID or slug
     const event = await query<Event>(
@@ -40,6 +42,15 @@ export async function GET(
       [eventData.id]
     );
 
+    // Get active locks (not expired)
+    const locks = await query<SeatLock>(
+      `SELECT seat_id, session_id, expires_at FROM seat_locks WHERE event_id = ? AND expires_at > NOW()`,
+      [eventData.id]
+    );
+
+    // Create lock map for quick lookup
+    const lockMap = new Map(locks.map((l) => [l.seat_id, l]));
+
     // Group seats by row for seatMap format
     const seatsByRow = seats.reduce((acc: Record<string, Seat[]>, seat) => {
       if (!acc[seat.row]) {
@@ -54,17 +65,30 @@ export async function GET(
       .sort()
       .map(row => ({
         row,
-        seats: seatsByRow[row].map(seat => ({
-          id: seat.id,  // Use UUID for API calls
-          seatNumber: seat.seat_number,  // For display (e.g., "B6")
-          row: seat.row,
-          number: seat.col,
-          section: seat.section,
-          status: seat.status === 'AVAILABLE' ? 'available' : 'sold',
-          ticketTypeId: seat.seat_type.toLowerCase(),
-          seatType: seat.seat_type,
-          price: Number(seat.price),
-        })),
+        seats: seatsByRow[row].map(seat => {
+          const lock = lockMap.get(seat.id);
+          let status: 'available' | 'sold' | 'locked' | 'locked_by_me' = 'available';
+
+          if (seat.status === 'SOLD' || seat.status === 'RESERVED') {
+            status = 'sold';
+          } else if (lock) {
+            // Seat is locked
+            status = sessionId && lock.session_id === sessionId ? 'locked_by_me' : 'locked';
+          }
+
+          return {
+            id: seat.id,  // Use UUID for API calls
+            seatNumber: seat.seat_number,  // For display (e.g., "B6")
+            row: seat.row,
+            number: seat.col,
+            section: seat.section,
+            status,
+            ticketTypeId: seat.seat_type.toLowerCase(),
+            seatType: seat.seat_type,
+            price: Number(seat.price),
+            lockExpiresAt: lock?.expires_at || null,
+          };
+        }),
       }));
 
     // Format ticket types for web-client

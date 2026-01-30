@@ -38,9 +38,21 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await hashPassword(input.password);
 
+    // Generate username from email (before @)
+    const baseUsername = input.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    let username = baseUsername;
+    let suffix = 1;
+
+    // Ensure unique username
+    while (await prisma.user.findUnique({ where: { username } })) {
+      username = `${baseUsername}${suffix}`;
+      suffix++;
+    }
+
     // Create user
     const user = await prisma.user.create({
       data: {
+        username,
         email: input.email,
         passwordHash,
         fullName: input.fullName,

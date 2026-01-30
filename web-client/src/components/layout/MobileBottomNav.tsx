@@ -19,7 +19,7 @@ const navItems: NavItem[] = [
     active: (pathname) => pathname === "/",
   },
   {
-    href: "/events/1/seats",
+    href: "/events/evt-tedx-2026/seats",
     icon: <Ticket className="w-5 h-5" />,
     label: "Đặt vé",
     active: (pathname) => pathname.includes("/seats"),
@@ -50,7 +50,7 @@ export default function MobileBottomNav() {
       <div className="absolute inset-0 bg-black/90 backdrop-blur-xl border-t border-white/10" />
 
       {/* Gradient glow on top */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-[1px] bg-gradient-to-r from-transparent via-red-600/50 to-transparent" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px bg-linear-to-r from-transparent via-red-600/50 to-transparent" />
 
       {/* Nav items */}
       <div className="relative flex items-center justify-around py-2 px-2 safe-area-bottom">

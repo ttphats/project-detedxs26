@@ -29,6 +29,8 @@ import {
   DeleteOutlined,
   CheckCircleOutlined,
   EditOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
 } from "@ant-design/icons";
 
 // Types
@@ -176,6 +178,9 @@ export default function LayoutEditorPage() {
   const [selectedSeats, setSelectedSeats] = useState<Set<string>>(new Set());
   const [isMultiSelect, setIsMultiSelect] = useState(false);
   const [currentType, setCurrentType] = useState<SeatType>("STANDARD");
+
+  // Preview mode
+  const [showPreview, setShowPreview] = useState(false);
 
   // Fetch events and versions
   const fetchData = useCallback(async (eventId?: string) => {
@@ -580,12 +585,20 @@ export default function LayoutEditorPage() {
             <Button
               icon={<CheckSquareOutlined />}
               onClick={() => {
-                // Open layout preview page in new tab
-                const eventId = selectedEvent || "evt-tedx-2026";
-                window.open(
-                  `/admin/layout-preview?eventId=${eventId}`,
-                  "_blank",
+                // Save current state to sessionStorage before opening preview
+                const previewData = {
+                  config,
+                  seats,
+                  eventId: selectedEvent,
+                  versionName: currentVersion?.version_name || "Draft",
+                  timestamp: Date.now(),
+                };
+                sessionStorage.setItem(
+                  "layout-preview-data",
+                  JSON.stringify(previewData),
                 );
+                // Open layout preview page in new tab with preview mode flag
+                window.open("/admin/layout-preview?mode=editor", "_blank");
               }}
             >
               Xem trước

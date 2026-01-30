@@ -101,3 +101,26 @@ export interface Speaker {
   is_active: boolean;
 }
 
+export interface EventTimeline {
+  id: string;
+  event_id: string;
+  start_time: string;
+  end_time: string;
+  title: string;
+  description: string | null;
+  speaker_name: string | null;
+  speaker_avatar_url: string | null;
+  type: 'TALK' | 'BREAK' | 'CHECKIN' | 'OTHER';
+  order_index: number;
+  status: 'DRAFT' | 'PUBLISHED';
+}
+
+export interface SeatLock {
+  id: string;
+  seat_id: string;
+  event_id: string;
+  session_id: string;
+  ticket_type_id: string | null;
+  expires_at: Date;
+  created_at: Date;
+}

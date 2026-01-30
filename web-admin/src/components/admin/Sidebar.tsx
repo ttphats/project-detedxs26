@@ -14,6 +14,7 @@ import {
   Grid3X3,
   Mic2,
   History,
+  Clock,
 } from "lucide-react";
 
 const menuItems = [
@@ -21,6 +22,7 @@ const menuItems = [
   { href: "/admin/events", label: "Events", icon: Calendar },
   { href: "/admin/ticket-types", label: "Ticket Types", icon: Ticket },
   { href: "/admin/speakers", label: "Speakers", icon: Mic2 },
+  { href: "/admin/timelines", label: "Timeline", icon: Clock },
   { href: "/admin/layout-editor", label: "Seats & Layout", icon: Grid3X3 },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { href: "/admin/email-templates", label: "Email Templates", icon: Mail },

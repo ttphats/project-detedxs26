@@ -25,7 +25,8 @@ export type AuditAction =
   | 'LOCK_SEAT'
   | 'RELEASE_SEAT'
   | 'CHANGE_STATUS'
-  | 'CHANGE_SETTING';
+  | 'CHANGE_SETTING'
+  | 'REORDER';
 
 // Entity types
 export type AuditEntity =
@@ -38,7 +39,8 @@ export type AuditEntity =
   | 'EMAIL'
   | 'USER'
   | 'SETTING'
-  | 'SPEAKER';
+  | 'SPEAKER'
+  | 'TIMELINE';
 
 export interface AuditLogInput {
   user: JWTPayload | null;

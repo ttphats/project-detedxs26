@@ -34,7 +34,8 @@ export async function GET(request: NextRequest) {
       params.push(status);
     }
 
-    sql += ' ORDER BY e.event_date DESC';
+    // Order by: PUBLISHED first, then by event_date DESC
+    sql += ' ORDER BY CASE WHEN e.status = "PUBLISHED" THEN 0 ELSE 1 END, e.event_date DESC';
 
     const events = await query<Event & { 
       total_seats: number; 

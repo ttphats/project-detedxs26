@@ -66,6 +66,14 @@ interface Order {
   emailSentAt?: string | null;
 }
 
+interface EmailTemplate {
+  id: string;
+  name: string;
+  purpose: string;
+  subject: string;
+  isActive: boolean;
+}
+
 interface Summary {
   totalOrders: number;
   pendingOrders: number;
@@ -106,6 +114,31 @@ export default function OrdersPage() {
   const [detailModal, setDetailModal] = useState<Order | null>(null);
   const [rejectModal, setRejectModal] = useState<Order | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [rejectTemplateId, setRejectTemplateId] = useState<
+    string | undefined
+  >();
+
+  // Confirm modal states (thay thế Popconfirm)
+  const [confirmModal, setConfirmModal] = useState<Order | null>(null);
+  const [confirmTemplateId, setConfirmTemplateId] = useState<
+    string | undefined
+  >();
+
+  // Email modal states
+  const [emailModal, setEmailModal] = useState<Order | null>(null);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<
+    string | undefined
+  >();
+  const [emailLoading, setEmailLoading] = useState(false);
+
+  // Batch selection states
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchEmailModal, setBatchEmailModal] = useState(false);
+  const [batchAction, setBatchAction] = useState<
+    "confirm" | "reject" | "email" | null
+  >(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -133,6 +166,63 @@ export default function OrdersPage() {
   useEffect(() => {
     fetchData();
   }, [statusFilter]);
+
+  // Fetch email templates when email modal opens
+  const fetchEmailTemplates = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/admin/email-templates", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Only show active templates
+        setEmailTemplates(data.data.filter((t: EmailTemplate) => t.isActive));
+      }
+    } catch (error) {
+      console.error("Failed to fetch email templates:", error);
+    }
+  };
+
+  const openEmailModal = (order: Order) => {
+    setEmailModal(order);
+    setSelectedTemplateId(undefined);
+    fetchEmailTemplates();
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailModal || !selectedTemplateId) {
+      message.warning("Vui lòng chọn template email");
+      return;
+    }
+    setEmailLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/admin/orders/${emailModal.id}/send-email`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ templateId: selectedTemplateId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        message.success("Đã gửi email thành công!");
+        setEmailModal(null);
+        setSelectedTemplateId(undefined);
+        fetchData();
+      } else if (data.skipped) {
+        message.warning(data.error || "Email đã được gửi trước đó (anti-spam)");
+      } else {
+        message.error(data.error || "Không thể gửi email");
+      }
+    } catch (error) {
+      message.error("Lỗi khi gửi email");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
 
   const handleSearch = () => {
     fetchData();
@@ -172,6 +262,10 @@ export default function OrdersPage() {
       message.warning("Vui lòng nhập lý do từ chối");
       return;
     }
+    if (!rejectTemplateId) {
+      message.warning("Vui lòng chọn template email");
+      return;
+    }
     setActionLoading(rejectModal.id);
     try {
       const token = localStorage.getItem("token");
@@ -181,7 +275,10 @@ export default function OrdersPage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ reason: rejectReason }),
+        body: JSON.stringify({
+          reason: rejectReason,
+          templateId: rejectTemplateId,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -190,6 +287,7 @@ export default function OrdersPage() {
         );
         setRejectModal(null);
         setRejectReason("");
+        setRejectTemplateId(undefined);
         fetchData();
       } else {
         message.error(data.error || "Không thể từ chối đơn hàng");
@@ -201,26 +299,145 @@ export default function OrdersPage() {
     }
   };
 
-  const handleResendEmail = async (order: Order) => {
-    setActionLoading(order.id);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`/api/admin/orders/${order.id}/resend-email`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) {
-        message.success("Đã gửi lại email xác nhận vé!");
-        fetchData();
-      } else {
-        message.error(data.error || "Không thể gửi email");
-      }
-    } catch (error) {
-      message.error("Lỗi khi gửi email");
-    } finally {
-      setActionLoading(null);
+  // Get selected orders
+  const selectedOrders = orders.filter((o) => selectedRowKeys.includes(o.id));
+  const pendingSelectedOrders = selectedOrders.filter(
+    (o) => o.status === "PENDING",
+  );
+
+  // Open batch email modal
+  const openBatchEmailModal = (action: "confirm" | "reject" | "email") => {
+    setBatchAction(action);
+    setBatchEmailModal(true);
+    setSelectedTemplateId(undefined);
+    fetchEmailTemplates();
+  };
+
+  // Handle batch confirm
+  const handleBatchConfirm = async () => {
+    if (!selectedTemplateId) {
+      message.warning("Vui lòng chọn template email");
+      return;
     }
+    setBatchLoading(true);
+    const token = localStorage.getItem("token");
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const order of pendingSelectedOrders) {
+      try {
+        const res = await fetch(`/api/admin/orders/${order.id}/confirm`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            transactionId: `MANUAL-${Date.now()}`,
+            notes: "Xác nhận hàng loạt bởi admin",
+            templateId: selectedTemplateId,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) successCount++;
+        else failCount++;
+      } catch {
+        failCount++;
+      }
+    }
+
+    setBatchLoading(false);
+    setBatchEmailModal(false);
+    setSelectedRowKeys([]);
+    message.success(
+      `Đã xác nhận ${successCount} đơn hàng${failCount > 0 ? `, ${failCount} thất bại` : ""}`,
+    );
+    fetchData();
+  };
+
+  // Handle batch reject
+  const handleBatchReject = async () => {
+    if (!selectedTemplateId) {
+      message.warning("Vui lòng chọn template email");
+      return;
+    }
+    setBatchLoading(true);
+    const token = localStorage.getItem("token");
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const order of pendingSelectedOrders) {
+      try {
+        const res = await fetch(`/api/admin/orders/${order.id}/reject`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reason: "Từ chối hàng loạt bởi admin",
+            templateId: selectedTemplateId,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) successCount++;
+        else failCount++;
+      } catch {
+        failCount++;
+      }
+    }
+
+    setBatchLoading(false);
+    setBatchEmailModal(false);
+    setSelectedRowKeys([]);
+    message.success(
+      `Đã từ chối ${successCount} đơn hàng${failCount > 0 ? `, ${failCount} thất bại` : ""}`,
+    );
+    fetchData();
+  };
+
+  // Handle batch send email
+  const handleBatchSendEmail = async () => {
+    if (!selectedTemplateId) {
+      message.warning("Vui lòng chọn template email");
+      return;
+    }
+    setBatchLoading(true);
+    const token = localStorage.getItem("token");
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const order of selectedOrders) {
+      try {
+        const res = await fetch(`/api/admin/orders/${order.id}/send-email`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ templateId: selectedTemplateId }),
+        });
+        const data = await res.json();
+        if (data.success) successCount++;
+        else failCount++;
+      } catch {
+        failCount++;
+      }
+    }
+
+    setBatchLoading(false);
+    setBatchEmailModal(false);
+    setSelectedRowKeys([]);
+    message.success(
+      `Đã gửi email cho ${successCount} đơn hàng${failCount > 0 ? `, ${failCount} thất bại` : ""}`,
+    );
+    fetchData();
+  };
+
+  // Row selection config
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
   };
 
   // Calculate revenue from PAID orders only
@@ -353,20 +570,30 @@ export default function OrdersPage() {
                 size="small"
                 danger
                 icon={<CloseCircleOutlined />}
-                onClick={() => setRejectModal(record)}
+                onClick={() => {
+                  setRejectModal(record);
+                  setRejectTemplateId(undefined);
+                  fetchEmailTemplates();
+                }}
                 loading={actionLoading === record.id}
               >
                 Từ chối
               </Button>
+              <Tooltip title="Gửi email (chọn template)">
+                <Button
+                  size="small"
+                  icon={<MailOutlined />}
+                  onClick={() => openEmailModal(record)}
+                />
+              </Tooltip>
             </>
           )}
           {record.status === "PAID" && (
-            <Tooltip title="Gửi lại email">
+            <Tooltip title="Gửi email (chọn template)">
               <Button
                 size="small"
                 icon={<MailOutlined />}
-                onClick={() => handleResendEmail(record)}
-                loading={actionLoading === record.id}
+                onClick={() => openEmailModal(record)}
               />
             </Tooltip>
           )}
@@ -464,9 +691,57 @@ export default function OrdersPage() {
           </Space>
         </Card>
 
+        {/* Batch Actions Bar */}
+        {selectedRowKeys.length > 0 && (
+          <Card className="bg-blue-50 border-blue-200">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">
+                Đã chọn {selectedRowKeys.length} đơn hàng
+                {pendingSelectedOrders.length > 0 && (
+                  <span className="text-orange-600 ml-2">
+                    ({pendingSelectedOrders.length} chờ thanh toán)
+                  </span>
+                )}
+              </span>
+              <Space>
+                {pendingSelectedOrders.length > 0 && (
+                  <>
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      onClick={() => openBatchEmailModal("confirm")}
+                      style={{
+                        backgroundColor: "#52c41a",
+                        borderColor: "#52c41a",
+                      }}
+                    >
+                      Xác nhận ({pendingSelectedOrders.length})
+                    </Button>
+                    <Button
+                      danger
+                      icon={<CloseCircleOutlined />}
+                      onClick={() => openBatchEmailModal("reject")}
+                    >
+                      Từ chối ({pendingSelectedOrders.length})
+                    </Button>
+                  </>
+                )}
+                <Button
+                  icon={<MailOutlined />}
+                  onClick={() => openBatchEmailModal("email")}
+                >
+                  Gửi email ({selectedRowKeys.length})
+                </Button>
+                <Button onClick={() => setSelectedRowKeys([])}>Bỏ chọn</Button>
+              </Space>
+            </div>
+          </Card>
+        )}
+
         {/* Orders Table */}
         <Card>
           <Table
+            rowSelection={rowSelection}
             columns={columns}
             dataSource={orders}
             rowKey="id"
@@ -580,12 +855,14 @@ export default function OrdersPage() {
           onCancel={() => {
             setRejectModal(null);
             setRejectReason("");
+            setRejectTemplateId(undefined);
           }}
           onOk={handleReject}
           okText="Từ chối"
           okButtonProps={{
             danger: true,
             loading: actionLoading === rejectModal?.id,
+            disabled: !rejectTemplateId || !rejectReason.trim(),
           }}
           cancelText="Hủy"
         >
@@ -595,7 +872,7 @@ export default function OrdersPage() {
               <strong>{rejectModal?.orderNumber}</strong>?
             </p>
             <p className="text-gray-500 text-sm">
-              Ghế sẽ được mở lại và khách hàng sẽ KHÔNG nhận được email.
+              Ghế sẽ được mở lại và email từ chối sẽ được gửi cho khách hàng.
             </p>
             <Input.TextArea
               placeholder="Nhập lý do từ chối (bắt buộc)"
@@ -603,6 +880,177 @@ export default function OrdersPage() {
               onChange={(e) => setRejectReason(e.target.value)}
               rows={3}
             />
+            <div>
+              <label className="block mb-2 font-medium">
+                Chọn template email:
+              </label>
+              <Select
+                placeholder="Chọn template..."
+                value={rejectTemplateId}
+                onChange={setRejectTemplateId}
+                style={{ width: "100%" }}
+                options={emailTemplates.map((t) => ({
+                  value: t.id,
+                  label: (
+                    <div>
+                      <div className="font-medium">{t.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {t.purpose} - {t.subject}
+                      </div>
+                    </div>
+                  ),
+                }))}
+              />
+            </div>
+          </div>
+        </Modal>
+
+        {/* Email Template Modal */}
+        <Modal
+          title={`Gửi email - Đơn hàng ${emailModal?.orderNumber}`}
+          open={!!emailModal}
+          onCancel={() => {
+            setEmailModal(null);
+            setSelectedTemplateId(undefined);
+          }}
+          onOk={handleSendEmail}
+          okText="Gửi email"
+          okButtonProps={{
+            loading: emailLoading,
+            disabled: !selectedTemplateId,
+          }}
+          cancelText="Hủy"
+        >
+          <div className="space-y-4">
+            <div>
+              <p className="mb-2">
+                <strong>Khách hàng:</strong> {emailModal?.customerName}
+              </p>
+              <p className="mb-2">
+                <strong>Email:</strong> {emailModal?.customerEmail}
+              </p>
+              <p className="mb-4">
+                <strong>Trạng thái:</strong>{" "}
+                <Tag color={statusColors[emailModal?.status || ""]}>
+                  {statusLabels[emailModal?.status || ""]}
+                </Tag>
+              </p>
+            </div>
+            <div>
+              <label className="block mb-2 font-medium">
+                Chọn template email:
+              </label>
+              <Select
+                placeholder="Chọn template..."
+                value={selectedTemplateId}
+                onChange={setSelectedTemplateId}
+                style={{ width: "100%" }}
+                options={emailTemplates.map((t) => ({
+                  value: t.id,
+                  label: (
+                    <div>
+                      <div className="font-medium">{t.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {t.purpose} - {t.subject}
+                      </div>
+                    </div>
+                  ),
+                }))}
+              />
+            </div>
+            {emailTemplates.length === 0 && (
+              <p className="text-gray-500 text-sm">
+                Không có template email nào được kích hoạt.
+              </p>
+            )}
+          </div>
+        </Modal>
+
+        {/* Batch Action Modal */}
+        <Modal
+          title={
+            batchAction === "confirm"
+              ? `Xác nhận ${pendingSelectedOrders.length} đơn hàng`
+              : batchAction === "reject"
+                ? `Từ chối ${pendingSelectedOrders.length} đơn hàng`
+                : `Gửi email cho ${selectedOrders.length} đơn hàng`
+          }
+          open={batchEmailModal}
+          onCancel={() => {
+            setBatchEmailModal(false);
+            setSelectedTemplateId(undefined);
+            setBatchAction(null);
+          }}
+          onOk={
+            batchAction === "confirm"
+              ? handleBatchConfirm
+              : batchAction === "reject"
+                ? handleBatchReject
+                : handleBatchSendEmail
+          }
+          okText={
+            batchAction === "confirm"
+              ? "Xác nhận tất cả"
+              : batchAction === "reject"
+                ? "Từ chối tất cả"
+                : "Gửi email tất cả"
+          }
+          okButtonProps={{
+            loading: batchLoading,
+            disabled: !selectedTemplateId,
+            danger: batchAction === "reject",
+          }}
+          cancelText="Hủy"
+        >
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-sm text-gray-600 mb-2">
+                <strong>Số đơn hàng được chọn:</strong>{" "}
+                {batchAction === "email"
+                  ? selectedOrders.length
+                  : pendingSelectedOrders.length}
+              </p>
+              <div className="text-xs text-gray-500 max-h-24 overflow-y-auto">
+                {(batchAction === "email"
+                  ? selectedOrders
+                  : pendingSelectedOrders
+                ).map((o) => (
+                  <span
+                    key={o.id}
+                    className="inline-block bg-white border rounded px-2 py-1 mr-1 mb-1"
+                  >
+                    {o.orderNumber}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block mb-2 font-medium">
+                Chọn template email:
+              </label>
+              <Select
+                placeholder="Chọn template..."
+                value={selectedTemplateId}
+                onChange={setSelectedTemplateId}
+                style={{ width: "100%" }}
+                options={emailTemplates.map((t) => ({
+                  value: t.id,
+                  label: (
+                    <div>
+                      <div className="font-medium">{t.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {t.purpose} - {t.subject}
+                      </div>
+                    </div>
+                  ),
+                }))}
+              />
+            </div>
+            {emailTemplates.length === 0 && (
+              <p className="text-gray-500 text-sm">
+                Không có template email nào được kích hoạt.
+              </p>
+            )}
           </div>
         </Modal>
       </div>

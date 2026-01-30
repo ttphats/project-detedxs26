@@ -13,7 +13,7 @@ export interface TimelineItem {
   time: string;
   title: string;
   description: string;
-  type: 'talk' | 'break' | 'networking' | 'performance';
+  type: 'talk' | 'break' | 'networking' | 'performance' | 'checkin' | 'other' | string;
   speakerId?: string;
 }
 

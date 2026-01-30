@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { randomBytes, createHash } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser, requireAdmin } from '@/lib/auth';
-import { sendEmailByPurpose } from '@/lib/email/service';
+import { sendEmailByPurpose, sendEmailByTemplate } from '@/lib/email/service';
 import { BUSINESS_EVENTS } from '@/lib/email/types';
 import { generateTicketQRCode } from '@/lib/qrcode';
 import { successResponse, errorResponse, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError } from '@/lib/utils';
@@ -30,6 +30,7 @@ function generateTicketUrl(orderNumber: string, token: string): string {
 const confirmPaymentSchema = z.object({
   transactionId: z.string().optional(),
   notes: z.string().optional(),
+  templateId: z.string().optional(), // Optional: use specific template instead of default
 });
 
 /**
@@ -79,7 +80,13 @@ export async function POST(
         include: {
           event: true,
           orderItems: {
-            include: { seat: true },
+            select: {
+              id: true,
+              seatId: true,
+              seatNumber: true,
+              seatType: true,
+              price: true,
+            },
           },
           payment: true,
         },
@@ -214,39 +221,56 @@ export async function POST(
       minute: '2-digit',
     });
 
-    // NO SPAM FLOW: Send email via new template system
-    // businessEvent: PAYMENT_CONFIRMED - Admin confirmed payment
-    // triggeredBy: Admin user ID who clicked "Confirm Payment"
-    // orderId: For anti-spam check (only 1 email per purpose per order)
-    sendEmailByPurpose({
-      purpose: 'TICKET_CONFIRMED',
-      businessEvent: BUSINESS_EVENTS.PAYMENT_CONFIRMED,
-      orderId: result.order.id,
-      triggeredBy: user.userId,
-      to: result.order.customerEmail,
-      data: {
-        customerName: result.order.customerName,
-        eventName: result.order.event.name,
-        eventDate: formattedDate,
-        eventTime: formattedTime,
-        eventVenue: result.order.event.venue,
-        orderNumber: result.order.orderNumber,
-        seats: result.order.orderItems.map((item) => ({
-          seatNumber: item.seat.seatNumber,
-          seatType: item.seat.seatType,
-          section: item.seat.section,
-          row: item.seat.row,
-          price: Number(item.price),
-        })),
-        totalAmount: Number(result.order.totalAmount),
-        qrCodeUrl,
-        ticketUrl,
-      },
-      metadata: {
-        seatsCount: result.order.orderItems.length,
-        confirmedBy: user.userId,
-      },
-    })
+    // Prepare email data
+    const emailData = {
+      customerName: result.order.customerName,
+      eventName: result.order.event.name,
+      eventDate: formattedDate,
+      eventTime: formattedTime,
+      eventVenue: result.order.event.venue,
+      orderNumber: result.order.orderNumber,
+      seats: result.order.orderItems.map((item) => ({
+        seatNumber: item.seatNumber,
+        seatType: item.seatType,
+        price: Number(item.price),
+      })),
+      totalAmount: Number(result.order.totalAmount),
+      seatInfo: result.order.orderItems.map(item => `${item.seatNumber} (${item.seatType})`).join(', '),
+      qrCodeUrl,
+      ticketUrl,
+      orderStatus: 'PAID',
+    };
+
+    // NO SPAM FLOW: Send email via template or purpose
+    // If templateId is provided, use that template; otherwise use default purpose
+    const emailPromise = input.templateId
+      ? sendEmailByTemplate({
+          templateId: input.templateId,
+          businessEvent: BUSINESS_EVENTS.PAYMENT_CONFIRMED,
+          orderId: result.order.id,
+          triggeredBy: user.userId,
+          to: result.order.customerEmail,
+          data: emailData,
+          metadata: {
+            seatsCount: result.order.orderItems.length,
+            confirmedBy: user.userId,
+            templateId: input.templateId,
+          },
+        })
+      : sendEmailByPurpose({
+          purpose: 'TICKET_CONFIRMED',
+          businessEvent: BUSINESS_EVENTS.PAYMENT_CONFIRMED,
+          orderId: result.order.id,
+          triggeredBy: user.userId,
+          to: result.order.customerEmail,
+          data: emailData,
+          metadata: {
+            seatsCount: result.order.orderItems.length,
+            confirmedBy: user.userId,
+          },
+        });
+
+    emailPromise
       .then(async (emailResult) => {
         if (emailResult.success) {
           // Update email_sent_at after successful email send

@@ -160,3 +160,19 @@ export interface SeatComparisonResult {
   toRemove: Seat[];    // Seats in old but not in new (mark as REMOVED if BOOKED/HOLD)
   toAdd: GeneratedSeat[]; // Seats in new but not in old (insert as AVAILABLE)
 }
+
+export interface EventTimeline {
+  id: string;
+  event_id: string;
+  start_time: string;  // HH:mm format
+  end_time: string;    // HH:mm format
+  title: string;
+  description: string | null;
+  speaker_name: string | null;
+  speaker_avatar_url: string | null;
+  type: 'TALK' | 'BREAK' | 'CHECKIN' | 'OTHER';
+  order_index: number;
+  status: 'DRAFT' | 'PUBLISHED';
+  created_at: Date;
+  updated_at: Date;
+}

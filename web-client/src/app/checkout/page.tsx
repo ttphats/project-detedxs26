@@ -146,6 +146,12 @@ function CheckoutContent() {
     setIsProcessing(true);
     setOrderError(null);
 
+    // Get session ID for lock verification
+    const sessionId =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem("seat_session_id")
+        : null;
+
     try {
       // Call API to create order
       const response = await fetch("/api/orders", {
@@ -159,6 +165,7 @@ function CheckoutContent() {
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
+          sessionId,
         }),
       });
 
@@ -168,10 +175,11 @@ function CheckoutContent() {
         throw new Error(data.error || "Failed to create order");
       }
 
-      // Navigate to success page with order details
-      router.push(
-        `/order-success?code=${data.data.orderNumber}&seats=${seatIds.join(",")}&event=${eventId}`,
-      );
+      // Navigate to ticket page with token for status tracking
+      // ticketUrl format: {baseUrl}/ticket/{orderNumber}?token={accessToken}
+      // Extract relative path for router.push
+      const ticketPath = `/ticket/${data.data.orderNumber}?token=${new URL(data.data.ticketUrl).searchParams.get("token")}`;
+      router.push(ticketPath);
     } catch (error: unknown) {
       console.error("Order creation error:", error);
       setOrderError(
@@ -218,11 +226,11 @@ function CheckoutContent() {
       {/* Background effects */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div
-          className="absolute top-20 right-20 w-[500px] h-[500px] bg-red-600/10 rounded-full blur-3xl animate-pulse"
+          className="absolute top-20 right-20 w-125 h-125 bg-red-600/10 rounded-full blur-3xl animate-pulse"
           style={{ animationDuration: "4s" }}
         />
         <div
-          className="absolute bottom-20 left-20 w-[400px] h-[400px] bg-red-600/5 rounded-full blur-3xl animate-pulse"
+          className="absolute bottom-20 left-20 w-100 h-100 bg-red-600/5 rounded-full blur-3xl animate-pulse"
           style={{ animationDuration: "5s" }}
         />
       </div>
@@ -393,7 +401,7 @@ function CheckoutContent() {
                   <div className="space-y-5">
                     {/* Bank Name */}
                     <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl">
-                      <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-red-500/30">
+                      <div className="w-12 h-12 bg-linear-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-red-500/30">
                         ACB
                       </div>
                       <div>
@@ -458,7 +466,7 @@ function CheckoutContent() {
                     </div>
 
                     {/* Amount */}
-                    <div className="p-4 bg-gradient-to-r from-red-600/20 to-red-600/10 rounded-xl border border-red-500/30">
+                    <div className="p-4 bg-linear-to-r from-red-600/20 to-red-600/10 rounded-xl border border-red-500/30">
                       <p className="text-sm text-red-400 mb-1">Số tiền</p>
                       <div className="flex items-center gap-2">
                         <span className="text-2xl font-black text-red-500">
@@ -551,7 +559,7 @@ function CheckoutContent() {
                 <div className="mb-4 pb-4 border-b border-white/10">
                   <p className="font-semibold text-white">{event.name}</p>
                   <p className="text-sm text-gray-400">
-                    {new Date(event.date).toLocaleDateString("vi-VN")}
+                    {new Date(event.eventDate).toLocaleDateString("vi-VN")}
                   </p>
                 </div>
 
@@ -571,7 +579,7 @@ function CheckoutContent() {
                   ))}
                 </div>
 
-                <div className="p-4 bg-gradient-to-r from-red-600/20 to-transparent rounded-xl mb-6">
+                <div className="p-4 bg-linear-to-r from-red-600/20 to-transparent rounded-xl mb-6">
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-white">Tổng cộng</span>
                     <span className="text-2xl font-black text-red-500">
@@ -607,10 +615,10 @@ function CheckoutContent() {
                 <button
                   onClick={handleConfirmPayment}
                   disabled={isProcessing}
-                  className="relative w-full py-4 px-6 rounded-xl font-bold text-white flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-500 shadow-xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="relative w-full py-4 px-6 rounded-xl font-bold text-white flex items-center justify-center gap-2 bg-linear-to-r from-red-600 to-red-500 shadow-xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {/* Shine effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                  <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                   <span className="relative">
                     {isProcessing ? "Đang xử lý..." : "Đã thanh toán"}
                   </span>

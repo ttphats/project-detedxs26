@@ -29,8 +29,8 @@ model Role {
 
 model User {
   id           String    @id @default(uuid()) @db.VarChar(36)
+  username     String    @unique @db.VarChar(50)
   email        String?   @unique @db.VarChar(100)
-  username     String?   @unique @db.VarChar(50)
   passwordHash String?   @map("password_hash") @db.VarChar(255)
   fullName     String    @map("full_name") @db.VarChar(100)
   phoneNumber  String?   @map("phone_number") @db.VarChar(20)
@@ -45,7 +45,6 @@ model User {
   auditLogs AuditLog[]
 
   @@index([email])
-  @@index([username])
   @@index([roleId])
   @@map("users")
 }
@@ -77,6 +76,7 @@ model Event {
   seatLayouts SeatLayout[]
   seats       Seat[]
   orders      Order[]
+  timelines   EventTimeline[]
 
   @@index([slug])
   @@index([status])
@@ -122,11 +122,29 @@ model Seat {
 
   event      Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]
+  seatLock   SeatLock?
 
   @@unique([eventId, seatNumber])
   @@index([eventId, status])
   @@index([seatType])
   @@map("seats")
+}
+
+// Temporary seat locks for checkout process (prevents race conditions)
+model SeatLock {
+  id         String   @id @default(uuid()) @db.VarChar(36)
+  seatId     String   @unique @map("seat_id") @db.VarChar(36)
+  eventId    String   @map("event_id") @db.VarChar(36)
+  sessionId  String   @map("session_id") @db.VarChar(64) // Browser session/fingerprint
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  seat Seat @relation(fields: [seatId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([sessionId])
+  @@index([expiresAt])
+  @@map("seat_locks")
 }
 
 // ============================================
@@ -147,16 +165,12 @@ model Order {
   paidAt             DateTime? @map("paid_at")
   cancelledAt        DateTime? @map("cancelled_at")
   cancellationReason String?   @map("cancellation_reason") @db.Text
-  emailSentAt        DateTime? @map("email_sent_at") // Track when confirmation email was sent
-  qrCodeUrl          String?   @map("qr_code_url") @db.VarChar(500) // Store QR code URL
-
-  // Ticketless authentication - access via token without login
-  accessTokenHash    String?   @map("access_token_hash") @db.VarChar(128) // SHA-256 hash of access token
-
-  // Check-in tracking
-  checkedInAt        DateTime? @map("checked_in_at") // When ticket was checked in
-  checkedInBy        String?   @map("checked_in_by") @db.VarChar(36) // Staff user ID who checked in
-
+  // Ticketless auth
+  accessTokenHash    String?   @map("access_token_hash") @db.VarChar(64)
+  // QR code for ticket
+  qrCodeUrl          String?   @map("qr_code_url") @db.VarChar(500)
+  // Email tracking
+  emailSentAt        DateTime? @map("email_sent_at")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
@@ -164,13 +178,13 @@ model Order {
   event      Event       @relation(fields: [eventId], references: [id])
   orderItems OrderItem[]
   payment    Payment?
+  emailLogs  EmailLog[]
 
   @@index([userId])
   @@index([eventId])
   @@index([status])
   @@index([orderNumber])
   @@index([customerEmail])
-  @@index([accessTokenHash])
   @@map("orders")
 }
 
@@ -224,17 +238,13 @@ model Payment {
 // EMAIL TEMPLATES
 // ============================================
 
-// Email purposes enum (stored as string in DB)
-// Values: PAYMENT_PENDING, PAYMENT_CONFIRMED, PAYMENT_REJECTED,
-//         TICKET_CONFIRMED, TICKET_CANCELLED, EVENT_REMINDER,
-//         CHECKIN_CONFIRMATION, ADMIN_NOTIFICATION
-
 model EmailTemplate {
   id          String   @id @default(uuid()) @db.VarChar(36)
-  purpose     String   @db.VarChar(50) // PAYMENT_PENDING, PAYMENT_CONFIRMED, TICKET_CONFIRMED, etc.
-  name        String   @db.VarChar(100)
+  name        String   @unique @db.VarChar(100)
+  category    String   @default("GENERAL") @db.VarChar(50) // ORDER, EVENT, NOTIFICATION, GENERAL
+  description String?  @db.VarChar(500) // Mô tả mục đích template
   subject     String   @db.VarChar(200)
-  htmlContent String   @map("html_content") @db.LongText
+  htmlContent String   @map("html_content") @db.Text
   textContent String?  @map("text_content") @db.Text
   variables   String?  @db.Text // JSON array of variable names
   isActive    Boolean  @default(false) @map("is_active")
@@ -243,44 +253,38 @@ model EmailTemplate {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  emailLogs   EmailLog[]
-
-  @@unique([purpose, isActive]) // Only one active template per purpose (enforced at app level)
-  @@index([purpose])
-  @@index([isActive])
-  @@index([createdBy])
+  @@index([category, isActive])
   @@map("email_templates")
 }
 
 model EmailLog {
   id            String    @id @default(uuid()) @db.VarChar(36)
-  purpose       String    @db.VarChar(50) // Email purpose: PAYMENT_CONFIRMED, TICKET_CONFIRMED, etc.
+  // NO SPAM FLOW fields
+  purpose       String    @db.VarChar(50) // TICKET_CONFIRMED, PAYMENT_REJECTED, etc.
   businessEvent String?   @map("business_event") @db.VarChar(50) // PAYMENT_CONFIRMED, ORDER_CANCELLED, etc.
-  templateId    String?   @map("template_id") @db.VarChar(36)
-  orderId       String?   @map("order_id") @db.VarChar(36) // Link to order for anti-spam check
+  orderId       String?   @map("order_id") @db.VarChar(36) // For anti-spam check
+  triggeredBy   String?   @map("triggered_by") @db.VarChar(36) // Admin user ID who triggered
+  templateId    String?   @map("template_id") @db.VarChar(36) // Template used
+  // Email content
   to            String    @db.VarChar(100)
   subject       String    @db.VarChar(200)
-  htmlContent   String    @map("html_content") @db.LongText
+  htmlContent   String    @map("html_content") @db.Text
+  // Status and provider
   status        String    @default("PENDING") @db.VarChar(20) // PENDING, SENT, FAILED
   provider      String?   @db.VarChar(50) // resend, sendgrid, mock
   providerId    String?   @map("provider_id") @db.VarChar(100) // Email ID from provider
-  triggeredBy   String?   @map("triggered_by") @db.VarChar(36) // Admin user ID who triggered send
   error         String?   @db.Text
-  metadata      String?   @db.Text // JSON: additional context
+  metadata      String?   @db.Text // JSON metadata
   sentAt        DateTime? @map("sent_at")
   createdAt     DateTime  @default(now()) @map("created_at")
 
-  template      EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  // Relations
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
-  @@unique([orderId, purpose]) // Anti-spam: only 1 email per purpose per order (except resend)
-  @@index([purpose])
-  @@index([businessEvent])
-  @@index([templateId])
-  @@index([orderId])
   @@index([to])
   @@index([status])
-  @@index([triggeredBy])
-  @@index([createdAt])
+  @@index([orderId, purpose]) // For anti-spam check
+  @@index([businessEvent])
   @@map("email_logs")
 }
 
@@ -289,28 +293,52 @@ model EmailLog {
 // ============================================
 
 model AuditLog {
-  id         String   @id @default(uuid()) @db.VarChar(36)
-  userId     String?  @map("user_id") @db.VarChar(36)
-  userRole   String?  @map("user_role") @db.VarChar(50) // SUPER_ADMIN, ADMIN, STAFF, USER
-  action     String   @db.VarChar(50) // CREATE, UPDATE, DELETE, CONFIRM, REJECT, LOGIN, LOGOUT, etc.
-  entity     String   @db.VarChar(50) // EVENT, PAYMENT, TICKET, SEAT, EMAIL, USER, SETTING
-  entityId   String?  @map("entity_id") @db.VarChar(36)
-  oldValue   String?  @map("old_value") @db.Text // JSON of old values
-  newValue   String?  @map("new_value") @db.Text // JSON of new values
-  changes    String?  @db.Text // JSON summary of changes (deprecated, use oldValue/newValue)
-  ipAddress  String?  @map("ip_address") @db.VarChar(50)
-  userAgent  String?  @map("user_agent") @db.Text
-  metadata   String?  @db.Text // Additional context (JSON)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  userId    String?  @map("user_id") @db.VarChar(36)
+  userRole  String?  @map("user_role") @db.VarChar(20) // ADMIN, USER, etc.
+  action    String   @db.VarChar(50) // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, CONFIRM, REJECT, etc.
+  entity    String   @db.VarChar(50) // User, Event, Order, PAYMENT, etc.
+  entityId  String?  @map("entity_id") @db.VarChar(36)
+  oldValue  String?  @map("old_value") @db.Text // JSON of old values
+  newValue  String?  @map("new_value") @db.Text // JSON of new values
+  changes   String?  @db.Text // JSON of changes (deprecated, use oldValue/newValue)
+  metadata  String?  @db.Text // JSON metadata
+  ipAddress String?  @map("ip_address") @db.VarChar(50)
+  userAgent String?  @map("user_agent") @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
-  @@index([userRole])
   @@index([action])
   @@index([entity])
-  @@index([entityId])
   @@index([createdAt])
   @@map("audit_logs")
 }
 
+// ============================================
+// EVENT TIMELINES
+// ============================================
+
+model EventTimeline {
+  id               String   @id @default(uuid()) @db.VarChar(36)
+  eventId          String   @map("event_id") @db.VarChar(36)
+  startTime        String   @map("start_time") @db.VarChar(10) // HH:mm format
+  endTime          String   @map("end_time") @db.VarChar(10)   // HH:mm format
+  title            String   @db.VarChar(200)
+  description      String?  @db.Text
+  speakerName      String?  @map("speaker_name") @db.VarChar(100)
+  speakerAvatarUrl String?  @map("speaker_avatar_url") @db.VarChar(500)
+  type             String   @default("OTHER") @db.VarChar(20) // TALK, BREAK, CHECKIN, OTHER
+  orderIndex       Int      @default(0) @map("order_index")
+  status           String   @default("DRAFT") @db.VarChar(20) // DRAFT, PUBLISHED
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([eventId, status])
+  @@index([orderIndex])
+  @@map("event_timelines")
+}

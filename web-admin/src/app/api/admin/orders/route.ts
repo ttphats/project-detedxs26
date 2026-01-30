@@ -64,15 +64,13 @@ export async function GET(request: NextRequest) {
             },
           },
           orderItems: {
-            include: {
-              seat: {
-                select: {
-                  seatNumber: true,
-                  seatType: true,
-                  row: true,
-                  section: true,
-                },
-              },
+            select: {
+              id: true,
+              seatNumber: true,
+              seatType: true,
+              price: true,
+              // Don't include seat relation - it may be deleted
+              // Use seatNumber/seatType from order_items table instead
             },
           },
           payment: {
@@ -103,10 +101,9 @@ export async function GET(request: NextRequest) {
       customerPhone: order.customerPhone,
       event: order.event,
       seats: order.orderItems.map((item) => ({
-        seatNumber: item.seat.seatNumber,
-        seatType: item.seat.seatType,
-        row: item.seat.row,
-        section: item.seat.section,
+        // Use data from order_items table (stored at order creation time)
+        seatNumber: item.seatNumber || 'N/A',
+        seatType: item.seatType || 'STANDARD',
         price: Number(item.price),
       })),
       payment: order.payment,
