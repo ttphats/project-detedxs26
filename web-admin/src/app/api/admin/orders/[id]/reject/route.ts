@@ -52,6 +52,7 @@ export async function POST(
     const input = rejectPaymentSchema.parse(body);
 
     // Process payment rejection in transaction
+    // Increase timeout to 30 seconds for remote database with high latency
     const result = await prisma.$transaction(async (tx) => {
       // Get order with all relations
       const order = await tx.order.findUnique({
@@ -147,6 +148,8 @@ export async function POST(
       });
 
       return { order, updatedOrder, releasedSeats: seatIds.length };
+    }, {
+      timeout: 30000, // 30 seconds timeout for remote database
     });
 
     // Prepare email data
