@@ -54,8 +54,10 @@ export async function GET(
       paid_at: Date | null
       access_token_hash: string
       created_at: Date
+      time_remaining_seconds: number // Calculated by MySQL to avoid timezone issues
     }>(
-      `SELECT id, order_number, event_id, total_amount, status, customer_name, customer_email, customer_phone, expires_at, paid_at, access_token_hash, created_at
+      `SELECT id, order_number, event_id, total_amount, status, customer_name, customer_email, customer_phone, expires_at, paid_at, access_token_hash, created_at,
+              GREATEST(0, TIMESTAMPDIFF(SECOND, NOW(), expires_at)) as time_remaining_seconds
        FROM orders
        WHERE order_number = ?`,
       [orderNumber]
@@ -123,11 +125,8 @@ export async function GET(
 
     console.log('[GET ORDER API] Seats found:', seats.length)
 
-    // Calculate time remaining (in seconds)
-    const timeRemaining = Math.max(
-      0,
-      Math.floor((new Date(order.expires_at).getTime() - Date.now()) / 1000)
-    )
+    // Use time_remaining_seconds from MySQL to avoid timezone issues
+    const timeRemaining = order.time_remaining_seconds
 
     return NextResponse.json({
       success: true,
@@ -141,7 +140,7 @@ export async function GET(
         customerPhone: order.customer_phone,
         expiresAt: order.expires_at.toISOString(),
         paidAt: order.paid_at?.toISOString() || null,
-        timeRemaining, // seconds
+        timeRemaining, // seconds - calculated by MySQL
         createdAt: order.created_at.toISOString(),
         event: event
           ? {
