@@ -62,9 +62,12 @@ export default function TicketTypesPage() {
   const fetchData = async (eventId?: string) => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       const params = new URLSearchParams();
       if (eventId) params.set("eventId", eventId);
-      const res = await fetch(`/api/admin/ticket-types?${params.toString()}`);
+      const res = await fetch(`/api/admin/ticket-types?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       if (data.success) {
         setTicketTypes(data.data.ticketTypes);
@@ -76,6 +79,7 @@ export default function TicketTypesPage() {
           // Fetch again with the selected event
           const res2 = await fetch(
             `/api/admin/ticket-types?eventId=${firstEventId}`,
+            { headers: { Authorization: `Bearer ${token}` } },
           );
           const data2 = await res2.json();
           if (data2.success) {
@@ -99,6 +103,7 @@ export default function TicketTypesPage() {
 
   const handleSubmit = async (values: any) => {
     try {
+      const token = localStorage.getItem("token");
       const colorValue =
         typeof values.color === "string"
           ? values.color
@@ -108,14 +113,20 @@ export default function TicketTypesPage() {
       if (editingId) {
         await fetch(`/api/admin/ticket-types/${editingId}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(payload),
         });
         message.success("Cập nhật thành công");
       } else {
         await fetch("/api/admin/ticket-types", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(payload),
         });
         message.success("Tạo mới thành công");
@@ -145,8 +156,10 @@ export default function TicketTypesPage() {
 
   const handleDelete = async (id: string) => {
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/ticket-types/${id}`, {
         method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {

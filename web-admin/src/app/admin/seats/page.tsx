@@ -77,12 +77,15 @@ export default function SeatsPage() {
   const fetchSeats = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       const params = new URLSearchParams();
       if (eventFilter) params.set("eventId", eventFilter);
       if (statusFilter) params.set("status", statusFilter);
       if (typeFilter) params.set("seatType", typeFilter);
 
-      const res = await fetch(`/api/admin/seats?${params.toString()}`);
+      const res = await fetch(`/api/admin/seats?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
 
       if (data.success) {
@@ -104,9 +107,13 @@ export default function SeatsPage() {
   const handleBulkUpdate = async (status: string) => {
     if (selectedRowKeys.length === 0) return;
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch("/api/admin/seats", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ seatIds: selectedRowKeys, status }),
       });
       if (res.ok) {
@@ -121,9 +128,13 @@ export default function SeatsPage() {
 
   const handleDelete = async (seatIds: string[]) => {
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch("/api/admin/seats", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ seatIds }),
       });
       const data = await res.json();
@@ -141,11 +152,15 @@ export default function SeatsPage() {
 
   const handleCreateOrUpdate = async (values: any) => {
     try {
+      const token = localStorage.getItem("token");
       if (editingSeat) {
         // Update single seat
         const res = await fetch(`/api/admin/seats/${editingSeat.id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(values),
         });
         if (res.ok) {
@@ -159,7 +174,10 @@ export default function SeatsPage() {
         // Create new seats
         const res = await fetch("/api/admin/seats", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({
             event_id: values.event_id,
             seats: [

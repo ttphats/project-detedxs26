@@ -11,7 +11,6 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import { query } from "@/lib/db";
 
 interface Stats {
   totalEvents: number;
@@ -32,7 +31,12 @@ export default function DashboardPage() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch("/api/admin/dashboard/stats");
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/admin/dashboard/stats", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       const data = await res.json();
       if (data.success) {
         setStats(data.data);
