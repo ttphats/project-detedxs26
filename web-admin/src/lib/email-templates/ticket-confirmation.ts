@@ -28,7 +28,8 @@ export interface TicketEmailData {
   }>;
   totalAmount: number;
   qrCodeUrl: string;
-  ticketUrl: string;  // NEW: Link to view ticket online
+  ticketUrl: string;  // Link to view ticket online
+  pdfUrl?: string;    // Link to download ticket PDF (auto-generated from ticketUrl if not provided)
   logoUrl?: string;
 }
 
@@ -47,6 +48,11 @@ export function generateTicketConfirmationEmail(data: TicketEmailData): string {
     : primarySeat.seatNumber;
   const seatTypeDisplay = primarySeat.seatType;
   const isVIP = seatTypeDisplay === 'VIP';
+
+  // Generate PDF URL from ticketUrl if not provided
+  // ticketUrl format: /ticket/ORDER123?token=xxx
+  // pdfUrl format: /api/ticket/ORDER123/pdf?token=xxx
+  const pdfUrl = data.pdfUrl || data.ticketUrl.replace('/ticket/', '/api/ticket/').replace('?token=', '/pdf?token=');
 
   return `
 <!DOCTYPE html>
@@ -228,15 +234,23 @@ export function generateTicketConfirmationEmail(data: TicketEmailData): string {
         </table>
         <!-- END TICKET CARD -->
 
-        <!-- ACCESS TICKET BUTTON -->
+        <!-- ACCESS TICKET BUTTONS -->
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; margin-top: 32px;">
           <tr>
             <td style="text-align: center;">
-              <a href="${data.ticketUrl}" style="display: inline-block; background: linear-gradient(135deg, #ea251a 0%, #b91c14 100%); background-color: #ea251a; color: #ffffff; padding: 18px 48px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 4px;">
+              <!-- Primary: View Ticket Online -->
+              <a href="${data.ticketUrl}" style="display: inline-block; background: linear-gradient(135deg, #ea251a 0%, #b91c14 100%); background-color: #ea251a; color: #ffffff; padding: 18px 48px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 4px; margin-right: 12px;">
                 🎫 XEM VÉ ĐIỆN TỬ
               </a>
-              <p style="margin: 16px 0 0 0; font-size: 12px; color: #666;">
-                Hoặc truy cập: <a href="${data.ticketUrl}" style="color: #ea251a; text-decoration: underline;">${data.ticketUrl}</a>
+              <!-- Secondary: Download PDF -->
+              <a href="${pdfUrl}" style="display: inline-block; background-color: #1a1a1a; color: #ffffff; padding: 18px 32px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 4px; border: 2px solid #ea251a;">
+                📄 TẢI PDF
+              </a>
+              <p style="margin: 20px 0 0 0; font-size: 12px; color: #666;">
+                Xem vé online: <a href="${data.ticketUrl}" style="color: #ea251a; text-decoration: underline;">Nhấn vào đây</a>
+              </p>
+              <p style="margin: 8px 0 0 0; font-size: 11px; color: #555;">
+                Lưu ý: Link tải PDF và xem vé sử dụng chung mã xác thực, vui lòng không chia sẻ.
               </p>
             </td>
           </tr>

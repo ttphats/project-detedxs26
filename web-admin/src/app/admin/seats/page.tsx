@@ -26,7 +26,9 @@ import {
   EditOutlined,
   ReloadOutlined,
   LayoutOutlined,
+  DownloadOutlined,
 } from "@ant-design/icons";
+import { exportSeatsToExcel } from "@/lib/excel-export";
 import type { ColumnsType } from "antd/es/table";
 
 interface Seat {
@@ -336,6 +338,26 @@ export default function SeatsPage() {
             <Link href="/admin/layout-editor">
               <Button icon={<LayoutOutlined />}>Xem Layout</Button>
             </Link>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => {
+                const exportData = seats.map((seat) => ({
+                  seatNumber: seat.seat_number,
+                  row: seat.row,
+                  col: seat.col,
+                  section: seat.section,
+                  seatType: seat.seat_type,
+                  price: seat.price,
+                  status: seat.status,
+                  eventName: seat.event_name,
+                }));
+                exportSeatsToExcel(exportData);
+                message.success("Đã xuất file Excel thành công!");
+              }}
+              disabled={seats.length === 0}
+            >
+              Xuất Excel
+            </Button>
             <Button icon={<ReloadOutlined />} onClick={fetchSeats}>
               Làm mới
             </Button>

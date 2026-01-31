@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 import { Header, Footer, MobileBottomNav } from "@/components";
 
@@ -29,6 +30,17 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black`}
       >
+        <Toaster
+          position="top-center"
+          richColors
+          toastOptions={{
+            style: {
+              background: "#1a1a1a",
+              border: "1px solid #333",
+              color: "#fff",
+            },
+          }}
+        />
         <Header />
         <main className="min-h-screen pb-20 md:pb-0">{children}</main>
         <Footer />

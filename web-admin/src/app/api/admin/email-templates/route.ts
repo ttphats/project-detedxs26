@@ -10,6 +10,7 @@ type TemplateCategory = typeof TEMPLATE_CATEGORIES[number];
 interface DBEmailTemplate {
   id: string;
   name: string;
+  purpose: string | null;
   category: string;
   description: string | null;
   subject: string;
@@ -17,6 +18,7 @@ interface DBEmailTemplate {
   text_content: string | null;
   variables: string | null;
   is_active: number | boolean;
+  is_default: number | boolean;
   version: number;
   created_by: string | null;
   created_at: string;
@@ -27,6 +29,7 @@ function formatTemplate(t: DBEmailTemplate) {
   return {
     id: t.id,
     name: t.name,
+    purpose: t.purpose,
     category: t.category,
     description: t.description,
     subject: t.subject,
@@ -34,6 +37,7 @@ function formatTemplate(t: DBEmailTemplate) {
     textContent: t.text_content,
     variables: t.variables ? JSON.parse(t.variables) : [],
     isActive: Boolean(t.is_active),
+    isDefault: Boolean(t.is_default),
     version: t.version,
     createdBy: t.created_by,
     createdAt: t.created_at,
@@ -82,7 +86,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, category = 'GENERAL', description, subject, htmlContent, textContent } = body;
+    const { name, purpose, category = 'GENERAL', description, subject, htmlContent, textContent } = body;
 
     // Validate required fields
     if (!name || !subject || !htmlContent) {
@@ -112,11 +116,12 @@ export async function POST(request: NextRequest) {
 
     const id = randomUUID();
     await execute(
-      `INSERT INTO email_templates (id, name, category, description, subject, html_content, text_content, variables, is_active, version, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())`,
+      `INSERT INTO email_templates (id, name, purpose, category, description, subject, html_content, text_content, variables, is_active, is_default, version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, NOW(), NOW())`,
       [
         id,
         name,
+        purpose || null,
         category,
         description || null,
         subject,

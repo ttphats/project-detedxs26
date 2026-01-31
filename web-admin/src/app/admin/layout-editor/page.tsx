@@ -31,7 +31,9 @@ import {
   EditOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
+  DownloadOutlined,
 } from "@ant-design/icons";
+import { exportSeatsToExcel } from "@/lib/excel-export";
 
 // Types
 type SeatType = "VIP" | "STANDARD" | "ECONOMY" | "DISABLED";
@@ -576,6 +578,36 @@ export default function LayoutEditorPage() {
             <Link href="/admin/seats">
               <Button icon={<TableOutlined />}>Quản lý Seats</Button>
             </Link>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => {
+                const eventName =
+                  events.find((e) => e.id === selectedEvent)?.name ||
+                  "Unknown Event";
+                const exportData = seats
+                  .filter((s) => s.type !== "DISABLED")
+                  .map((seat) => ({
+                    seatNumber: seat.seat_number,
+                    row: seat.row,
+                    col: seat.col,
+                    section: seat.side === "left" ? "Trái" : "Phải",
+                    seatType: seat.type,
+                    price: 0, // Layout editor không có giá
+                    status: "AVAILABLE",
+                    eventName: eventName,
+                  }));
+                exportSeatsToExcel(
+                  exportData,
+                  `layout_${eventName.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.xlsx`,
+                );
+                message.success(
+                  `Đã xuất ${exportData.length} ghế ra file Excel!`,
+                );
+              }}
+              disabled={seats.filter((s) => s.type !== "DISABLED").length === 0}
+            >
+              Xuất Excel
+            </Button>
             <Button
               icon={<HistoryOutlined />}
               onClick={() => setShowVersionsModal(true)}

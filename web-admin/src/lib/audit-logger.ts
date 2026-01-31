@@ -18,6 +18,7 @@ export type AuditAction =
   | 'LOGIN'
   | 'LOGOUT'
   | 'REGISTER'
+  | 'SEND_EMAIL'
   | 'RESEND_EMAIL'
   | 'CHECK_IN'
   | 'CANCEL'
@@ -250,9 +251,9 @@ export async function logSeatLayoutAction(
  */
 export async function logEmailAction(
   user: JWTPayload,
-  action: 'RESEND_EMAIL',
+  action: 'SEND_EMAIL' | 'RESEND_EMAIL',
   orderId: string,
-  details: { orderNumber: string; customerEmail: string; success: boolean; error?: string },
+  details: { orderNumber: string; customerEmail: string; templateId?: string; success: boolean; error?: string; skipped?: boolean },
   request?: Request
 ) {
   const reqInfo = request ? getRequestInfo(request) : {};
