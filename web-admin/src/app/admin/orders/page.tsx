@@ -503,7 +503,9 @@ export default function OrdersPage() {
         <div>
           <div className="font-medium text-blue-600">{text}</div>
           <div className="text-xs text-gray-500">
-            {new Date(record.createdAt).toLocaleString("vi-VN")}
+            {new Date(record.createdAt).toLocaleString("vi-VN", {
+              timeZone: "Asia/Ho_Chi_Minh",
+            })}
           </div>
         </div>
       ),
@@ -869,11 +871,15 @@ export default function OrdersPage() {
                   {detailModal.event.name}
                 </Descriptions.Item>
                 <Descriptions.Item label="Ngày tạo">
-                  {new Date(detailModal.createdAt).toLocaleString("vi-VN")}
+                  {new Date(detailModal.createdAt).toLocaleString("vi-VN", {
+                    timeZone: "Asia/Ho_Chi_Minh",
+                  })}
                 </Descriptions.Item>
                 <Descriptions.Item label="Ngày thanh toán">
                   {detailModal.paidAt
-                    ? new Date(detailModal.paidAt).toLocaleString("vi-VN")
+                    ? new Date(detailModal.paidAt).toLocaleString("vi-VN", {
+                        timeZone: "Asia/Ho_Chi_Minh",
+                      })
                     : "-"}
                 </Descriptions.Item>
                 <Descriptions.Item label="Tổng tiền" span={2}>

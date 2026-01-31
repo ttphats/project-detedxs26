@@ -38,7 +38,8 @@ interface EventData {
   id: string;
   name: string;
   venue: string;
-  eventDate: string;
+  eventDate?: string;
+  date?: string; // API /api/events/[id] returns 'date' instead of 'eventDate'
   seatMap: SeatRow[];
 }
 
@@ -648,7 +649,19 @@ function CheckoutContent() {
                 <div className="mb-4 pb-4 border-b border-white/10">
                   <p className="font-semibold text-white">{event.name}</p>
                   <p className="text-sm text-gray-400">
-                    {new Date(event.eventDate).toLocaleDateString("vi-VN")}
+                    {(() => {
+                      const dateStr = event.eventDate || event.date;
+                      if (!dateStr) return "Chưa có ngày";
+                      const date = new Date(dateStr);
+                      if (isNaN(date.getTime())) return "Chưa có ngày";
+                      return date.toLocaleDateString("vi-VN", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                        timeZone: "Asia/Ho_Chi_Minh",
+                      });
+                    })()}
                   </p>
                 </div>
 
