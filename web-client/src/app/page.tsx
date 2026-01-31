@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components";
 import { events as mockEvents, Speaker, TimelineItem } from "@/lib/mock-data";
+import { formatVNDate } from "@/lib/date-utils";
 
 interface FeaturedEvent {
   id: string;
@@ -307,7 +308,7 @@ export default function Home() {
                 <div className="flex items-center gap-2 group cursor-default">
                   <Calendar className="w-4 h-4 text-red-500" />
                   <span className="text-red-500 font-medium text-sm sm:text-base underline underline-offset-4 decoration-red-500/50">
-                    {new Date(featuredEvent.date).toLocaleDateString("en-US", {
+                    {formatVNDate(featuredEvent.date, {
                       month: "short",
                       day: "numeric",
                       year: "numeric",

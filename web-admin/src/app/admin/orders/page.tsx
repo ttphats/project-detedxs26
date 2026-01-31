@@ -2,6 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { AdminLayout } from "@/components/admin";
+
+// Helper function to format date from database (stored as Vietnam time but parsed as UTC)
+// We need to subtract 7 hours offset that browser adds when displaying
+function formatVNDate(dateStr: string | Date, includeTime = true): string {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "-";
+
+  // Database stores Vietnam time, but JS parses as UTC and browser adds local offset
+  // So we subtract 7 hours to get correct Vietnam time display
+  const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
+
+  if (includeTime) {
+    return vnDate.toLocaleString("vi-VN");
+  }
+  return vnDate.toLocaleDateString("vi-VN");
+}
 import {
   Table,
   Button,
@@ -503,9 +520,7 @@ export default function OrdersPage() {
         <div>
           <div className="font-medium text-blue-600">{text}</div>
           <div className="text-xs text-gray-500">
-            {new Date(record.createdAt).toLocaleString("vi-VN", {
-              timeZone: "Asia/Ho_Chi_Minh",
-            })}
+            {formatVNDate(record.createdAt)}
           </div>
         </div>
       ),
@@ -532,7 +547,7 @@ export default function OrdersPage() {
         <div>
           <div className="font-medium">{record.event.name}</div>
           <div className="text-xs text-gray-500">
-            {new Date(record.event.eventDate).toLocaleDateString("vi-VN")}
+            {formatVNDate(record.event.eventDate, false)}
           </div>
         </div>
       ),
@@ -871,16 +886,10 @@ export default function OrdersPage() {
                   {detailModal.event.name}
                 </Descriptions.Item>
                 <Descriptions.Item label="Ngày tạo">
-                  {new Date(detailModal.createdAt).toLocaleString("vi-VN", {
-                    timeZone: "Asia/Ho_Chi_Minh",
-                  })}
+                  {formatVNDate(detailModal.createdAt)}
                 </Descriptions.Item>
                 <Descriptions.Item label="Ngày thanh toán">
-                  {detailModal.paidAt
-                    ? new Date(detailModal.paidAt).toLocaleString("vi-VN", {
-                        timeZone: "Asia/Ho_Chi_Minh",
-                      })
-                    : "-"}
+                  {detailModal.paidAt ? formatVNDate(detailModal.paidAt) : "-"}
                 </Descriptions.Item>
                 <Descriptions.Item label="Tổng tiền" span={2}>
                   <strong className="text-lg text-green-600">

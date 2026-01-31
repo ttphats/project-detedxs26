@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { formatVNDate } from "@/lib/date-utils";
 import {
   ArrowLeft,
   Copy,
@@ -649,19 +650,12 @@ function CheckoutContent() {
                 <div className="mb-4 pb-4 border-b border-white/10">
                   <p className="font-semibold text-white">{event.name}</p>
                   <p className="text-sm text-gray-400">
-                    {(() => {
-                      const dateStr = event.eventDate || event.date;
-                      if (!dateStr) return "Chưa có ngày";
-                      const date = new Date(dateStr);
-                      if (isNaN(date.getTime())) return "Chưa có ngày";
-                      return date.toLocaleDateString("vi-VN", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                        timeZone: "Asia/Ho_Chi_Minh",
-                      });
-                    })()}
+                    {formatVNDate(event.eventDate || event.date || "", {
+                      weekday: "long",
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
                   </p>
                 </div>
 
