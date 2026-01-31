@@ -72,7 +72,10 @@ export default function EventsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/events");
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/admin/events", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       if (data.success) {
         setEvents(data.data);
@@ -101,10 +104,14 @@ export default function EventsPage() {
         thumbnail_url: thumbnailUrl || null,
       };
 
+      const token = localStorage.getItem("token");
       if (editingId) {
         const res = await fetch(`/api/admin/events/${editingId}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(payload),
         });
         const data = await res.json();
@@ -117,7 +124,10 @@ export default function EventsPage() {
       } else {
         const res = await fetch("/api/admin/events", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(payload),
         });
         const data = await res.json();
@@ -161,7 +171,11 @@ export default function EventsPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/events/${id}`, { method: "DELETE" });
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/admin/events/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       if (data.success) {
         message.success("Đã xóa");
@@ -180,12 +194,14 @@ export default function EventsPage() {
   ) => {
     setUploading(true);
     try {
+      const token = localStorage.getItem("token");
       const formData = new FormData();
       formData.append("file", file);
       formData.append("subfolder", "events");
 
       const res = await fetch("/api/admin/upload", {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       const data = await res.json();
@@ -210,9 +226,13 @@ export default function EventsPage() {
 
   const handleTogglePublish = async (id: string, isPublished: boolean) => {
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/events/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           status: isPublished ? "DRAFT" : "PUBLISHED",
           is_published: !isPublished,

@@ -67,24 +67,31 @@ export default function SpeakersPage() {
   const fetchData = async (eventId?: string) => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       const params = new URLSearchParams();
       if (eventId) params.set("eventId", eventId);
-      const res = await fetch(`/api/admin/speakers?${params.toString()}`);
+      const res = await fetch(`/api/admin/speakers?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
-      if (data.success) {
-        setSpeakers(data.data.speakers);
-        setEvents(data.data.events);
-        if (!eventId && data.data.events.length > 0) {
+      console.log("[SPEAKERS] API response:", data);
+      if (data.success && data.data) {
+        setSpeakers(data.data.speakers || []);
+        setEvents(data.data.events || []);
+        if (!eventId && data.data.events?.length > 0) {
           const firstEventId = data.data.events[0].id;
           setSelectedEvent(firstEventId);
           const res2 = await fetch(
             `/api/admin/speakers?eventId=${firstEventId}`,
+            { headers: { Authorization: `Bearer ${token}` } },
           );
           const data2 = await res2.json();
-          if (data2.success) {
-            setSpeakers(data2.data.speakers);
+          if (data2.success && data2.data) {
+            setSpeakers(data2.data.speakers || []);
           }
         }
+      } else {
+        console.error("[SPEAKERS] API error:", data.error);
       }
     } catch (error) {
       console.error("Failed to fetch:", error);
@@ -100,19 +107,26 @@ export default function SpeakersPage() {
 
   const handleSubmit = async (values: any) => {
     try {
+      const token = localStorage.getItem("token");
       const payload = { ...values, event_id: selectedEvent };
 
       if (editingId) {
         await fetch(`/api/admin/speakers/${editingId}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(payload),
         });
         message.success("Cập nhật thành công");
       } else {
         await fetch("/api/admin/speakers", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(payload),
         });
         message.success("Tạo mới thành công");
@@ -136,12 +150,14 @@ export default function SpeakersPage() {
   const handleImageUpload = async (file: File) => {
     setUploading(true);
     try {
+      const token = localStorage.getItem("token");
       const formData = new FormData();
       formData.append("file", file);
       formData.append("subfolder", "speakers");
 
       const res = await fetch("/api/admin/upload", {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       const data = await res.json();
@@ -163,8 +179,10 @@ export default function SpeakersPage() {
 
   const handleDelete = async (id: string) => {
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/speakers/${id}`, {
         method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {
@@ -180,9 +198,13 @@ export default function SpeakersPage() {
 
   const handleToggleActive = async (id: string, is_active: boolean) => {
     try {
+      const token = localStorage.getItem("token");
       await fetch(`/api/admin/speakers/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ is_active }),
       });
       fetchData(selectedEvent);
@@ -315,7 +337,10 @@ export default function SpeakersPage() {
                 setSelectedEvent(value);
                 fetchData(value);
               }}
-              options={events.map((e) => ({ label: e.name, value: e.id }))}
+              options={(events || []).map((e) => ({
+                label: e.name,
+                value: e.id,
+              }))}
               placeholder="Chọn sự kiện"
             />
           </div>

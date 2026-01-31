@@ -127,7 +127,10 @@ export default function EditEmailTemplatePage() {
   const fetchTemplate = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/email-templates/${templateId}`);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/admin/email-templates/${templateId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       if (data.success) {
         setTemplate(data.data);
@@ -154,9 +157,13 @@ export default function EditEmailTemplatePage() {
     setSaving(true);
 
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/email-templates/${templateId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(formData),
       });
 
@@ -182,10 +189,12 @@ export default function EditEmailTemplatePage() {
 
   const handleActivate = async () => {
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(
         `/api/admin/email-templates/${templateId}/activate`,
         {
           method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
       const data = await res.json();
@@ -202,10 +211,12 @@ export default function EditEmailTemplatePage() {
 
   const handleDeactivate = async () => {
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(
         `/api/admin/email-templates/${templateId}/activate`,
         {
           method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
       const data = await res.json();

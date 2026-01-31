@@ -188,8 +188,11 @@ export default function LayoutEditorPage() {
   const fetchData = useCallback(async (eventId?: string) => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       // Fetch events list first
-      const eventsRes = await fetch("/api/admin/seats");
+      const eventsRes = await fetch("/api/admin/seats", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const eventsData = await eventsRes.json();
       if (eventsData.success) {
         setEvents(eventsData.data.events || []);
@@ -207,6 +210,7 @@ export default function LayoutEditorPage() {
       // Fetch versions for selected event
       const versionsRes = await fetch(
         `/api/admin/layout-versions?eventId=${eventId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       const versionsData = await versionsRes.json();
       if (versionsData.success) {
@@ -228,7 +232,12 @@ export default function LayoutEditorPage() {
         } else {
           // No versions, load seats from database
           try {
-            const seatsRes = await fetch(`/api/admin/seats?eventId=${eventId}`);
+            const seatsRes = await fetch(
+              `/api/admin/seats?eventId=${eventId}`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
+              },
+            );
             const seatsData = await seatsRes.json();
             if (seatsData.success && seatsData.data.seats?.length > 0) {
               // Convert DB seats to layout format
@@ -331,19 +340,26 @@ export default function LayoutEditorPage() {
         seats_data: seats,
       };
 
+      const token = localStorage.getItem("token");
       let res;
       if (currentVersion && currentVersion.status === "DRAFT") {
         // Update existing draft
         res = await fetch(`/api/admin/layout-versions/${currentVersion.id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(payload),
         });
       } else {
         // Create new draft
         res = await fetch("/api/admin/layout-versions", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(payload),
         });
       }
@@ -371,10 +387,12 @@ export default function LayoutEditorPage() {
   const handlePublish = async (versionId: string) => {
     setSaving(true);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(
         `/api/admin/layout-versions/${versionId}/publish`,
         {
           method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
       const data = await res.json();
@@ -396,8 +414,10 @@ export default function LayoutEditorPage() {
   // Delete version
   const handleDeleteVersion = async (versionId: string) => {
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/layout-versions?id=${versionId}`, {
         method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {

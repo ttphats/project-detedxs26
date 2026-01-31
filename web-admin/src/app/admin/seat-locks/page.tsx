@@ -52,10 +52,13 @@ export default function SeatLocksPage() {
   const fetchLocks = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       const url = selectedEvent
         ? `/api/admin/seat-locks?eventId=${selectedEvent}`
         : "/api/admin/seat-locks";
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
 
       console.log("[SEAT LOCKS] Full API response:", data);
@@ -80,8 +83,10 @@ export default function SeatLocksPage() {
   const handleUnlock = async (lockId: string, seatNumber: string) => {
     setActionLoading(lockId);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/seat-locks/${lockId}`, {
         method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
 
@@ -102,8 +107,10 @@ export default function SeatLocksPage() {
   const handleUnlockAll = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch("/api/admin/seat-locks/clear-all", {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
 

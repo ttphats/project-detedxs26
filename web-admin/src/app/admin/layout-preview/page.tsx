@@ -89,8 +89,10 @@ function LayoutPreviewContent() {
             setIsEditorPreview(true);
 
             // Still fetch ticket types from API for pricing info
+            const token = localStorage.getItem("token");
             const ttRes = await fetch(
               `/api/admin/ticket-types?eventId=${previewData.eventId || eventId}`,
+              { headers: { Authorization: `Bearer ${token}` } },
             );
             const ttData = await ttRes.json();
             if (ttData.success) {
@@ -102,7 +104,10 @@ function LayoutPreviewContent() {
         }
 
         // Default: Fetch from database
-        const seatsRes = await fetch(`/api/admin/seats?eventId=${eventId}`);
+        const token = localStorage.getItem("token");
+        const seatsRes = await fetch(`/api/admin/seats?eventId=${eventId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         const seatsData = await seatsRes.json();
         if (seatsData.success) {
           setSeats(seatsData.data.seats || []);
@@ -113,7 +118,12 @@ function LayoutPreviewContent() {
         }
 
         // Fetch ticket types
-        const ttRes = await fetch(`/api/admin/ticket-types?eventId=${eventId}`);
+        const ttRes = await fetch(
+          `/api/admin/ticket-types?eventId=${eventId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
         const ttData = await ttRes.json();
         if (ttData.success) {
           setTicketTypes(ttData.data.ticketTypes || []);

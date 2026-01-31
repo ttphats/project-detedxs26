@@ -121,11 +121,14 @@ export default function EmailTemplatesPage() {
   const fetchTemplates = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       let url = "/api/admin/email-templates";
       if (filterCategory !== "ALL") {
         url += `?category=${filterCategory}`;
       }
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       if (data.success) {
         setTemplates(data.data);
@@ -145,7 +148,10 @@ export default function EmailTemplatesPage() {
   const handlePreview = async (id: string) => {
     setActionLoading(id);
     try {
-      const res = await fetch(`/api/admin/email-templates/${id}/preview`);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/admin/email-templates/${id}/preview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const html = await res.text();
       setPreviewHtml(html);
       setPreviewOpen(true);
@@ -160,8 +166,10 @@ export default function EmailTemplatesPage() {
   const handleActivate = async (id: string) => {
     setActionLoading(id);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/email-templates/${id}/activate`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {
@@ -181,8 +189,10 @@ export default function EmailTemplatesPage() {
   const handleDeactivate = async (id: string) => {
     setActionLoading(id);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/email-templates/${id}/activate`, {
         method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {
@@ -208,8 +218,10 @@ export default function EmailTemplatesPage() {
       cancelText: "Hủy",
       onOk: async () => {
         try {
+          const token = localStorage.getItem("token");
           const res = await fetch(`/api/admin/email-templates/${id}`, {
             method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
           });
           const data = await res.json();
           if (data.success) {
@@ -250,11 +262,15 @@ export default function EmailTemplatesPage() {
 
     setSendingTest(true);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(
         `/api/admin/email-templates/${testTemplateId}/test`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({ email: testEmail }),
         },
       );
@@ -277,8 +293,10 @@ export default function EmailTemplatesPage() {
   const handleSetDefault = async (id: string) => {
     setActionLoading(id);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/email-templates/${id}/set-default`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {
