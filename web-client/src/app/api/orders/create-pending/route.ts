@@ -8,11 +8,6 @@ function generateOrderNumber(): string {
   return `TKH${Math.random().toString(36).substring(2, 8).toUpperCase()}`
 }
 
-// Add minutes to date
-function addMinutes(date: Date, minutes: number): Date {
-  return new Date(date.getTime() + minutes * 60 * 1000)
-}
-
 interface CreatePendingOrderBody {
   eventId: string
   seatIds: string[]
@@ -115,16 +110,16 @@ export async function POST(request: NextRequest) {
     const totalAmount = seats.reduce((sum, seat) => sum + Number(seat.price), 0)
     const orderNumber = generateOrderNumber()
     const orderId = randomUUID()
-    const expiresAt = addMinutes(new Date(), 15) // 15 minutes to complete payment (matches lock duration)
 
     // Generate access token for ticketless authentication
     const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
 
     // Create order with PENDING status (no customer info yet)
+    // Use MySQL DATE_ADD(NOW(), INTERVAL 15 MINUTE) to avoid timezone issues
     await execute(
       `INSERT INTO orders (id, order_number, event_id, total_amount, status, customer_name, customer_email, customer_phone, expires_at, access_token_hash, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'PENDING', '', '', '', ?, ?, NOW(), NOW())`,
-      [orderId, orderNumber, eventId, totalAmount, expiresAt, accessTokenHash]
+       VALUES (?, ?, ?, ?, 'PENDING', '', '', '', DATE_ADD(NOW(), INTERVAL 15 MINUTE), ?, NOW(), NOW())`,
+      [orderId, orderNumber, eventId, totalAmount, accessTokenHash]
     )
 
     // Create order items
@@ -137,10 +132,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Get the expires_at from database to return to client
+    const orderData = await queryOne<{expires_at: Date}>(
+      'SELECT expires_at FROM orders WHERE id = ?',
+      [orderId]
+    )
+
     console.log(
-      `[CREATE PENDING ORDER] Created order ${orderNumber} for ${
-        seats.length
-      } seats, expires at ${expiresAt.toISOString()}`
+      `[CREATE PENDING ORDER] Created order ${orderNumber} for ${seats.length} seats, expires in 15 minutes`
     )
 
     return NextResponse.json({
@@ -150,7 +149,7 @@ export async function POST(request: NextRequest) {
         orderNumber,
         totalAmount,
         status: 'PENDING',
-        expiresAt: expiresAt.toISOString(),
+        expiresAt: orderData?.expires_at ? new Date(orderData.expires_at).toISOString() : null,
         accessToken, // Return token for checkout page
       },
     })
