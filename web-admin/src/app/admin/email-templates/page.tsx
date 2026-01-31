@@ -22,6 +22,8 @@ import {
   PoweroffOutlined,
   CheckCircleOutlined,
   SendOutlined,
+  StarOutlined,
+  StarFilled,
 } from "@ant-design/icons";
 import Link from "next/link";
 
@@ -84,6 +86,7 @@ const CATEGORY_OPTIONS = [
 interface EmailTemplate {
   id: string;
   name: string;
+  purpose: string | null;
   category: TemplateCategory;
   description: string | null;
   subject: string;
@@ -91,6 +94,7 @@ interface EmailTemplate {
   textContent: string | null;
   variables: string[];
   isActive: boolean;
+  isDefault: boolean;
   version: number;
   createdBy: string | null;
   createdAt: string;
@@ -269,6 +273,28 @@ export default function EmailTemplatesPage() {
     }
   };
 
+  // Set default template
+  const handleSetDefault = async (id: string) => {
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/api/admin/email-templates/${id}/set-default`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.success) {
+        message.success(data.message || "Đã đặt làm mặc định");
+        fetchTemplates();
+      } else {
+        message.error(data.error || "Không thể đặt mặc định");
+      }
+    } catch (error) {
+      console.error("Failed to set default:", error);
+      message.error("Lỗi khi đặt mặc định");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // Table columns
   const columns: ColumnsType<EmailTemplate> = [
     {
@@ -301,12 +327,31 @@ export default function EmailTemplatesPage() {
       ellipsis: true,
       render: (name: string, record) => (
         <div>
-          <div className="font-medium text-gray-900">{name}</div>
+          <div className="font-medium text-gray-900">
+            {name}
+            {record.isDefault && (
+              <Tag color="gold" className="ml-2" style={{ fontSize: 10 }}>
+                <StarFilled /> Mặc định
+              </Tag>
+            )}
+          </div>
           <div className="text-xs text-gray-500 truncate max-w-xs">
             {record.description || record.subject}
           </div>
         </div>
       ),
+    },
+    {
+      title: "Purpose",
+      dataIndex: "purpose",
+      key: "purpose",
+      width: 160,
+      render: (purpose: string | null) =>
+        purpose ? (
+          <Tag color="cyan">{purpose}</Tag>
+        ) : (
+          <span className="text-gray-400 text-xs">Chưa đặt</span>
+        ),
     },
     {
       title: "Version",
@@ -347,10 +392,10 @@ export default function EmailTemplatesPage() {
     {
       title: "Thao tác",
       key: "actions",
-      width: 220,
+      width: 280,
       align: "center",
       render: (_, record) => (
-        <Space size="small">
+        <Space size="small" wrap>
           <Tooltip title="Xem trước">
             <Button
               size="small"
@@ -372,6 +417,18 @@ export default function EmailTemplatesPage() {
               <Button size="small" icon={<EditOutlined />} />
             </Link>
           </Tooltip>
+          {/* Set Default button - only show if has purpose and not already default */}
+          {record.purpose && !record.isDefault && (
+            <Tooltip title={`Đặt làm mặc định cho ${record.purpose}`}>
+              <Button
+                size="small"
+                icon={<StarOutlined />}
+                onClick={() => handleSetDefault(record.id)}
+                loading={actionLoading === record.id}
+                style={{ color: "#faad14" }}
+              />
+            </Tooltip>
+          )}
           {record.isActive ? (
             <Tooltip title="Hủy kích hoạt">
               <Button

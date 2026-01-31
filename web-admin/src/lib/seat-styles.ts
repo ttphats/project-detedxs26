@@ -57,6 +57,14 @@ export const SOLD_SEAT_COLORS: SeatColorConfig = {
   armrest: "bg-gray-800",
 };
 
+// Locked seat colors (amber - held by someone else)
+export const LOCKED_SEAT_COLORS: SeatColorConfig = {
+  back: "from-amber-400 to-amber-500",
+  cushion: "from-amber-500 to-amber-600",
+  armrest: "bg-amber-600",
+  glow: "shadow-amber-500/50",
+};
+
 // Selected seat colors
 export const SELECTED_SEAT_COLORS: SeatColorConfig = {
   back: "from-red-500 to-red-600",

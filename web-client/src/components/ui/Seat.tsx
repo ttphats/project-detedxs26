@@ -4,14 +4,8 @@ import {
   SEAT_COLORS,
   SOLD_SEAT_COLORS,
   SELECTED_SEAT_COLORS,
+  LOCKED_SEAT_COLORS,
 } from "@/lib/seat-styles";
-
-// Locked seat colors (gray to indicate "held by someone else - not available")
-const LOCKED_SEAT_COLORS = {
-  back: "from-gray-500 to-gray-600",
-  cushion: "from-gray-600 to-gray-700",
-  armrest: "bg-gray-700",
-};
 
 interface SeatProps {
   id: string;
@@ -192,7 +186,7 @@ export function SeatLegend() {
       {/* Locked by others */}
       <div className="flex items-center gap-2">
         <div
-          className={`w-6 h-6 rounded-md bg-gradient-to-b ${lockedColors.back} opacity-50`}
+          className={`w-6 h-6 rounded-md bg-gradient-to-b ${lockedColors.back}`}
         />
         <span className="text-sm text-gray-300">Đang giữ</span>
       </div>
