@@ -77,6 +77,7 @@ export async function POST(request: NextRequest, {params}: {params: Promise<{id:
     const input = confirmPaymentSchema.parse(body)
 
     // Process payment confirmation in transaction
+    // Increase timeout to 30 seconds for remote database with high latency
     const result = await prisma.$transaction(async (tx) => {
       // Get order with all relations
       const order = await tx.order.findUnique({
@@ -206,6 +207,8 @@ export async function POST(request: NextRequest, {params}: {params: Promise<{id:
       })
 
       return {order, updatedOrder}
+    }, {
+      timeout: 30000, // 30 seconds timeout for remote database
     })
 
     // Generate QR code (outside transaction)
