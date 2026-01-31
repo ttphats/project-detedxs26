@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { events } from "@/lib/mock-data";
+import { formatVNDate } from "@/lib/date-utils";
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
@@ -86,7 +87,7 @@ function OrderSuccessContent() {
                   <Calendar className="w-4 h-4 text-red-500" />
                 </div>
                 <span>
-                  {new Date(event.date).toLocaleDateString("vi-VN", {
+                  {formatVNDate(event.date, {
                     weekday: "long",
                     year: "numeric",
                     month: "long",

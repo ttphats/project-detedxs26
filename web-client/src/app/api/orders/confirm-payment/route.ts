@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get order
+    // Get order - also check if expired using database NOW() to avoid timezone issues
     const order = await queryOne<{
       id: string
       order_number: string
@@ -39,8 +39,11 @@ export async function POST(request: NextRequest) {
       expires_at: Date
       access_token_hash: string
       event_id: string
+      is_expired: number // 1 if expired, 0 if not
     }>(
-      'SELECT id, order_number, status, expires_at, access_token_hash, event_id FROM orders WHERE order_number = ?',
+      `SELECT id, order_number, status, expires_at, access_token_hash, event_id,
+              (expires_at < NOW()) as is_expired
+       FROM orders WHERE order_number = ?`,
       [orderNumber]
     )
 
@@ -88,8 +91,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if order has expired
-    if (new Date(order.expires_at) < new Date()) {
+    // Check if order has expired - use database is_expired to avoid timezone issues
+    const expiresAt = new Date(order.expires_at)
+    console.log(`[CONFIRM PAYMENT] Order ${orderNumber} expires_at: ${expiresAt.toISOString()}, is_expired (from DB): ${order.is_expired}`)
+
+    if (order.is_expired === 1) {
+      console.log(`[CONFIRM PAYMENT] Order ${orderNumber} has expired (checked by database NOW())`)
       return NextResponse.json(
         {
           success: false,

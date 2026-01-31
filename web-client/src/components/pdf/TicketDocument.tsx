@@ -273,9 +273,14 @@ const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
-// Format date
+// Format date - database stores Vietnam time but JS parses as UTC
 const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString("vi-VN", {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "-";
+  // Subtract 7 hours to correct timezone offset
+  const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
+  return vnDate.toLocaleDateString("vi-VN", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -283,9 +288,14 @@ const formatDate = (dateString: string): string => {
   });
 };
 
-// Format time
+// Format time - database stores Vietnam time but JS parses as UTC
 const formatTime = (dateString: string): string => {
-  return new Date(dateString).toLocaleTimeString("vi-VN", {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "-";
+  // Subtract 7 hours to correct timezone offset
+  const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
+  return vnDate.toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
   });

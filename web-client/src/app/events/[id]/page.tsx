@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Calendar, MapPin, Clock, Check, ArrowRight } from "lucide-react";
 import { Button, Card } from "@/components";
 import { getEventById } from "@/lib/mock-data";
+import { formatVNDate } from "@/lib/date-utils";
 
 export default function EventDetailPage({
   params,
@@ -48,7 +49,7 @@ export default function EventDetailPage({
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5" />
                 <span>
-                  {new Date(event.date).toLocaleDateString("en-US", {
+                  {formatVNDate(event.date, {
                     weekday: "long",
                     year: "numeric",
                     month: "long",

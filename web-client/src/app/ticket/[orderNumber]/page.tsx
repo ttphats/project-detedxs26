@@ -19,6 +19,7 @@ import {
   Users,
   Shield,
 } from "lucide-react";
+import { formatVNDate, formatVNTime } from "@/lib/date-utils";
 
 interface TicketData {
   orderNumber: string;
@@ -139,7 +140,7 @@ export default function TicketPage({
   }, [orderNumber, token]);
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("vi-VN", {
+    return formatVNDate(dateString, {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -147,11 +148,8 @@ export default function TicketPage({
     });
   };
 
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const formatTimeLocal = (dateString: string) => {
+    return formatVNTime(dateString);
   };
 
   const formatCurrency = (amount: number) => {
@@ -368,7 +366,7 @@ export default function TicketPage({
                       </p>
                       <p className="text-sm text-white font-medium">
                         {ticket.event
-                          ? formatTime(ticket.event.startTime)
+                          ? formatTimeLocal(ticket.event.startTime)
                           : "-"}
                       </p>
                     </div>
