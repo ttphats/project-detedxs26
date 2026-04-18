@@ -84,3 +84,44 @@ export async function getEventSeats(
   return reply.send(successResponse(seats));
 }
 
+// GET /events/:eventId/seats/stream - SSE for real-time seat updates
+export async function seatsStream(
+  request: FastifyRequest<{ Params: { eventId: string }; Querystring: { sessionId?: string } }>,
+  reply: FastifyReply
+) {
+  const { eventId } = request.params;
+  const { sessionId } = request.query;
+
+  // Set SSE headers
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  // Send initial seats data
+  const seats = await seatService.getEventSeats(eventId, sessionId);
+  reply.raw.write(`data: ${JSON.stringify({ type: 'init', seats })}\n\n`);
+
+  // Keep connection alive with heartbeat
+  const heartbeat = setInterval(() => {
+    reply.raw.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`);
+  }, 30000);
+
+  // Poll for seat changes every 3 seconds
+  const pollInterval = setInterval(async () => {
+    try {
+      const updatedSeats = await seatService.getEventSeats(eventId, sessionId);
+      reply.raw.write(`data: ${JSON.stringify({ type: 'update', seats: updatedSeats })}\n\n`);
+    } catch (error) {
+      console.error('SSE polling error:', error);
+    }
+  }, 3000);
+
+  // Clean up on close
+  request.raw.on('close', () => {
+    clearInterval(heartbeat);
+    clearInterval(pollInterval);
+  });
+}

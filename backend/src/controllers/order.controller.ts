@@ -57,3 +57,22 @@ export async function confirmPayment(
   );
 }
 
+// GET /orders/:orderNumber
+export async function getOrderByNumber(
+  request: FastifyRequest<{
+    Params: { orderNumber: string };
+    Querystring: { token: string };
+  }>,
+  reply: FastifyReply
+) {
+  const { orderNumber } = request.params;
+  const { token } = request.query;
+
+  if (!orderNumber || !token) {
+    throw new BadRequestError('Missing order number or token');
+  }
+
+  const order = await orderService.getOrderByNumber(orderNumber, token);
+
+  return reply.send(successResponse(order));
+}

@@ -20,6 +20,7 @@ interface TicketType extends RowDataPacket {
 interface Event extends RowDataPacket {
   id: string;
   name: string;
+  status: string;
 }
 
 interface SeatCount extends RowDataPacket {
@@ -48,7 +49,8 @@ export async function listTicketTypes(eventId?: string) {
   sql += ' ORDER BY tt.sort_order, tt.name';
 
   const [ticketTypes] = await pool.query<TicketType[]>(sql, params);
-  const [events] = await pool.query<Event[]>('SELECT id, name FROM events ORDER BY created_at DESC');
+  // Get events - PUBLISHED first
+  const [events] = await pool.query<Event[]>('SELECT id, name, status FROM events ORDER BY status ASC, created_at DESC');
 
   return { ticketTypes, events };
 }

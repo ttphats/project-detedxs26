@@ -145,7 +145,18 @@ function CheckoutContent() {
   // Fetch event data from API (fallback if order doesn't have event info)
   useEffect(() => {
     const fetchEvent = async () => {
-      if (!eventId || orderData?.event) {
+      if (!eventId) return;
+
+      // Use event info from order response if available
+      if (orderData?.event) {
+        setEvent({
+          id: orderData.event.id,
+          name: orderData.event.name,
+          venue: orderData.event.venue,
+          eventDate: orderData.event.eventDate,
+          date: orderData.event.eventDate,
+          seatMap: [],
+        });
         return;
       }
 

@@ -72,13 +72,16 @@ export default function TicketTypesPage() {
       if (data.success) {
         setTicketTypes(data.data.ticketTypes);
         setEvents(data.data.events);
-        // Auto-select first event if none selected
+        // Auto-select PUBLISHED event first, otherwise first event
         if (!eventId && data.data.events.length > 0) {
-          const firstEventId = data.data.events[0].id;
-          setSelectedEvent(firstEventId);
+          const publishedEvent = data.data.events.find(
+            (e: Event) => e.status === "PUBLISHED",
+          );
+          const defaultEventId = publishedEvent?.id || data.data.events[0].id;
+          setSelectedEvent(defaultEventId);
           // Fetch again with the selected event
           const res2 = await fetch(
-            `/api/admin/ticket-types?eventId=${firstEventId}`,
+            `/api/admin/ticket-types?eventId=${defaultEventId}`,
             { headers: { Authorization: `Bearer ${token}` } },
           );
           const data2 = await res2.json();

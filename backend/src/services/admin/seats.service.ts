@@ -44,10 +44,10 @@ export async function listSeats(input: ListSeatsInput) {
     orderBy: [{ row: 'asc' }, { col: 'asc' }],
   });
 
-  // Get events for filter dropdown
+  // Get events for filter dropdown - PUBLISHED first
   const events = await prisma.event.findMany({
-    select: { id: true, name: true },
-    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, status: true },
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
   });
 
   // Calculate stats

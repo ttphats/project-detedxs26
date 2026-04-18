@@ -299,7 +299,19 @@ export default function OrdersPage() {
       });
       const data = await res.json();
       if (data.success) {
-        message.success("Đã xác nhận thanh toán! Email vé đã được gửi.");
+        const emailStatus = data.data?.emailStatus;
+        const emailError = data.data?.emailError;
+        const sentTo = data.data?.emailSentTo;
+        if (emailStatus === "SENT") {
+          message.success(
+            `Đã xác nhận thanh toán! Email vé đã gửi đến ${sentTo}.`,
+          );
+        } else {
+          message.warning({
+            content: `Đã xác nhận thanh toán nhưng gửi email thất bại: ${emailError || "Unknown error"}. Bạn có thể bấm "Gửi lại email" để thử lại.`,
+            duration: 8,
+          });
+        }
         setConfirmModal(null);
         setConfirmTemplateId(undefined);
         fetchData();
@@ -347,9 +359,19 @@ export default function OrdersPage() {
       });
       const data = await res.json();
       if (data.success) {
-        message.success(
-          `Đã từ chối đơn hàng. ${data.data.releasedSeats} ghế đã được mở lại.`,
-        );
+        const emailStatus = data.data?.emailStatus;
+        const emailError = data.data?.emailError;
+        const released = data.data?.releasedSeats ?? 0;
+        if (emailStatus === "SENT") {
+          message.success(
+            `Đã từ chối đơn hàng. ${released} ghế đã mở lại. Email thông báo đã gửi.`,
+          );
+        } else {
+          message.warning({
+            content: `Đã từ chối đơn hàng (${released} ghế mở lại) nhưng gửi email thất bại: ${emailError || "Unknown error"}.`,
+            duration: 8,
+          });
+        }
         setRejectModal(null);
         setRejectReason("");
         setRejectTemplateId(undefined);
@@ -388,6 +410,7 @@ export default function OrdersPage() {
     const token = localStorage.getItem("token");
     let successCount = 0;
     let failCount = 0;
+    let emailFailCount = 0;
 
     for (const order of pendingSelectedOrders) {
       try {
@@ -404,8 +427,12 @@ export default function OrdersPage() {
           }),
         });
         const data = await res.json();
-        if (data.success) successCount++;
-        else failCount++;
+        if (data.success) {
+          successCount++;
+          if (data.data?.emailStatus !== "SENT") emailFailCount++;
+        } else {
+          failCount++;
+        }
       } catch {
         failCount++;
       }
@@ -414,9 +441,14 @@ export default function OrdersPage() {
     setBatchLoading(false);
     setBatchEmailModal(false);
     setSelectedRowKeys([]);
-    message.success(
-      `Đã xác nhận ${successCount} đơn hàng${failCount > 0 ? `, ${failCount} thất bại` : ""}`,
-    );
+    const parts = [`Đã xác nhận ${successCount} đơn hàng`];
+    if (failCount > 0) parts.push(`${failCount} thất bại`);
+    if (emailFailCount > 0) parts.push(`${emailFailCount} email chưa gửi được`);
+    if (emailFailCount > 0) {
+      message.warning({ content: parts.join(", "), duration: 8 });
+    } else {
+      message.success(parts.join(", "));
+    }
     fetchData();
   };
 
@@ -430,6 +462,7 @@ export default function OrdersPage() {
     const token = localStorage.getItem("token");
     let successCount = 0;
     let failCount = 0;
+    let emailFailCount = 0;
 
     for (const order of pendingSelectedOrders) {
       try {
@@ -445,8 +478,12 @@ export default function OrdersPage() {
           }),
         });
         const data = await res.json();
-        if (data.success) successCount++;
-        else failCount++;
+        if (data.success) {
+          successCount++;
+          if (data.data?.emailStatus !== "SENT") emailFailCount++;
+        } else {
+          failCount++;
+        }
       } catch {
         failCount++;
       }
@@ -455,9 +492,14 @@ export default function OrdersPage() {
     setBatchLoading(false);
     setBatchEmailModal(false);
     setSelectedRowKeys([]);
-    message.success(
-      `Đã từ chối ${successCount} đơn hàng${failCount > 0 ? `, ${failCount} thất bại` : ""}`,
-    );
+    const parts = [`Đã từ chối ${successCount} đơn hàng`];
+    if (failCount > 0) parts.push(`${failCount} thất bại`);
+    if (emailFailCount > 0) parts.push(`${emailFailCount} email chưa gửi được`);
+    if (emailFailCount > 0) {
+      message.warning({ content: parts.join(", "), duration: 8 });
+    } else {
+      message.success(parts.join(", "));
+    }
     fetchData();
   };
 
@@ -508,7 +550,7 @@ export default function OrdersPage() {
   // Calculate revenue from PAID orders only
   const totalRevenue = orders
     .filter((o) => o.status === "PAID")
-    .reduce((sum, o) => sum + o.totalAmount, 0);
+    .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
 
   const columns: ColumnsType<Order> = [
     {
@@ -558,7 +600,7 @@ export default function OrdersPage() {
       width: 150,
       render: (_, record) => (
         <div>
-          {record.seats.slice(0, 3).map((s, i) => (
+          {(record.seats || []).slice(0, 3).map((s, i) => (
             <Tag
               key={i}
               color={
@@ -572,7 +614,9 @@ export default function OrdersPage() {
               {s.seatNumber}
             </Tag>
           ))}
-          {record.seats.length > 3 && <Tag>+{record.seats.length - 3}</Tag>}
+          {(record.seats?.length || 0) > 3 && (
+            <Tag>+{record.seats.length - 3}</Tag>
+          )}
         </div>
       ),
     },
@@ -584,7 +628,7 @@ export default function OrdersPage() {
       align: "right",
       render: (amount) => (
         <span className="font-medium text-green-600">
-          {amount.toLocaleString("vi-VN")} ₫
+          {Number(amount || 0).toLocaleString("vi-VN")} ₫
         </span>
       ),
     },
@@ -893,7 +937,10 @@ export default function OrdersPage() {
                 </Descriptions.Item>
                 <Descriptions.Item label="Tổng tiền" span={2}>
                   <strong className="text-lg text-green-600">
-                    {detailModal.totalAmount.toLocaleString("vi-VN")} ₫
+                    {Number(detailModal.totalAmount || 0).toLocaleString(
+                      "vi-VN",
+                    )}{" "}
+                    ₫
                   </strong>
                 </Descriptions.Item>
               </Descriptions>
@@ -936,7 +983,7 @@ export default function OrdersPage() {
                       key: "price",
                       align: "right" as const,
                       render: (price: number) =>
-                        `${price.toLocaleString("vi-VN")} ₫`,
+                        `${Number(price || 0).toLocaleString("vi-VN")} ₫`,
                     },
                   ]}
                 />
@@ -978,7 +1025,10 @@ export default function OrdersPage() {
                 </p>
                 <p>
                   <strong>Số tiền:</strong>{" "}
-                  {confirmModal?.totalAmount.toLocaleString("vi-VN")} ₫
+                  {Number(confirmModal?.totalAmount || 0).toLocaleString(
+                    "vi-VN",
+                  )}{" "}
+                  ₫
                 </p>
                 <p>
                   <strong>Ghế:</strong>{" "}

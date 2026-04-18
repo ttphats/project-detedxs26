@@ -63,7 +63,7 @@ export async function getPublishedEvents(status: string = 'PUBLISHED', featured?
 // Get event by ID
 export async function getEventById(eventId: string) {
   const event = await queryOne<Event & { speaker_count: number }>(
-    `SELECT e.*, 
+    `SELECT e.*,
       (SELECT COUNT(*) FROM speakers WHERE event_id = e.id AND is_active = 1) as speaker_count
     FROM events e
     WHERE e.id = ?`,
@@ -73,6 +73,60 @@ export async function getEventById(eventId: string) {
   if (!event) {
     throw new NotFoundError('Event not found');
   }
+
+  // Get ticket types
+  const ticketTypes = await query<{
+    id: string;
+    name: string;
+    subtitle: string | null;
+    description: string | null;
+    price: number;
+    benefits: string | null;
+  }>(
+    'SELECT id, name, subtitle, description, price, benefits FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY price ASC',
+    [eventId]
+  );
+
+  // Get seats grouped by row
+  const seats = await query<{
+    id: string;
+    seat_number: number;
+    row: string;
+    section: string | null;
+    seat_type: string;
+    price: number;
+    status: string;
+  }>(
+    'SELECT id, seat_number, row, section, seat_type, price, status FROM seats WHERE event_id = ? ORDER BY row ASC, seat_number ASC',
+    [eventId]
+  );
+
+  // Map seat types to frontend-supported values
+  const mapSeatType = (type: string): 'VIP' | 'STANDARD' | 'ECONOMY' => {
+    const upperType = type?.toUpperCase() || 'STANDARD';
+    if (upperType === 'VIP') return 'VIP';
+    if (upperType === 'ECONOMY' || upperType === 'EARLY BIRD') return 'ECONOMY';
+    return 'STANDARD';
+  };
+
+  // Group seats by row
+  const seatMap = seats.reduce((acc, seat) => {
+    const existing = acc.find((r) => r.row === seat.row);
+    const seatData = {
+      id: seat.id,
+      number: seat.seat_number,
+      status: seat.status.toLowerCase(), // Normalize to lowercase for frontend
+      price: Number(seat.price), // Convert Decimal to number
+      seatType: mapSeatType(seat.seat_type),
+      section: seat.section,
+    };
+    if (existing) {
+      existing.seats.push(seatData);
+    } else {
+      acc.push({ row: seat.row, seats: [seatData] });
+    }
+    return acc;
+  }, [] as { row: string; seats: { id: string; number: number; status: string; price: number; seatType: string; section: string | null }[] }[]);
 
   return {
     id: event.id,
@@ -90,6 +144,15 @@ export async function getEventById(eventId: string) {
     status: event.status,
     maxCapacity: event.max_capacity,
     availableSeats: event.available_seats,
+    ticketTypes: ticketTypes.map((tt) => ({
+      id: tt.id,
+      name: tt.name,
+      subtitle: tt.subtitle,
+      description: tt.description,
+      price: tt.price,
+      benefits: tt.benefits ? JSON.parse(tt.benefits) : [],
+    })),
+    seatMap,
   };
 }
 
@@ -105,5 +168,91 @@ export async function getEventBySlug(slug: string) {
   }
 
   return event;
+}
+
+// Get event speakers
+export async function getEventSpeakers(eventId: string) {
+  // First check if eventId is an ID or slug
+  let realEventId = eventId;
+  const eventBySlug = await queryOne<{ id: string }>(
+    'SELECT id FROM events WHERE slug = ? OR id = ?',
+    [eventId, eventId]
+  );
+
+  if (eventBySlug) {
+    realEventId = eventBySlug.id;
+  }
+
+  const speakers = await query<{
+    id: string;
+    name: string;
+    title: string | null;
+    company: string | null;
+    bio: string | null;
+    image_url: string | null;
+    topic: string | null;
+    social_links: string | null;
+    sort_order: number;
+  }>(
+    `SELECT id, name, title, company, bio, image_url, topic, social_links, sort_order
+     FROM speakers
+     WHERE event_id = ? AND is_active = 1
+     ORDER BY sort_order, name`,
+    [realEventId]
+  );
+
+  return speakers.map(s => ({
+    id: s.id,
+    name: s.name,
+    title: s.title || '',
+    company: s.company || '',
+    bio: s.bio || '',
+    image: s.image_url || '',
+    topic: s.topic || '',
+    socialLinks: s.social_links ? JSON.parse(s.social_links) : null,
+  }));
+}
+
+// Get event timeline
+export async function getEventTimeline(eventId: string) {
+  // First check if eventId is an ID or slug
+  let realEventId = eventId;
+  const eventBySlug = await queryOne<{ id: string }>(
+    'SELECT id FROM events WHERE slug = ? OR id = ?',
+    [eventId, eventId]
+  );
+
+  if (eventBySlug) {
+    realEventId = eventBySlug.id;
+  }
+
+  const timeline = await query<{
+    id: string;
+    start_time: string;
+    end_time: string;
+    title: string;
+    description: string | null;
+    speaker_name: string | null;
+    speaker_avatar_url: string | null;
+    type: string;
+    order_index: number;
+  }>(
+    `SELECT id, start_time, end_time, title, description, speaker_name, speaker_avatar_url, type, order_index
+     FROM event_timelines
+     WHERE event_id = ? AND status = 'PUBLISHED'
+     ORDER BY order_index, start_time`,
+    [realEventId]
+  );
+
+  return timeline.map(t => ({
+    id: t.id,
+    time: t.start_time,
+    endTime: t.end_time,
+    title: t.title,
+    description: t.description || '',
+    speaker: t.speaker_name || undefined,
+    speakerImage: t.speaker_avatar_url || undefined,
+    type: t.type.toLowerCase(),
+  }));
 }
 

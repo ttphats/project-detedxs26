@@ -21,21 +21,35 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const { seatIds, sessionId } = body;
+    const { seatIds, sessionId, eventId } = body as { seatIds?: string[]; sessionId?: string; eventId?: string };
 
-    if (!seatIds?.length || !sessionId) {
+    if (!sessionId) {
       return NextResponse.json({
         success: false,
-        error: 'Missing required fields: seatIds, sessionId',
+        error: 'Missing required field: sessionId',
       }, { status: 400 });
     }
 
-    // Only unlock seats that belong to this session
-    const placeholders = seatIds.map(() => '?').join(',');
-    await execute(
-      `DELETE FROM seat_locks WHERE seat_id IN (${placeholders}) AND session_id = ?`,
-      [...seatIds, sessionId]
-    );
+    // If seatIds provided, unlock specific seats. Otherwise unlock all seats for this session
+    if (seatIds?.length) {
+      const placeholders = seatIds.map(() => '?').join(',');
+      await execute(
+        `DELETE FROM seat_locks WHERE seat_id IN (${placeholders}) AND session_id = ?`,
+        [...seatIds, sessionId]
+      );
+    } else if (eventId) {
+      // Unlock all seats for this session and event
+      await execute(
+        `DELETE FROM seat_locks WHERE session_id = ? AND event_id = ?`,
+        [sessionId, eventId]
+      );
+    } else {
+      // Unlock all seats for this session
+      await execute(
+        `DELETE FROM seat_locks WHERE session_id = ?`,
+        [sessionId]
+      );
+    }
 
     return NextResponse.json({
       success: true,

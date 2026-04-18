@@ -8,34 +8,48 @@ import mysql from 'mysql2/promise';
 import { randomUUID } from 'crypto';
 
 const DB_CONFIG = {
-  host: '202.92.4.66',
+  host: '103.179.188.241',
   port: 3306,
-  user: 'jyndyeeuhosting_easyticketdb',
-  password: 'Easyticket@2026',
-  database: 'jyndyeeuhosting_easyticketdb',
+  user: 'rymukbi_admin',
+  password: 'Admin@2026',
+  database: 'rymukbi_easyticketdb',
 };
 
-// TEDx Brand Colors
+// TEDx Brand Colors - Premium palette
 const COLORS = {
-  red: '#e62b1e',
-  darkRed: '#b91c14',
-  black: '#110808',
+  red: '#EB0028',
+  darkRed: '#C50022',
+  black: '#000000',
+  charcoal: '#111111',
   darkGray: '#1a1a1a',
+  midGray: '#2d2d2d',
+  lightGray: '#888888',
   white: '#ffffff',
+  gold: '#d4af37',
 };
 
-// Common email wrapper
+// Common email wrapper - Premium dark theme
 const emailWrapper = (content) => `<!DOCTYPE html>
 <html lang="vi">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TEDxFPTUniversityHCMC</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>TEDxFPT University HCMC</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
 </head>
-<body style="margin: 0; padding: 0; background-color: ${COLORS.black}; font-family: 'Helvetica Neue', Arial, sans-serif;">
+<body style="margin: 0; padding: 0; background-color: ${COLORS.black}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: ${COLORS.black};">
     <tr>
-      <td align="center" style="padding: 40px 16px;">
+      <td align="center" style="padding: 48px 20px;">
         ${content}
       </td>
     </tr>
@@ -43,45 +57,87 @@ const emailWrapper = (content) => `<!DOCTYPE html>
 </body>
 </html>`;
 
-// Header component
+// Header component - Minimalist TEDx style
 const header = (badge, badgeColor = COLORS.red) => `
 <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%;">
+  <!-- Logo -->
   <tr>
-    <td style="text-align: center; padding-bottom: 32px;">
-      <div style="display: inline-block; background-color: ${badgeColor}; padding: 8px 20px;">
-        <span style="font-size: 10px; font-weight: 900; color: #ffffff; text-transform: uppercase; letter-spacing: 3px;">
-          ${badge}
-        </span>
-      </div>
+    <td style="text-align: center; padding-bottom: 40px;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+        <tr>
+          <td style="font-size: 42px; font-weight: 900; color: ${COLORS.white}; letter-spacing: -2px;">
+            TED<span style="color: ${COLORS.red}; font-weight: 900;">x</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size: 11px; font-weight: 500; color: ${COLORS.lightGray}; letter-spacing: 4px; text-transform: uppercase; padding-top: 4px;">
+            FPT University HCMC
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
+  <!-- Status Badge -->
   <tr>
-    <td style="text-align: center; padding-bottom: 32px;">
-      <h2 style="margin: 0; font-size: 36px; font-weight: 900; color: #ffffff; letter-spacing: -1px;">
-        TED<span style="font-weight: 300;">x</span>
-        <span style="font-size: 14px; font-weight: 400; color: #666; display: block; margin-top: 4px; letter-spacing: 3px; text-transform: uppercase;">FPT University HCMC</span>
-      </h2>
+    <td style="text-align: center; padding-bottom: 40px;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+        <tr>
+          <td style="background: linear-gradient(135deg, ${badgeColor} 0%, ${COLORS.darkRed} 100%); background-color: ${badgeColor}; padding: 12px 32px; border-radius: 2px;">
+            <span style="font-size: 11px; font-weight: 700; color: ${COLORS.white}; text-transform: uppercase; letter-spacing: 3px;">
+              ${badge}
+            </span>
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
 </table>`;
 
-// Footer component
+// Footer component - Clean & Professional
 const footer = `
-<table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; margin-top: 40px;">
+<table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; margin-top: 48px;">
+  <!-- Divider -->
   <tr>
-    <td style="text-align: center; padding: 32px 0; border-top: 1px solid rgba(255,255,255,0.1);">
-      <p style="margin: 0 0 16px 0; font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 2px;">
-        Cần hỗ trợ?
+    <td style="padding: 0 40px;">
+      <div style="height: 1px; background: linear-gradient(90deg, transparent 0%, ${COLORS.midGray} 50%, transparent 100%);"></div>
+    </td>
+  </tr>
+  <!-- Support -->
+  <tr>
+    <td style="text-align: center; padding: 40px 0 24px 0;">
+      <p style="margin: 0 0 8px 0; font-size: 13px; color: ${COLORS.lightGray};">
+        Cần hỗ trợ? Liên hệ với chúng tôi
       </p>
-      <a href="mailto:support@tedxfptuhcm.com" style="color: ${COLORS.red}; text-decoration: none; font-weight: 600;">
+      <a href="mailto:support@tedxfptuhcm.com" style="color: ${COLORS.red}; text-decoration: none; font-size: 14px; font-weight: 600;">
         support@tedxfptuhcm.com
       </a>
     </td>
   </tr>
+  <!-- Social Links -->
   <tr>
-    <td style="text-align: center; padding-bottom: 40px;">
-      <p style="margin: 0; font-size: 11px; color: #444;">
-        © 2026 TEDxFPTUniversityHCMC. All rights reserved.
+    <td style="text-align: center; padding-bottom: 24px;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+        <tr>
+          <td style="padding: 0 8px;">
+            <a href="https://facebook.com/tedxfptuhcmc" style="color: ${COLORS.lightGray}; text-decoration: none; font-size: 12px;">Facebook</a>
+          </td>
+          <td style="color: ${COLORS.midGray};">•</td>
+          <td style="padding: 0 8px;">
+            <a href="https://instagram.com/tedxfptuhcmc" style="color: ${COLORS.lightGray}; text-decoration: none; font-size: 12px;">Instagram</a>
+          </td>
+          <td style="color: ${COLORS.midGray};">•</td>
+          <td style="padding: 0 8px;">
+            <a href="https://tedxfptuhcmc.com" style="color: ${COLORS.lightGray}; text-decoration: none; font-size: 12px;">Website</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <!-- Copyright -->
+  <tr>
+    <td style="text-align: center; padding-bottom: 32px;">
+      <p style="margin: 0; font-size: 11px; color: ${COLORS.midGray};">
+        © 2026 TEDxFPT University HCMC. This independent TEDx event is operated under license from TED.
       </p>
     </td>
   </tr>
@@ -224,71 +280,85 @@ function extractVariables(html) {
 
 function buildTicketConfirmedTemplate() {
   return emailWrapper(`
-    ${header('✓ VÉ ĐÃ ĐƯỢC XÁC NHẬN')}
+    ${header('VÉ ĐÃ XÁC NHẬN')}
 
-    <!-- Greeting -->
-    <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%;">
+    <!-- Main Card -->
+    <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; background-color: ${COLORS.charcoal}; border-radius: 4px; overflow: hidden; border: 1px solid ${COLORS.midGray};">
+
+      <!-- Red accent bar -->
       <tr>
-        <td style="padding: 0 0 24px 0;">
-          <h1 style="margin: 0; font-size: 28px; font-weight: 900; color: #ffffff; line-height: 1.2;">
-            Xin chào <span style="color: ${COLORS.red};">{{customerName}}</span>,
+        <td style="height: 4px; background: ${COLORS.red};"></td>
+      </tr>
+
+      <!-- Greeting -->
+      <tr>
+        <td style="padding: 40px 40px 32px 40px;">
+          <h1 style="margin: 0 0 16px 0; font-size: 24px; font-weight: 300; color: ${COLORS.white}; line-height: 1.4;">
+            Xin chào <strong style="font-weight: 700;">{{customerName}}</strong>,
           </h1>
-          <p style="margin: 16px 0 0 0; font-size: 16px; color: #999; line-height: 1.6;">
-            Vé của bạn đã được xác nhận thành công. Dưới đây là thông tin chi tiết:
+          <p style="margin: 0; font-size: 16px; color: ${COLORS.lightGray}; line-height: 1.6;">
+            Vé của bạn đã được xác nhận. Hãy chuẩn bị sẵn sàng cho một trải nghiệm đáng nhớ!
           </p>
         </td>
       </tr>
-    </table>
 
-    <!-- Event Card -->
-    <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; background-color: ${COLORS.darkGray}; border-radius: 12px; overflow: hidden;">
+      <!-- Event Details -->
       <tr>
-        <td style="padding: 28px 32px; border-left: 4px solid ${COLORS.red};">
-          <h2 style="margin: 0 0 16px 0; font-size: 24px; font-weight: 900; color: #ffffff; text-transform: uppercase;">
-            {{eventName}}
-          </h2>
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <td style="padding: 0 40px 32px 40px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: ${COLORS.black}; border-radius: 4px;">
             <tr>
-              <td style="width: 50%; padding: 8px 0;">
-                <p style="margin: 0; font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 2px;">Ngày</p>
-                <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: 700; color: #fff;">{{eventDate}}</p>
-              </td>
-              <td style="width: 50%; padding: 8px 0;">
-                <p style="margin: 0; font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 2px;">Giờ</p>
-                <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: 700; color: #fff;">{{eventTime}}</p>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2" style="padding: 16px 0 0 0;">
-                <p style="margin: 0; font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 2px;">Địa điểm</p>
-                <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: 700; color: #fff;">{{eventVenue}}</p>
+              <td style="padding: 32px;">
+                <p style="margin: 0 0 8px 0; font-size: 11px; font-weight: 600; color: ${COLORS.red}; text-transform: uppercase; letter-spacing: 2px;">
+                  SỰ KIỆN
+                </p>
+                <h2 style="margin: 0 0 24px 0; font-size: 22px; font-weight: 700; color: ${COLORS.white};">
+                  {{eventName}}
+                </h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td style="width: 50%; padding-right: 16px;">
+                      <p style="margin: 0 0 4px 0; font-size: 11px; color: ${COLORS.lightGray}; text-transform: uppercase; letter-spacing: 1px;">Ngày</p>
+                      <p style="margin: 0; font-size: 15px; font-weight: 600; color: ${COLORS.white};">{{eventDate}}</p>
+                    </td>
+                    <td style="width: 50%;">
+                      <p style="margin: 0 0 4px 0; font-size: 11px; color: ${COLORS.lightGray}; text-transform: uppercase; letter-spacing: 1px;">Giờ</p>
+                      <p style="margin: 0; font-size: 15px; font-weight: 600; color: ${COLORS.white};">{{eventTime}}</p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding-top: 16px;">
+                      <p style="margin: 0 0 4px 0; font-size: 11px; color: ${COLORS.lightGray}; text-transform: uppercase; letter-spacing: 1px;">Địa điểm</p>
+                      <p style="margin: 0; font-size: 15px; font-weight: 600; color: ${COLORS.white};">{{eventVenue}}</p>
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
           </table>
         </td>
       </tr>
-    </table>
 
-    <!-- Order Info -->
-    <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; margin-top: 24px;">
+      <!-- Order Number -->
       <tr>
-        <td style="padding: 20px 24px; background-color: rgba(230, 43, 30, 0.1); border-radius: 8px;">
-          <p style="margin: 0; font-size: 12px; color: #999; text-transform: uppercase; letter-spacing: 2px;">Mã đơn hàng</p>
-          <p style="margin: 8px 0 0 0; font-size: 24px; font-weight: 900; color: ${COLORS.red}; font-family: monospace;">{{orderNumber}}</p>
+        <td style="padding: 0 40px 32px 40px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+              <td style="padding: 20px; background: linear-gradient(135deg, rgba(235,0,40,0.15) 0%, rgba(235,0,40,0.05) 100%); border-left: 3px solid ${COLORS.red};">
+                <p style="margin: 0 0 4px 0; font-size: 11px; color: ${COLORS.lightGray}; text-transform: uppercase; letter-spacing: 1px;">Mã đơn hàng</p>
+                <p style="margin: 0; font-size: 20px; font-weight: 700; color: ${COLORS.white}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace; letter-spacing: 1px;">{{orderNumber}}</p>
+              </td>
+            </tr>
+          </table>
         </td>
       </tr>
-    </table>
 
-    <!-- CTA Button -->
-    <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; margin-top: 32px;">
+      <!-- CTA Button -->
       <tr>
-        <td style="text-align: center;">
-          <a href="{{ticketUrl}}" style="display: inline-block; background: linear-gradient(135deg, ${COLORS.red} 0%, ${COLORS.darkRed} 100%); background-color: ${COLORS.red}; color: #ffffff; padding: 18px 48px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 4px;">
-            🎫 XEM VÉ ĐIỆN TỬ
+        <td style="padding: 0 40px 40px 40px; text-align: center;">
+          <a href="{{ticketUrl}}" style="display: inline-block; background-color: ${COLORS.red}; color: ${COLORS.white}; padding: 16px 48px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; text-decoration: none; border-radius: 2px;">
+            Xem vé điện tử
           </a>
-          <p style="margin: 16px 0 0 0; font-size: 12px; color: #666;">
-            Hoặc truy cập: <a href="{{ticketUrl}}" style="color: ${COLORS.red};">{{ticketUrl}}</a>
-          </p>
         </td>
       </tr>
     </table>

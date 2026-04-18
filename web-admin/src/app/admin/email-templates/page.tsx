@@ -24,7 +24,11 @@ import {
   SendOutlined,
   StarOutlined,
   StarFilled,
+  UploadOutlined,
+  CloudUploadOutlined,
 } from "@ant-design/icons";
+import Dragger from "antd/es/upload/Dragger";
+import type { UploadFile } from "antd/es/upload/interface";
 import Link from "next/link";
 
 // Template categories - flexible system
@@ -118,6 +122,18 @@ export default function EmailTemplatesPage() {
   const [testTemplateName, setTestTemplateName] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
 
+  // Upload modal state
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadedHtml, setUploadedHtml] = useState("");
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+    name: "",
+    subject: "",
+    purpose: "ORDER_CONFIRMATION",
+    description: "",
+  });
+
   const fetchTemplates = async () => {
     setLoading(true);
     try {
@@ -152,14 +168,113 @@ export default function EmailTemplatesPage() {
       const res = await fetch(`/api/admin/email-templates/${id}/preview`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const html = await res.text();
-      setPreviewHtml(html);
-      setPreviewOpen(true);
+      const json = await res.json();
+      if (json.success && json.data?.html) {
+        setPreviewHtml(json.data.html);
+        setPreviewOpen(true);
+      } else {
+        message.error(json.error || "Không thể xem trước template");
+      }
     } catch (error) {
       console.error("Failed to preview:", error);
       message.error("Không thể xem trước template");
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  // Handle file upload
+  const handleUpload = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return false; // Prevent auto upload
+  };
+
+  const handleUploadSubmit = async (fileList: UploadFile[]) => {
+    if (fileList.length === 0) {
+      message.error("Vui lòng chọn file HTML và images");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const formData = new FormData();
+
+      fileList.forEach((file) => {
+        if (file.originFileObj) {
+          formData.append("files", file.originFileObj);
+        }
+      });
+
+      const res = await fetch("/api/admin/email-templates/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setUploadedHtml(data.data.htmlContent);
+        setUploadedImages(data.data.images || []);
+        message.success("Upload thành công! Xem preview và lưu template.");
+      } else {
+        message.error(data.error || "Upload thất bại");
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+      message.error("Lỗi khi upload files");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSaveUploadedTemplate = async () => {
+    if (!uploadedHtml) {
+      message.error("Chưa có HTML content");
+      return;
+    }
+    if (!uploadForm.name || !uploadForm.subject) {
+      message.error("Vui lòng nhập tên và tiêu đề email");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/admin/email-templates/upload/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...uploadForm,
+          htmlContent: uploadedHtml,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        message.success("Đã lưu template thành công!");
+        setUploadModalOpen(false);
+        setUploadedHtml("");
+        setUploadedImages([]);
+        setUploadForm({
+          name: "",
+          subject: "",
+          purpose: "ORDER_CONFIRMATION",
+          description: "",
+        });
+        fetchTemplates();
+      } else {
+        message.error(data.error || "Không thể lưu template");
+      }
+    } catch (error) {
+      console.error("Save failed:", error);
+      message.error("Lỗi khi lưu template");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -497,11 +612,20 @@ export default function EmailTemplatesPage() {
               Tạo và quản lý email templates linh hoạt theo danh mục
             </p>
           </div>
-          <Link href="/admin/email-templates/create">
-            <Button type="primary" icon={<PlusOutlined />} size="large">
-              Tạo Template
+          <Space>
+            <Button
+              icon={<UploadOutlined />}
+              size="large"
+              onClick={() => setUploadModalOpen(true)}
+            >
+              Upload từ Canva
             </Button>
-          </Link>
+            <Link href="/admin/email-templates/create">
+              <Button type="primary" icon={<PlusOutlined />} size="large">
+                Tạo Template
+              </Button>
+            </Link>
+          </Space>
         </div>
 
         {/* Filter */}
@@ -605,6 +729,182 @@ export default function EmailTemplatesPage() {
                 thật
               </p>
             </div>
+          </div>
+        </Modal>
+
+        {/* Upload Modal */}
+        <Modal
+          title={
+            <div className="flex items-center gap-2">
+              <CloudUploadOutlined className="text-blue-500" />
+              <span>Upload Email Template từ Canva</span>
+            </div>
+          }
+          open={uploadModalOpen}
+          onCancel={() => {
+            setUploadModalOpen(false);
+            setUploadedHtml("");
+            setUploadedImages([]);
+          }}
+          width={900}
+          footer={null}
+        >
+          <div className="space-y-6 py-4">
+            {!uploadedHtml ? (
+              <>
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-blue-700 mb-2">
+                    <strong>Hướng dẫn upload từ Canva:</strong>
+                  </p>
+                  <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
+                    <li>
+                      Export template từ Canva → chọn <strong>HTML</strong>
+                    </li>
+                    <li>
+                      Canva sẽ tải về: <code>email.html</code> + folder{" "}
+                      <code>images/</code>
+                    </li>
+                    <li>
+                      <strong>Nén cả 2 thành file .zip</strong> rồi upload lên
+                      đây
+                    </li>
+                  </ol>
+                </div>
+                <Dragger
+                  multiple
+                  accept=".zip,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.svg"
+                  beforeUpload={() => false}
+                  onChange={(info) => {
+                    if (info.fileList.length > 0) {
+                      handleUploadSubmit(info.fileList);
+                    }
+                  }}
+                  disabled={uploading}
+                >
+                  <p className="ant-upload-drag-icon">
+                    <CloudUploadOutlined
+                      style={{ fontSize: 48, color: "#1890ff" }}
+                    />
+                  </p>
+                  <p className="ant-upload-text">
+                    Kéo thả hoặc click để chọn file
+                  </p>
+                  <p className="ant-upload-hint">
+                    <strong>Cách 1:</strong> Upload file <code>.zip</code> (nén
+                    cả folder HTML + images từ Canva)
+                    <br />
+                    <strong>Cách 2:</strong> Chọn file .html và tất cả images
+                    riêng lẻ
+                  </p>
+                </Dragger>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Tên Template <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      placeholder="VD: Order Confirmation - TEDx 2026"
+                      value={uploadForm.name}
+                      onChange={(e) =>
+                        setUploadForm({ ...uploadForm, name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Tiêu đề Email <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      placeholder="VD: 🎫 Xác nhận đơn hàng {{orderNumber}}"
+                      value={uploadForm.subject}
+                      onChange={(e) =>
+                        setUploadForm({
+                          ...uploadForm,
+                          subject: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Mục đích
+                    </label>
+                    <Select
+                      value={uploadForm.purpose}
+                      onChange={(value) =>
+                        setUploadForm({ ...uploadForm, purpose: value })
+                      }
+                      options={[
+                        {
+                          value: "ORDER_CONFIRMATION",
+                          label: "Xác nhận đơn hàng",
+                        },
+                        { value: "PAYMENT_PENDING", label: "Chờ thanh toán" },
+                        { value: "TICKET_SENT", label: "Gửi vé" },
+                        { value: "EVENT_REMINDER", label: "Nhắc nhở sự kiện" },
+                        { value: "GENERAL", label: "Chung" },
+                      ]}
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Mô tả
+                    </label>
+                    <Input
+                      placeholder="Mô tả ngắn về template..."
+                      value={uploadForm.description}
+                      onChange={(e) =>
+                        setUploadForm({
+                          ...uploadForm,
+                          description: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                {uploadedImages.length > 0 && (
+                  <div className="p-3 bg-green-50 rounded-lg">
+                    <p className="text-sm text-green-700">
+                      ✓ Đã upload {uploadedImages.length} images
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Preview
+                  </label>
+                  <div
+                    className="border rounded-lg overflow-hidden bg-gray-100"
+                    style={{ height: 400 }}
+                  >
+                    <iframe
+                      srcDoc={uploadedHtml}
+                      style={{ width: "100%", height: "100%", border: "none" }}
+                      title="Email Preview"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <Button onClick={() => setUploadedHtml("")}>
+                    Upload lại
+                  </Button>
+                  <Button
+                    type="primary"
+                    onClick={handleSaveUploadedTemplate}
+                    loading={uploading}
+                  >
+                    Lưu Template
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </Modal>
       </div>

@@ -58,6 +58,7 @@ interface LayoutConfig {
 interface EventOption {
   id: string;
   name: string;
+  status?: string;
 }
 
 interface TicketType {
@@ -197,7 +198,11 @@ export default function LayoutEditorPage() {
       if (eventsData.success) {
         setEvents(eventsData.data.events || []);
         if (!eventId && eventsData.data.events?.length > 0) {
-          eventId = eventsData.data.events[0].id;
+          // Find PUBLISHED event first, otherwise use first event
+          const publishedEvent = eventsData.data.events.find(
+            (e: EventOption) => e.status === "PUBLISHED",
+          );
+          eventId = publishedEvent?.id || eventsData.data.events[0].id;
           setSelectedEvent(eventId);
         }
       }
@@ -496,7 +501,7 @@ export default function LayoutEditorPage() {
   // Render seat component
   const renderSeat = (seat: Seat) => {
     const isSelected = selectedSeats.has(seat.id);
-    const colors = SEAT_COLORS[seat.type];
+    const colors = SEAT_COLORS[seat.type] || SEAT_COLORS.STANDARD;
 
     return (
       <Tooltip

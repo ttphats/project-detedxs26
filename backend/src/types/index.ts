@@ -53,6 +53,8 @@ export interface Order {
   expires_at?: Date;
   paid_at?: Date;
   access_token_hash?: string;
+  created_at?: Date;
+  updated_at?: Date;
 }
 
 export interface SeatLock {
