@@ -2,7 +2,13 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { config } from './config/env.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { registerRoutes } from './routes/index.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { authPlugin } from './middleware/auth.js';
@@ -38,8 +44,16 @@ async function main() {
   // Register multipart for file uploads
   await fastify.register(multipart, {
     limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB
+      fileSize: 10 * 1024 * 1024, // 10MB
+      files: 50, // Max 50 files at once
     },
+  });
+
+  // Serve static files (uploaded images)
+  await fastify.register(fastifyStatic, {
+    root: path.join(process.cwd(), 'public'),
+    prefix: '/',
+    decorateReply: false,
   });
 
   // Register auth plugin

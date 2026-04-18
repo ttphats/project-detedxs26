@@ -16,8 +16,8 @@ export interface ListOrdersInput {
  * List orders with pagination and filters
  */
 export async function listOrders(input: ListOrdersInput) {
-  const page = input.page || 1;
-  const limit = input.limit || 20;
+  const page = Number(input.page) || 1;
+  const limit = Number(input.limit) || 20;
   const skip = (page - 1) * limit;
 
   const where: any = {};
@@ -38,7 +38,7 @@ export async function listOrders(input: ListOrdersInput) {
     prisma.order.findMany({
       where,
       include: {
-        event: { select: { id: true, name: true } },
+        event: { select: { id: true, name: true, eventDate: true, venue: true } },
         orderItems: { include: { seat: true } },
         payment: true,
       },
@@ -52,10 +52,29 @@ export async function listOrders(input: ListOrdersInput) {
     prisma.order.count({ where: { ...where, status: 'CANCELLED' } }),
   ]);
 
+  const mappedOrders = orders.map((order: any) => ({
+    ...order,
+    seats: (order.orderItems || []).map((item: any) => ({
+      seatNumber: item.seat?.seatNumber || item.seatNumber,
+      seatType: item.seat?.seatType || item.seatType,
+      section: item.seat?.section ?? '',
+      row: item.seat?.row ?? '',
+      price: Number(item.price),
+    })),
+  }));
+
   return {
-    orders,
+    orders: mappedOrders,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-    summary: { pending, paid, cancelled },
+    summary: {
+      totalOrders: total,
+      pendingOrders: pending,
+      paidOrders: paid,
+      cancelledOrders: cancelled,
+      pending,
+      paid,
+      cancelled,
+    },
   };
 }
 
@@ -63,7 +82,7 @@ export async function listOrders(input: ListOrdersInput) {
  * Get order by ID
  */
 export async function getOrderById(id: string) {
-  return prisma.order.findUnique({
+  const order = await prisma.order.findUnique({
     where: { id },
     include: {
       event: true,
@@ -71,6 +90,19 @@ export async function getOrderById(id: string) {
       payment: true,
     },
   });
+
+  if (!order) return null;
+
+  return {
+    ...order,
+    seats: (order.orderItems || []).map((item: any) => ({
+      seatNumber: item.seat?.seatNumber || item.seatNumber,
+      seatType: item.seat?.seatType || item.seatType,
+      section: item.seat?.section ?? '',
+      row: item.seat?.row ?? '',
+      price: Number(item.price),
+    })),
+  };
 }
 
 /**
@@ -141,11 +173,13 @@ export async function confirmPayment(
     }
 
     // Mark seats as SOLD
-    const seatIds = order.orderItems.map((item) => item.seatId);
-    await tx.seat.updateMany({
-      where: { id: { in: seatIds } },
-      data: { status: 'SOLD' },
-    });
+    const seatIds = order.orderItems.map((item) => item.seatId).filter((id): id is string => id !== null);
+    if (seatIds.length > 0) {
+      await tx.seat.updateMany({
+        where: { id: { in: seatIds } },
+        data: { status: 'SOLD' },
+      });
+    }
 
     // Create audit log
     await tx.auditLog.create({
@@ -225,11 +259,13 @@ export async function rejectPayment(
     }
 
     // Release seats back to AVAILABLE
-    const seatIds = order.orderItems.map((item) => item.seatId);
-    await tx.seat.updateMany({
-      where: { id: { in: seatIds } },
-      data: { status: 'AVAILABLE' },
-    });
+    const seatIds = order.orderItems.map((item) => item.seatId).filter((id): id is string => id !== null);
+    if (seatIds.length > 0) {
+      await tx.seat.updateMany({
+        where: { id: { in: seatIds } },
+        data: { status: 'AVAILABLE' },
+      });
+    }
 
     // Create audit log
     await tx.auditLog.create({
@@ -316,10 +352,10 @@ export async function resendTicketEmail(
       eventVenue: order.event.venue,
       orderNumber: order.orderNumber,
       seats: order.orderItems.map((item) => ({
-        seatNumber: item.seat.seatNumber,
-        seatType: item.seat.seatType,
-        section: item.seat.section,
-        row: item.seat.row,
+        seatNumber: item.seat?.seatNumber || item.seatNumber,
+        seatType: item.seat?.seatType || item.seatType,
+        section: item.seat?.section || 'N/A',
+        row: item.seat?.row || 'N/A',
         price: Number(item.price),
       })),
       totalAmount: Number(order.totalAmount),

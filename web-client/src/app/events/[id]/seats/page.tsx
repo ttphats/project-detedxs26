@@ -368,7 +368,8 @@ export default function SeatSelectionPage({
               seatIds: seats.map((s: any) => s.id),
               sessionId: currentSessionId,
             });
-            navigator.sendBeacon("/api/seats/unlock", data);
+            const blob = new Blob([data], { type: "application/json" });
+            navigator.sendBeacon("/api/seats/unlock", blob);
           }
         } catch (e) {
           console.error("Error parsing stored seats:", e);
@@ -585,7 +586,10 @@ export default function SeatSelectionPage({
     }
   };
 
-  const totalPrice = selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
+  const totalPrice = selectedSeats.reduce(
+    (sum, seat) => sum + Number(seat.price),
+    0,
+  );
 
   return (
     <div className="min-h-screen bg-black pt-24 pb-12">
@@ -681,7 +685,7 @@ export default function SeatSelectionPage({
         {/* Ticket Types Description */}
         <div className="mb-6 sm:mb-8 animate-fade-in">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {event.ticketTypes.map((ticketType) => {
+            {(event.ticketTypes || []).map((ticketType) => {
               const isVIP = ticketType.name.toUpperCase().includes("VIP");
               return (
                 <div
@@ -730,19 +734,21 @@ export default function SeatSelectionPage({
                   </div>
                   {ticketType.benefits && ticketType.benefits.length > 0 && (
                     <ul className="space-y-1.5">
-                      {ticketType.benefits.slice(0, 4).map((benefit, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-center gap-2 text-sm text-gray-300"
-                        >
-                          <Check
-                            className={`w-4 h-4 flex-shrink-0 ${
-                              isVIP ? "text-orange-400" : "text-emerald-400"
-                            }`}
-                          />
-                          <span>{benefit}</span>
-                        </li>
-                      ))}
+                      {(ticketType.benefits || [])
+                        .slice(0, 4)
+                        .map((benefit, idx) => (
+                          <li
+                            key={idx}
+                            className="flex items-center gap-2 text-sm text-gray-300"
+                          >
+                            <Check
+                              className={`w-4 h-4 flex-shrink-0 ${
+                                isVIP ? "text-orange-400" : "text-emerald-400"
+                              }`}
+                            />
+                            <span>{benefit}</span>
+                          </li>
+                        ))}
                       {ticketType.benefits.length > 4 && (
                         <li className="text-xs text-gray-500 pl-6">
                           +{ticketType.benefits.length - 4} quyền lợi khác
@@ -840,19 +846,37 @@ export default function SeatSelectionPage({
                     ← Vuốt ngang để xem thêm ghế →
                   </p>
                   <div className="min-w-[600px] sm:min-w-[500px] space-y-3 sm:space-y-3 px-2">
-                    {event.seatMap.map((row) => {
+                    {(event.seatMap || []).map((row) => {
                       // Check if this row contains VIP seats based on seatType from DB
                       const hasVIPSeats = row.seats.some(
                         (s) => s.seatType === "VIP",
                       );
 
+                      // Sort all seats by number first
+                      const sortedSeats = [...row.seats].sort(
+                        (a, b) => a.number - b.number,
+                      );
+
                       // Split seats into LEFT and RIGHT sections
-                      const leftSeats = row.seats
-                        .filter((s) => s.section === "LEFT")
-                        .sort((a, b) => a.number - b.number);
-                      const rightSeats = row.seats
-                        .filter((s) => s.section === "RIGHT")
-                        .sort((a, b) => a.number - b.number);
+                      // If section is defined, use it; otherwise split in half
+                      const hasDefinedSections = sortedSeats.some(
+                        (s) => s.section === "LEFT" || s.section === "RIGHT",
+                      );
+
+                      let leftSeats, rightSeats;
+                      if (hasDefinedSections) {
+                        leftSeats = sortedSeats.filter(
+                          (s) => s.section === "LEFT",
+                        );
+                        rightSeats = sortedSeats.filter(
+                          (s) => s.section === "RIGHT",
+                        );
+                      } else {
+                        // Auto-split: first half LEFT, second half RIGHT
+                        const midpoint = Math.ceil(sortedSeats.length / 2);
+                        leftSeats = sortedSeats.slice(0, midpoint);
+                        rightSeats = sortedSeats.slice(midpoint);
+                      }
 
                       return (
                         <div
@@ -882,8 +906,17 @@ export default function SeatSelectionPage({
                                 return (
                                   <Seat
                                     key={seat.id}
-                                    {...seat}
+                                    id={seat.id}
+                                    row={row.row}
+                                    number={seat.number}
                                     status={finalStatus}
+                                    price={seat.price}
+                                    seatType={
+                                      seat.seatType as
+                                        | "VIP"
+                                        | "STANDARD"
+                                        | "ECONOMY"
+                                    }
                                     onSelect={handleSeatSelect}
                                   />
                                 );
@@ -908,8 +941,17 @@ export default function SeatSelectionPage({
                                 return (
                                   <Seat
                                     key={seat.id}
-                                    {...seat}
+                                    id={seat.id}
+                                    row={row.row}
+                                    number={seat.number}
                                     status={finalStatus}
+                                    price={seat.price}
+                                    seatType={
+                                      seat.seatType as
+                                        | "VIP"
+                                        | "STANDARD"
+                                        | "ECONOMY"
+                                    }
                                     onSelect={handleSeatSelect}
                                   />
                                 );
@@ -983,18 +1025,29 @@ export default function SeatSelectionPage({
 
                   {/* Sold seat */}
                   <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-                    <div className="relative w-7 h-9 flex flex-col items-center opacity-60">
+                    <div className="relative w-7 h-9 flex flex-col items-center">
                       {/* Seat back */}
-                      <div className="w-5 h-4 rounded-t-md bg-gradient-to-b from-gray-600 to-gray-700 border-t border-l border-r border-white/10" />
+                      <div className="w-5 h-4 rounded-t-md bg-gradient-to-b from-gray-600 to-gray-700 border-t border-l border-r border-white/10 opacity-60" />
                       {/* Seat cushion */}
-                      <div className="w-6 h-3 rounded-b-sm bg-gradient-to-b from-gray-700 to-gray-800 border-b border-l border-r border-white/10" />
+                      <div className="w-6 h-3 rounded-b-sm bg-gradient-to-b from-gray-700 to-gray-800 border-b border-l border-r border-white/10 opacity-60" />
                       {/* Armrests */}
-                      <div className="absolute bottom-0 -left-0.5 w-0.5 h-2 rounded-b-sm bg-gray-800" />
-                      <div className="absolute bottom-0 -right-0.5 w-0.5 h-2 rounded-b-sm bg-gray-800" />
+                      <div className="absolute bottom-0 -left-0.5 w-0.5 h-2 rounded-b-sm bg-gray-800 opacity-60" />
+                      <div className="absolute bottom-0 -right-0.5 w-0.5 h-2 rounded-b-sm bg-gray-800 opacity-60" />
                       {/* X indicator */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-4 h-0.5 bg-gray-400 rotate-45 absolute" />
-                        <div className="w-4 h-0.5 bg-gray-400 -rotate-45 absolute" />
+                      <div className="absolute inset-0 top-0 flex items-start justify-center pt-0.5 pointer-events-none">
+                        <svg
+                          className="w-4 h-4 text-white drop-shadow"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M6 6l12 12M18 6L6 18"
+                          />
+                        </svg>
                       </div>
                     </div>
                     <span className="text-gray-300 text-sm font-medium">
@@ -1069,7 +1122,7 @@ export default function SeatSelectionPage({
                               </span>
                             </div>
                             <span className="font-semibold text-red-500">
-                              {seat.price.toLocaleString("vi-VN")}đ
+                              {Number(seat.price).toLocaleString("vi-VN")}đ
                             </span>
                           </div>
                         ))}

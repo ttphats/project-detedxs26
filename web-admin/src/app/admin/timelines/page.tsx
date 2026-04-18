@@ -87,7 +87,11 @@ export default function TimelinesPage() {
         if (data.success) {
           setEvents(data.data);
           if (data.data.length > 0 && !selectedEvent) {
-            setSelectedEvent(data.data[0].id);
+            // Find PUBLISHED event first, otherwise use first event
+            const publishedEvent = data.data.find(
+              (e: Event) => e.status === "PUBLISHED",
+            );
+            setSelectedEvent(publishedEvent?.id || data.data[0].id);
           }
         }
       } catch (err) {

@@ -24,6 +24,15 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /events/:eventId/seats - Get seats for an event
   fastify.get('/events/:eventId/seats', seatController.getEventSeats);
 
+  // GET /events/:eventId/seats/stream - SSE stream for real-time seat updates
+  fastify.get('/events/:eventId/seats/stream', seatController.seatsStream);
+
+  // GET /events/:eventId/speakers - Get speakers for an event
+  fastify.get('/events/:eventId/speakers', eventController.getEventSpeakers);
+
+  // GET /events/:eventId/timeline - Get timeline for an event
+  fastify.get('/events/:eventId/timeline', eventController.getEventTimeline);
+
   // =====================================
   // SEAT ROUTES
   // =====================================
@@ -37,6 +46,9 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // DELETE /seats/lock - Unlock seats
   fastify.delete('/seats/lock', seatController.unlockSeats);
 
+  // POST /seats/unlock - Unlock seats (for sendBeacon which only supports POST)
+  fastify.post('/seats/unlock', seatController.unlockSeats);
+
   // POST /seats/extend-lock - Extend lock duration for checkout
   fastify.post('/seats/extend-lock', seatLockController.extendLock);
 
@@ -49,6 +61,9 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
 
   // POST /orders/confirm-payment - Confirm payment
   fastify.post('/orders/confirm-payment', orderController.confirmPayment);
+
+  // GET /orders/:orderNumber - Get order by number
+  fastify.get('/orders/:orderNumber', orderController.getOrderByNumber);
 
   // =====================================
   // TICKET ROUTES

@@ -72,35 +72,45 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       minute: '2-digit',
     });
 
-    // Send confirmation email
-    sendEmailByPurpose({
-      purpose: 'TICKET_CONFIRMED',
-      to: result.order.customerEmail,
-      orderId: result.order.id,
-      triggeredBy: user.userId,
-      data: {
-        customerName: result.order.customerName,
-        eventName: result.order.event.name,
-        eventDate: formattedDate,
-        eventTime: formattedTime,
-        eventVenue: result.order.event.venue,
-        orderNumber: result.order.orderNumber,
-        seats: result.order.orderItems.map((item: any) => ({
-          seatNumber: item.seat.seatNumber,
-          seatType: item.seat.seatType,
-          section: item.seat.section,
-          row: item.seat.row,
-          price: Number(item.price),
-        })),
-        totalAmount: Number(result.order.totalAmount),
-        qrCodeUrl,
-        ticketUrl,
-      },
-    }).then((emailResult) => {
+    // Send confirmation email (await so we can surface status to admin UI)
+    let emailStatus: 'SENT' | 'FAILED' = 'FAILED';
+    let emailError: string | null = null;
+    try {
+      const emailResult = await sendEmailByPurpose({
+        purpose: 'TICKET_CONFIRMED',
+        to: result.order.customerEmail,
+        orderId: result.order.id,
+        triggeredBy: user.userId,
+        data: {
+          customerName: result.order.customerName,
+          eventName: result.order.event.name,
+          eventDate: formattedDate,
+          eventTime: formattedTime,
+          eventVenue: result.order.event.venue,
+          orderNumber: result.order.orderNumber,
+          seats: result.order.orderItems.map((item: any) => ({
+            seatNumber: item.seat.seatNumber,
+            seatType: item.seat.seatType,
+            section: item.seat.section,
+            row: item.seat.row,
+            price: Number(item.price),
+          })),
+          totalAmount: Number(result.order.totalAmount),
+          qrCodeUrl,
+          ticketUrl,
+        },
+      });
       if (emailResult.success) {
+        emailStatus = 'SENT';
         console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`);
+      } else {
+        emailError = emailResult.error || 'Unknown error';
+        console.error(`❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`);
       }
-    }).catch(console.error);
+    } catch (err: any) {
+      emailError = err?.message || 'Unknown error';
+      console.error('Failed to send confirmation email:', err);
+    }
 
     return reply.send({
       success: true,
@@ -109,6 +119,9 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         orderNumber: result.updatedOrder.orderNumber,
         status: result.updatedOrder.status,
         ticketUrl,
+        emailStatus,
+        emailError,
+        emailSentTo: result.order.customerEmail,
       },
       message: 'Payment confirmed successfully',
     });
@@ -142,19 +155,32 @@ export async function rejectPayment(request: FastifyRequest, reply: FastifyReply
       userAgent
     );
 
-    // Send rejection email
-    sendEmailByPurpose({
-      purpose: 'PAYMENT_REJECTED',
-      to: result.order.customerEmail,
-      orderId: result.order.id,
-      triggeredBy: user.userId,
-      data: {
-        customerName: result.order.customerName,
-        orderNumber: result.order.orderNumber,
-        reason,
-        eventName: result.order.event.name,
-      },
-    }).catch(console.error);
+    // Send rejection email (await so we can surface status to admin UI)
+    let emailStatus: 'SENT' | 'FAILED' = 'FAILED';
+    let emailError: string | null = null;
+    try {
+      const emailResult = await sendEmailByPurpose({
+        purpose: 'PAYMENT_REJECTED',
+        to: result.order.customerEmail,
+        orderId: result.order.id,
+        triggeredBy: user.userId,
+        data: {
+          customerName: result.order.customerName,
+          orderNumber: result.order.orderNumber,
+          reason,
+          eventName: result.order.event.name,
+        },
+      });
+      if (emailResult.success) {
+        emailStatus = 'SENT';
+      } else {
+        emailError = emailResult.error || 'Unknown error';
+        console.error(`❌ Rejection email failed for ${result.order.customerEmail}: ${emailError}`);
+      }
+    } catch (err: any) {
+      emailError = err?.message || 'Unknown error';
+      console.error('Failed to send rejection email:', err);
+    }
 
     return reply.send({
       success: true,
@@ -163,6 +189,9 @@ export async function rejectPayment(request: FastifyRequest, reply: FastifyReply
         orderNumber: result.updatedOrder.orderNumber,
         status: result.updatedOrder.status,
         releasedSeats: result.releasedSeats,
+        emailStatus,
+        emailError,
+        emailSentTo: result.order.customerEmail,
       },
       message: 'Payment rejected',
     });

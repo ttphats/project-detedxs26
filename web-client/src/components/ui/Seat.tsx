@@ -124,9 +124,20 @@ export default function Seat({
 
       {/* Sold X indicator */}
       {status === "sold" && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-5 h-0.5 sm:w-4 bg-gray-400/80 rotate-45" />
-          <div className="w-5 h-0.5 sm:w-4 bg-gray-400/80 -rotate-45 absolute" />
+        <div className="absolute inset-0 top-0 flex items-start justify-center pt-0.5 pointer-events-none">
+          <svg
+            className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-white drop-shadow"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="3"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M6 6l12 12M18 6L6 18"
+            />
+          </svg>
         </div>
       )}
 

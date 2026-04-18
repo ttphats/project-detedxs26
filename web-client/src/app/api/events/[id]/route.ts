@@ -35,7 +35,7 @@ export async function GET(
     // Get seats for this event (only AVAILABLE and SOLD)
     // Order by row, then section (LEFT first), then col
     const seats = await query<Seat>(
-      `SELECT id, seat_number, row, col, section, seat_type, price, status
+      `SELECT id, seat_number, row, col, section, seat_type, price, status, ticket_type_id
        FROM seats
        WHERE event_id = ? AND status IN ('AVAILABLE', 'SOLD', 'RESERVED', 'LOCKED')
        ORDER BY row, FIELD(section, 'LEFT', 'RIGHT'), col`,
@@ -83,7 +83,7 @@ export async function GET(
             number: seat.col,
             section: seat.section,
             status,
-            ticketTypeId: seat.seat_type.toLowerCase(),
+            ticketTypeId: seat.ticket_type_id || seat.seat_type.toLowerCase(),
             seatType: seat.seat_type,
             price: Number(seat.price),
             lockExpiresAt: lock?.expires_at || null,

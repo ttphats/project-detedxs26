@@ -79,10 +79,14 @@ export default function SpeakersPage() {
         setSpeakers(data.data.speakers || []);
         setEvents(data.data.events || []);
         if (!eventId && data.data.events?.length > 0) {
-          const firstEventId = data.data.events[0].id;
-          setSelectedEvent(firstEventId);
+          // Find PUBLISHED event first, otherwise use first event
+          const publishedEvent = data.data.events.find(
+            (e: any) => e.status === "PUBLISHED",
+          );
+          const defaultEventId = publishedEvent?.id || data.data.events[0].id;
+          setSelectedEvent(defaultEventId);
           const res2 = await fetch(
-            `/api/admin/speakers?eventId=${firstEventId}`,
+            `/api/admin/speakers?eventId=${defaultEventId}`,
             { headers: { Authorization: `Bearer ${token}` } },
           );
           const data2 = await res2.json();

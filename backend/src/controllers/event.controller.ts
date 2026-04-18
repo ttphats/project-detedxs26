@@ -41,3 +41,27 @@ export async function getEventBySlug(
   return reply.send(successResponse(event));
 }
 
+// GET /events/:eventId/speakers
+export async function getEventSpeakers(
+  request: FastifyRequest<{ Params: { eventId: string } }>,
+  reply: FastifyReply
+) {
+  const { eventId } = request.params;
+
+  const speakers = await eventService.getEventSpeakers(eventId);
+
+  return reply.send(successResponse(speakers));
+}
+
+// GET /events/:eventId/timeline
+export async function getEventTimeline(
+  request: FastifyRequest<{ Params: { eventId: string } }>,
+  reply: FastifyReply
+) {
+  const { eventId } = request.params;
+
+  const timeline = await eventService.getEventTimeline(eventId);
+
+  return reply.send(successResponse(timeline));
+}
+

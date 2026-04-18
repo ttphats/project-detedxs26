@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import * as templatesService from '../../services/admin/email-templates.service.js';
+import * as uploadService from '../../services/admin/template-upload.service.js';
 import { replaceVariables, extractVariables } from '../../services/email.service.js';
 import { UnauthorizedError, ForbiddenError, NotFoundError, BadRequestError } from '../../utils/errors.js';
 import { requireAdmin } from '../../utils/auth.js';
@@ -127,7 +128,7 @@ export async function activate(request: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * POST /api/admin/email-templates/:id/preview
+ * GET/POST /api/admin/email-templates/:id/preview
  */
 export async function preview(request: FastifyRequest, reply: FastifyReply) {
   const user = request.user;
@@ -135,13 +136,30 @@ export async function preview(request: FastifyRequest, reply: FastifyReply) {
   try { requireAdmin(user); } catch { throw new ForbiddenError(); }
 
   const { id } = request.params as { id: string };
-  const { data } = request.body as { data: Record<string, any> };
+
+  // Support both GET (no body) and POST (with body)
+  const body = request.body as { data?: Record<string, any> } | undefined;
+  const data = body?.data || {};
 
   const template = await templatesService.getTemplateById(id);
   if (!template) throw new NotFoundError('Template not found');
 
-  const subject = replaceVariables(template.subject, data || {});
-  const html = replaceVariables(template.htmlContent, data || {});
+  // Use sample data for preview if no data provided
+  const sampleData: Record<string, any> = {
+    customerName: 'Nguyễn Văn A',
+    orderNumber: 'ORD-2026-001234',
+    eventName: 'TEDxFPT University HCMC 2026',
+    eventDate: '20/06/2026',
+    eventTime: '18:00',
+    venue: 'Nhà hát Thành phố Hồ Chí Minh',
+    totalAmount: '500.000 đ',
+    seats: 'A1, A2, A3',
+    qrCodeUrl: 'https://via.placeholder.com/200x200?text=QR+Code',
+    ...data,
+  };
+
+  const subject = replaceVariables(template.subject, sampleData);
+  const html = replaceVariables(template.htmlContent, sampleData);
 
   return reply.send({
     success: true,
@@ -149,3 +167,67 @@ export async function preview(request: FastifyRequest, reply: FastifyReply) {
   });
 }
 
+/**
+ * POST /api/admin/email-templates/upload
+ * Upload HTML file + images (like Canva export)
+ */
+export async function upload(request: FastifyRequest, reply: FastifyReply) {
+  const user = request.user;
+  if (!user) throw new UnauthorizedError();
+  try { requireAdmin(user); } catch { throw new ForbiddenError(); }
+
+  try {
+    // Get base URL for image paths
+    const protocol = request.headers['x-forwarded-proto'] || 'http';
+    const host = request.headers.host || 'localhost:4000';
+    const baseUrl = `${protocol}://${host}`;
+
+    // Process uploaded files
+    const result = await uploadService.processTemplateUpload(request, baseUrl);
+
+    if (!result.htmlContent) {
+      throw new BadRequestError('No HTML file found in upload');
+    }
+
+    return reply.send({
+      success: true,
+      data: {
+        htmlContent: result.htmlContent,
+        images: result.images,
+        templateId: result.templateId,
+        message: 'Files uploaded successfully. Review and save the template.',
+      },
+    });
+  } catch (error: any) {
+    throw new BadRequestError(error.message || 'Upload failed');
+  }
+}
+
+/**
+ * POST /api/admin/email-templates/upload/save
+ * Save uploaded template to database
+ */
+export async function saveUploaded(request: FastifyRequest, reply: FastifyReply) {
+  const user = request.user;
+  if (!user) throw new UnauthorizedError();
+  try { requireAdmin(user); } catch { throw new ForbiddenError(); }
+
+  const body = request.body as {
+    name: string;
+    subject: string;
+    htmlContent: string;
+    purpose: string;
+    description?: string;
+  };
+
+  if (!body.name || !body.subject || !body.htmlContent || !body.purpose) {
+    throw new BadRequestError('Missing required fields: name, subject, htmlContent, purpose');
+  }
+
+  const template = await uploadService.saveUploadedTemplate(body);
+
+  return reply.send({
+    success: true,
+    data: template,
+  });
+}

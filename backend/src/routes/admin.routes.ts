@@ -30,6 +30,8 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
   fastify.post('/admin/orders/:id/confirm', { preHandler }, ordersController.confirmPayment);
   fastify.post('/admin/orders/:id/reject', { preHandler }, ordersController.rejectPayment);
   fastify.post('/admin/orders/:id/resend-email', { preHandler }, ordersController.resendEmail);
+  // Alias: frontend web-admin uses /send-email — keep both working
+  fastify.post('/admin/orders/:id/send-email', { preHandler }, ordersController.resendEmail);
 
   // Speakers
   fastify.get('/admin/speakers', { preHandler }, speakersController.list);
@@ -41,7 +43,10 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
   // Email Templates
   fastify.get('/admin/email-templates', { preHandler }, emailTemplatesController.list);
   fastify.get('/admin/email-templates/:id', { preHandler }, emailTemplatesController.getById);
+  fastify.get('/admin/email-templates/:id/preview', { preHandler }, emailTemplatesController.preview);
   fastify.post('/admin/email-templates', { preHandler }, emailTemplatesController.create);
+  fastify.post('/admin/email-templates/upload', { preHandler }, emailTemplatesController.upload);
+  fastify.post('/admin/email-templates/upload/save', { preHandler }, emailTemplatesController.saveUploaded);
   fastify.put('/admin/email-templates/:id', { preHandler }, emailTemplatesController.update);
   fastify.delete('/admin/email-templates/:id', { preHandler }, emailTemplatesController.remove);
   fastify.post('/admin/email-templates/:id/set-default', { preHandler }, emailTemplatesController.setDefault);

@@ -45,7 +45,8 @@ export interface Seat {
   row: string;
   col: number;
   section: string;
-  seat_type: 'VIP' | 'STANDARD' | 'ECONOMY';
+  seat_type: 'VIP' | 'STANDARD' | 'ECONOMY' | 'EARLY BIRD';
+  ticket_type_id: string | null;
   price: number;
   status: 'AVAILABLE' | 'RESERVED' | 'SOLD' | 'LOCKED';
   position_x: number | null;

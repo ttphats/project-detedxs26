@@ -83,12 +83,12 @@ export default function UsersPage() {
       );
       const data = await res.json();
       if (data.success) {
-        setUsers(data.data.users);
-        setRoles(data.data.roles);
+        setUsers(data.data.users || []);
+        setRoles(data.data.roles || []);
         setPagination((prev) => ({
           ...prev,
           page,
-          total: data.data.pagination.total,
+          total: data.data.pagination?.total || 0,
         }));
       }
     } catch (error) {
@@ -390,7 +390,7 @@ export default function UsersPage() {
               rules={[{ required: true, message: "Vui lòng chọn vai trò" }]}
             >
               <Select placeholder="Chọn vai trò">
-                {roles.map((role) => (
+                {(roles || []).map((role) => (
                   <Select.Option key={role.id} value={role.id}>
                     <Tag color={roleColors[role.name] || "default"}>
                       {role.name}

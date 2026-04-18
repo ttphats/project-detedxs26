@@ -135,11 +135,13 @@ async function processPaymentConfirmation(
     });
 
     // Mark seats as SOLD
-    const seatIds = order.orderItems.map((item) => item.seatId);
-    await tx.seat.updateMany({
-      where: { id: { in: seatIds } },
-      data: { status: 'SOLD' },
-    });
+    const seatIds = order.orderItems.map((item) => item.seatId).filter((id): id is string => id !== null);
+    if (seatIds.length > 0) {
+      await tx.seat.updateMany({
+        where: { id: { in: seatIds } },
+        data: { status: 'SOLD' },
+      });
+    }
 
     // Generate QR code
     const qrCodeUrl = await qrcodeService.generateTicketQRCode(order.orderNumber, order.eventId);

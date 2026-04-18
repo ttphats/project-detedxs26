@@ -206,3 +206,91 @@ export async function confirmPayment(params: ConfirmPaymentParams): Promise<{ or
   };
 }
 
+// Get order by number with access token validation
+export async function getOrderByNumber(orderNumber: string, accessToken: string) {
+  const order = await queryOne<
+    Order & {
+      event_name: string;
+      event_venue: string;
+      event_date: Date;
+      expires_at: string | null;
+    }
+  >(
+    `SELECT o.*, e.name as event_name, e.venue as event_venue, e.event_date
+     FROM orders o
+     JOIN events e ON o.event_id = e.id
+     WHERE o.order_number = ?`,
+    [orderNumber]
+  );
+
+  if (!order) {
+    throw new NotFoundError('Order not found');
+  }
+
+  // Verify access token
+  if (!order.access_token_hash || !verifyAccessToken(accessToken, order.access_token_hash)) {
+    throw new ForbiddenError('Invalid access token');
+  }
+
+  // Get order items joined with seats to include row/section for seat map rendering
+  const items = await query<{
+    id: string;
+    seat_id: string | null;
+    seat_number: string;
+    seat_type: string;
+    price: number;
+    row: string | null;
+    section: string | null;
+  }>(
+    `SELECT oi.id, oi.seat_id, oi.seat_number, oi.seat_type, oi.price,
+            s.row AS row, s.section AS section
+     FROM order_items oi
+     LEFT JOIN seats s ON oi.seat_id = s.id
+     WHERE oi.order_id = ?`,
+    [order.id]
+  );
+
+  // Calculate time remaining until expiration
+  let timeRemaining = 0;
+  if (order.expires_at) {
+    const expiresAt = new Date(order.expires_at);
+    timeRemaining = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+  }
+
+  const mappedSeats = items.map(item => ({
+    seatId: item.seat_id,
+    seatNumber: item.seat_number,
+    seatType: item.seat_type,
+    row: item.row || '',
+    section: item.section || '',
+    price: Number(item.price),
+  }));
+
+  return {
+    id: order.id,
+    orderNumber: order.order_number,
+    eventId: order.event_id,
+    eventName: order.event_name,
+    event: {
+      id: order.event_id,
+      name: order.event_name,
+      venue: order.event_venue,
+      eventDate: order.event_date,
+    },
+    status: order.status,
+    totalAmount: Number(order.total_amount),
+    expiresAt: order.expires_at,
+    timeRemaining,
+    customerName: order.customer_name,
+    customerEmail: order.customer_email,
+    customerPhone: order.customer_phone,
+    createdAt: order.created_at,
+    items: items.map(item => ({
+      id: item.id,
+      seatNumber: item.seat_number,
+      seatType: item.seat_type,
+      price: Number(item.price),
+    })),
+    seats: mappedSeats,
+  };
+}
