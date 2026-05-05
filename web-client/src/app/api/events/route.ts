@@ -1,27 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { query, Event } from '@/lib/db';
+import {NextRequest, NextResponse} from 'next/server'
+import {query, Event} from '@/lib/db'
+import {createErrorResponse} from '@/lib/error-handler'
 
 // GET /api/events - List all published events
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') || 'PUBLISHED';
-    const featured = searchParams.get('featured');
+    const {searchParams} = new URL(request.url)
+    const status = searchParams.get('status') || 'PUBLISHED'
+    const featured = searchParams.get('featured')
 
     let sql = `
       SELECT e.*, 
         (SELECT COUNT(*) FROM speakers WHERE event_id = e.id AND is_active = 1) as speaker_count
       FROM events e
       WHERE e.status = ?
-    `;
-    const params: any[] = [status];
+    `
+    const params: any[] = [status]
 
-    sql += ' ORDER BY e.event_date ASC';
+    sql += ' ORDER BY e.event_date ASC'
 
-    const events = await query<Event & { speaker_count: number }>(sql, params);
+    const events = await query<Event & {speaker_count: number}>(sql, params)
 
     // Format events for client
-    const formattedEvents = events.map(event => ({
+    const formattedEvents = events.map((event) => ({
       id: event.id,
       name: event.name,
       slug: event.slug,
@@ -36,50 +37,49 @@ export async function GET(request: NextRequest) {
       speakerCount: event.speaker_count,
       background: {
         type: 'image',
-        value: event.banner_image_url || 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=1920&h=1080&fit=crop',
+        value:
+          event.banner_image_url ||
+          'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=1920&h=1080&fit=crop',
         overlay: 'linear-gradient(135deg, rgba(230,43,30,0.9) 0%, rgba(26,26,26,0.95) 100%)',
       },
       highlights: [
-        { icon: 'mic', text: `${event.speaker_count || 12}+ Speakers` },
-        { icon: 'lightbulb', text: 'Ideas Worth Spreading' },
-        { icon: 'users', text: '500+ Attendees' },
-        { icon: 'coffee', text: 'Networking Sessions' },
+        {icon: 'mic', text: `${event.speaker_count || 12}+ Speakers`},
+        {icon: 'lightbulb', text: 'Ideas Worth Spreading'},
+        {icon: 'users', text: '500+ Attendees'},
+        {icon: 'coffee', text: 'Networking Sessions'},
       ],
-    }));
+    }))
 
     // If featured=true, return the first event
     if (featured === 'true' && formattedEvents.length > 0) {
       return NextResponse.json({
         success: true,
         data: formattedEvents[0],
-      });
+      })
     }
 
     return NextResponse.json({
       success: true,
       data: formattedEvents,
-    });
+    })
   } catch (error: any) {
-    console.error('Get events error:', error);
-    return NextResponse.json(
-      { success: false, error: error.message || 'Failed to fetch events' },
-      { status: 500 }
-    );
+    return NextResponse.json(createErrorResponse(error, 'Không thể tải danh sách sự kiện'), {
+      status: 500,
+    })
   }
 }
 
 function formatTime(date: Date): string {
-  if (!date) return '';
+  if (!date) return ''
   return new Date(date).toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-  });
+  })
 }
 
 function extractTagline(name: string): string {
   // Extract tagline from event name (e.g., "TEDxFPTUniversityHCMC 2026: Finding Flow" -> "Finding Flow")
-  const match = name.match(/:\s*(.+)$/);
-  return match ? match[1] : '';
+  const match = name.match(/:\s*(.+)$/)
+  return match ? match[1] : ''
 }
-
