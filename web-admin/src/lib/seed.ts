@@ -243,23 +243,49 @@ export async function seedDefaultData() {
 
   console.log('[SEED] ✓ Ticket types created')
 
-  // 7. Create seats (10 rows x 10 seats = 100 seats with LEFT/RIGHT sections)
-  // All seats initially have the CHEAPEST ticket type (level = 1)
-  console.log('[SEED] Creating seats...')
+  console.log('[SEED] ✅ Basic seed completed (without seats)!')
+
+  return {
+    rolesCount: roles.length,
+    adminEmail: 'admin@tedxfptuhcm.com',
+    templatesCount: templates.length,
+    ticketTypesCount: ticketTypes.length,
+    seatsCreated: 0,
+    eventId,
+  }
+}
+
+/**
+ * Seed seats for an event (separate from main seed)
+ * This should ONLY be called from Layout Editor when user wants to create default seats
+ */
+export async function seedDefaultSeats(eventId: string) {
+  console.log('[SEED SEATS] Creating default seats for event:', eventId)
+
+  // Get ticket types for this event
+  const ticketTypesRows = await query<any>(
+    'SELECT * FROM ticket_types WHERE event_id = ? ORDER BY level ASC',
+    [eventId]
+  )
+
+  if (ticketTypesRows.length === 0) {
+    throw new Error('No ticket types found for event. Please create ticket types first.')
+  }
+
+  // Get the cheapest ticket type (lowest level)
+  const cheapestTicketType = ticketTypesRows[0]
+  const defaultSeatType = cheapestTicketType.name
+  const defaultPrice = cheapestTicketType.price
+
+  console.log(
+    `[SEED SEATS] Using cheapest ticket: ${defaultSeatType} (Level ${cheapestTicketType.level}, ${Number(defaultPrice).toLocaleString('vi-VN')} VNĐ)`
+  )
+
+  // 10 rows x 10 seats = 100 seats with LEFT/RIGHT sections
   const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
   const leftSeatsPerRow = 5
   const rightSeatsPerRow = 5
   let seatsCreated = 0
-
-  // Get the cheapest ticket type (lowest level)
-  const cheapestTicketType = ticketTypes.reduce((min, tt) =>
-    tt.level < min.level ? tt : min,
-    ticketTypes[0]
-  )
-  const defaultSeatType = cheapestTicketType.name
-  const defaultPrice = cheapestTicketType.price
-
-  console.log(`[SEED] Using cheapest ticket: ${defaultSeatType} (Level ${cheapestTicketType.level}, ${defaultPrice.toLocaleString('vi-VN')} VNĐ)`)
 
   for (const row of rows) {
     // LEFT section (seats 1-5)
@@ -289,25 +315,17 @@ export async function seedDefaultData() {
     }
   }
 
-  console.log(`[SEED] ✓ Created ${seatsCreated} seats (${rows.length} rows x ${leftSeatsPerRow + rightSeatsPerRow} seats with LEFT/RIGHT sections)`)
-  console.log(`[SEED] ✓ All seats initialized with ECONOMY type (${defaultPrice.toLocaleString('vi-VN')} VNĐ) - cheapest ticket type`)
+  console.log(
+    `[SEED SEATS] ✓ Created ${seatsCreated} seats (${rows.length} rows x ${leftSeatsPerRow + rightSeatsPerRow} seats)`
+  )
 
-  // 8. Update event available_seats count
+  // Update event available_seats count
   await query(`UPDATE events SET available_seats = ?, max_capacity = ? WHERE id = ?`, [
     seatsCreated,
     seatsCreated,
     eventId,
   ])
-  console.log('[SEED] ✓ Updated event capacity')
+  console.log('[SEED SEATS] ✓ Updated event capacity')
 
-  console.log('[SEED] ✅ Seed completed!')
-
-  return {
-    rolesCount: roles.length,
-    adminEmail: 'admin@tedxfptuhcm.com',
-    templatesCount: templates.length,
-    ticketTypesCount: ticketTypes.length,
-    seatsCreated,
-    eventId,
-  }
+  return {seatsCreated}
 }

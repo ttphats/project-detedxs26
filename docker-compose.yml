@@ -1,0 +1,92 @@
+c version: '3.8'
+
+services:
+  # Backend API (Fastify)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tedx-backend
+    ports:
+      - '4000:4000'
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - HOST=0.0.0.0
+      - DATABASE_URL=mysql://rymukbi_admin:Admin%402026@103.179.188.241:3306/rymukbi_easyticketdb
+      - DB_HOST=103.179.188.241
+      - DB_PORT=3306
+      - DB_USER=rymukbi_admin
+      - DB_PASSWORD=Admin@2026
+      - DB_NAME=rymukbi_easyticketdb
+      - JWT_SECRET=8dbeed8a671eec89989ae43593f956fb3f62e4b944acd3e8d9193c000eb0f649cc033da0d9212e8e9b6cff748d7b4a8e628d633551ab07951c7a1a1eb95c5a0a
+      - JWT_EXPIRES_IN=7d
+      - CLIENT_URL=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3002
+      - RATE_LIMIT_MAX=100
+      - RATE_LIMIT_WINDOW=60
+      - SEAT_LOCK_TTL=300
+      - CRON_SECRET=abc123
+      - EMAIL_PROVIDER=resend
+      - EMAIL_FROM=TEDxFPT University HCMC <onboarding@resend.dev>
+      - RESEND_API_KEY=re_S7rTjxuw_25cPnF4cMJBHMMtUHg43jnxr
+      - CLOUDINARY_URL=cloudinary://415597173285343:fwsKHBt_f_vqqqXyjM3PMaG_EqI@dug62fhtq
+      - CLOUDINARY_FOLDER=tedx-fptuhcmc
+    networks:
+      - tedx-network
+    restart: unless-stopped
+
+  # Web Admin (Next.js)
+  web-admin:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+    container_name: tedx-web-admin
+    ports:
+      - '3002:3002'
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:4000/api
+      - INTERNAL_API_URL=http://backend:4000/api
+      - DATABASE_URL=mysql://rymukbi_admin:Admin%002026@103.179.188.241:3306/rymukbi_easyticketdb
+      - DB_HOST=103.179.188.241
+      - DB_PORT=3306
+      - DB_USER=rymukbi_admin
+      - DB_PASSWORD=Admin@2026
+      - DB_NAME=rymukbi_easyticketdb
+      - JWT_SECRET=8dbeed8a671eec89989ae43593f956fb3f62e4b944acd3e8d9193c000eb0f649cc033da0d9212e8e9b6cff748d7b4a8e628d633551ab07951c7a1a1eb95c5a0a
+      - CLOUDINARY_URL=cloudinary://415597173285343:fwsKHBt_f_vqqqXyjM3PMaG_EqI@dug62fhtq
+      - CLOUDINARY_FOLDER=tedx-fptuhcmc
+    networks:
+      - tedx-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Web Client (Next.js)
+  web-client:
+    build:
+      context: ./web-client
+      dockerfile: Dockerfile
+    container_name: tedx-web-client
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:4000/api
+      - INTERNAL_API_URL=http://backend:4000/api
+      - DATABASE_URL=mysql://rymukbi_admin:Admin%402026@103.179.188.241:3306/rymukbi_easyticketdb
+      - DB_HOST=103.179.188.241
+      - DB_PORT=3306
+      - DB_USER=rymukbi_admin
+      - DB_PASSWORD=Admin@2026
+      - DB_NAME=rymukbi_easyticketdb
+    networks:
+      - tedx-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  tedx-network:
+    driver: bridge
