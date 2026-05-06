@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { AdminLayout } from "@/components/admin";
 import {
@@ -46,12 +46,15 @@ interface Seat {
   side: "left" | "right";
   type: SeatType;
   seat_number: string;
+  price?: number; // Price from ticket type
 }
 
 interface LayoutConfig {
   rows: number;
   leftSeats: number;
   rightSeats: number;
+  vipRows?: number; // Number of VIP rows (from row A)
+  economyRows?: number; // Number of ECONOMY rows (after VIP rows)
   aisleWidth: number;
 }
 
@@ -65,6 +68,7 @@ interface TicketType {
   id: string;
   name: string;
   price: number;
+  level: number; // 1 = cheapest, 2 = mid, 3 = expensive
   color: string;
 }
 
@@ -119,17 +123,94 @@ const DEFAULT_CONFIG: LayoutConfig = {
   rows: 10,
   leftSeats: 5,
   rightSeats: 5,
+  vipRows: 2, // Row A-B: VIP
+  economyRows: 2, // Row C-D: ECONOMY
   aisleWidth: 60,
+};
+
+// ✅ NEW: Get ticket type info from seat type string
+// Seat.type will be "LEVEL_1", "LEVEL_2", etc. or old "VIP", "STANDARD", "ECONOMY"
+const getTicketTypeFromSeat = (
+  seatType: string | undefined,
+  ticketTypes: TicketType[],
+): TicketType | null => {
+  // ✅ Null check
+  if (!seatType || ticketTypes.length === 0) {
+    return null;
+  }
+
+  // Handle new format: "LEVEL_X"
+  if (seatType.startsWith("LEVEL_")) {
+    const level = parseInt(seatType.replace("LEVEL_", ""));
+    return ticketTypes.find((tt) => tt.level === level) || null;
+  }
+
+  // Handle old format: map VIP/STANDARD/ECONOMY to level
+  const levelMap: Record<string, number> = {
+    ECONOMY: 1,
+    STANDARD: 2,
+    VIP: 3,
+  };
+
+  const level = levelMap[seatType];
+  if (level) {
+    return ticketTypes.find((tt) => tt.level === level) || null;
+  }
+
+  return null;
 };
 
 // Generate seats from config
 const generateSeatsFromConfig = (
   cfg: LayoutConfig,
+  ticketTypes: TicketType[] = [],
   defaultType: SeatType = "STANDARD",
 ): Seat[] => {
   const seats: Seat[] = [];
+
+  // Helper to get price for seat type
+  const getPriceForType = (type: SeatType): number => {
+    // Try to find matching ticket type by name
+    const matchingTicket = ticketTypes.find((tt) => {
+      const ttNameLower = tt.name.toLowerCase();
+      const typeLower = type.toLowerCase();
+      return (
+        ttNameLower.includes(typeLower) ||
+        (type === "VIP" && ttNameLower.includes("vip")) ||
+        (type === "STANDARD" &&
+          (ttNameLower.includes("standard") ||
+            ttNameLower.includes("tiêu chuẩn"))) ||
+        (type === "ECONOMY" &&
+          (ttNameLower.includes("economy") ||
+            ttNameLower.includes("early bird")))
+      );
+    });
+    return matchingTicket?.price || 0;
+  };
+
+  // Find the cheapest ticket type by level (level 1 = cheapest)
+  const cheapestTicketType =
+    ticketTypes.length > 0
+      ? ticketTypes.reduce(
+          (min, tt) => (tt.level < min.level ? tt : min),
+          ticketTypes[0],
+        )
+      : null;
+
+  // ✅ Use new format: LEVEL_X
+  const defaultSeatType: SeatType = cheapestTicketType
+    ? (`LEVEL_${cheapestTicketType.level}` as SeatType)
+    : "ECONOMY";
+
+  const defaultPrice = cheapestTicketType?.price || 0;
+
   for (let r = 0; r < cfg.rows; r++) {
     const rowLabel = ROW_LABELS[r] || `R${r + 1}`;
+
+    // All seats start with the cheapest ticket type
+    const seatType = defaultSeatType;
+    const price = defaultPrice;
+
     // Left side
     for (let c = 1; c <= cfg.leftSeats; c++) {
       seats.push({
@@ -137,19 +218,22 @@ const generateSeatsFromConfig = (
         row: rowLabel,
         col: c,
         side: "left",
-        type: defaultType,
+        type: seatType,
         seat_number: `${rowLabel}${c}`,
+        price,
       });
     }
     // Right side
     for (let c = 1; c <= cfg.rightSeats; c++) {
+      const seatNumber = c + cfg.leftSeats;
       seats.push({
         id: `${rowLabel}-R${c}`,
         row: rowLabel,
-        col: c + cfg.leftSeats,
+        col: c, // col should be 1, 2, 3... for RIGHT side (relative to section)
         side: "right",
-        type: defaultType,
-        seat_number: `${rowLabel}${c + cfg.leftSeats}`,
+        type: seatType,
+        seat_number: `${rowLabel}${seatNumber}`, // seat_number is global (A1-A10)
+        price,
       });
     }
   }
@@ -166,6 +250,9 @@ export default function LayoutEditorPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isLoadingVersion, setIsLoadingVersion] = useState(false); // Flag to prevent auto-regenerate
+  const [hasInitialFetch, setHasInitialFetch] = useState(false); // Flag to prevent double fetch
+  const [hasLoadedSeats, setHasLoadedSeats] = useState(false); // Flag to prevent regenerating loaded seats
 
   // Version management
   const [versions, setVersions] = useState<LayoutVersion[]>([]);
@@ -203,7 +290,8 @@ export default function LayoutEditorPage() {
             (e: EventOption) => e.status === "PUBLISHED",
           );
           eventId = publishedEvent?.id || eventsData.data.events[0].id;
-          setSelectedEvent(eventId);
+          // Only set if different to avoid triggering useEffect loop
+          setSelectedEvent((prev) => (prev === eventId ? prev : eventId));
         }
       }
 
@@ -219,16 +307,35 @@ export default function LayoutEditorPage() {
       );
       const versionsData = await versionsRes.json();
       if (versionsData.success) {
-        setVersions(versionsData.data.versions || []);
-        setTicketTypes(versionsData.data.ticketTypes || []);
+        const loadedTicketTypes = versionsData.data.ticketTypes || [];
+        const loadedVersions = versionsData.data.versions || [];
 
         // Load active version or latest draft
-        const activeVersion = versionsData.data.versions?.find(
+        const activeVersion = loadedVersions.find(
           (v: LayoutVersion) => v.is_active,
         );
-        const latestDraft = versionsData.data.versions?.find(
+        const latestDraft = loadedVersions.find(
           (v: LayoutVersion) => v.status === "DRAFT",
         );
+
+        // ✅ Set flag BEFORE setTicketTypes to prevent race condition
+        if (activeVersion || latestDraft) {
+          setHasLoadedSeats(true);
+        }
+
+        setVersions(loadedVersions);
+        setTicketTypes(loadedTicketTypes);
+
+        console.log("📊 DATA LOADED:", {
+          ticketTypes: loadedTicketTypes,
+          hasActiveVersion: !!activeVersion,
+          hasLatestDraft: !!latestDraft,
+          versionName: activeVersion?.version_name || latestDraft?.version_name,
+          seatsInVersion:
+            activeVersion?.seats_data?.length ||
+            latestDraft?.seats_data?.length ||
+            0,
+        });
 
         if (activeVersion) {
           loadVersion(activeVersion);
@@ -245,6 +352,9 @@ export default function LayoutEditorPage() {
             );
             const seatsData = await seatsRes.json();
             if (seatsData.success && seatsData.data.seats?.length > 0) {
+              console.log("📥 Loading seats from database");
+              setHasLoadedSeats(true); // ✅ Mark loaded
+
               // Convert DB seats to layout format
               const dbSeats = seatsData.data.seats;
               const convertedSeats: Seat[] = dbSeats.map((s: any) => ({
@@ -274,15 +384,22 @@ export default function LayoutEditorPage() {
               setSeats(convertedSeats);
               setCurrentVersion(null);
             } else {
-              // No seats in DB, create default layout
-              const defaultSeats = generateSeatsFromConfig(DEFAULT_CONFIG);
+              console.log("🎬 No saved data, creating default layout");
+              // No seats in DB, create default layout with loaded ticket types
+              const defaultSeats = generateSeatsFromConfig(
+                DEFAULT_CONFIG,
+                loadedTicketTypes,
+              );
               setConfig(DEFAULT_CONFIG);
               setSeats(defaultSeats);
               setCurrentVersion(null);
             }
           } catch (err) {
             console.error("Failed to load seats from DB:", err);
-            const defaultSeats = generateSeatsFromConfig(DEFAULT_CONFIG);
+            const defaultSeats = generateSeatsFromConfig(
+              DEFAULT_CONFIG,
+              loadedTicketTypes,
+            );
             setConfig(DEFAULT_CONFIG);
             setSeats(defaultSeats);
             setCurrentVersion(null);
@@ -299,30 +416,141 @@ export default function LayoutEditorPage() {
 
   // Load a version
   const loadVersion = (version: LayoutVersion) => {
+    console.log("📥 Loading version - RAW DATA:", {
+      name: version.version_name,
+      seatsCount: version.seats_data?.length,
+      firstSeat: version.seats_data?.[0],
+      secondSeat: version.seats_data?.[1],
+      thirdSeat: version.seats_data?.[2],
+      config: version.layout_config,
+    });
+
+    // Check seat structure
+    const sampleSeat = version.seats_data?.[0];
+    console.log("🔍 Seat structure check:", {
+      hasType: "type" in (sampleSeat || {}),
+      hasSeatType: "seat_type" in (sampleSeat || {}),
+      allKeys: Object.keys(sampleSeat || {}),
+    });
+
+    // Set flag to prevent auto-regenerate
+    setIsLoadingVersion(true);
+    setHasLoadedSeats(true); // ✅ Mark that we loaded seats from version
+
+    // Clear selections first
+    setSelectedSeats(new Set());
+
+    // ✅ FIX: Normalize seat data - ensure `type` field exists
+    const normalizedSeats = version.seats_data.map((seat: any) => {
+      // Try to find the correct type field
+      let seatType = seat.type || seat.seat_type || seat.seatType;
+
+      // If still no type, default to cheapest ticket level
+      if (!seatType && ticketTypes.length > 0) {
+        const cheapest = ticketTypes.reduce(
+          (min, tt) => (tt.level < min.level ? tt : min),
+          ticketTypes[0],
+        );
+        seatType = `LEVEL_${cheapest.level}`;
+      }
+
+      // Ultimate fallback
+      if (!seatType) {
+        seatType = "LEVEL_1";
+      }
+
+      return {
+        ...seat,
+        type: seatType,
+      };
+    });
+
+    console.log("🔧 Normalized seats:", {
+      original: version.seats_data[0],
+      normalized: normalizedSeats[0],
+      allOriginalKeys: Object.keys(version.seats_data[0] || {}),
+    });
+
+    // Load version data
     setConfig(version.layout_config);
-    setSeats(version.seats_data);
+    setSeats(normalizedSeats); // ✅ Use normalized seats
     setCurrentVersion(version);
     setHasChanges(false);
+
+    console.log("✅ Version loaded, seats set to:", normalizedSeats.length);
+
+    // Reset flag after data is loaded
+    setTimeout(() => {
+      setIsLoadingVersion(false);
+      console.log("🔓 isLoadingVersion flag cleared");
+    }, 100);
   };
 
   useEffect(() => {
     fetchData();
+    setHasInitialFetch(true);
   }, []);
 
-  // Refetch when event changes
+  // Refetch when event changes (but skip initial fetch)
   useEffect(() => {
-    if (selectedEvent) {
+    if (hasInitialFetch && selectedEvent) {
+      console.log("🔄 Refetching data for event:", selectedEvent);
       fetchData(selectedEvent);
     }
-  }, [selectedEvent]);
+  }, [selectedEvent, hasInitialFetch]);
 
-  // Regenerate seats when config changes
+  // Auto-regenerate seats when config changes (manual trigger only)
   const regenerateSeats = useCallback(() => {
-    const newSeats = generateSeatsFromConfig(config);
+    if (ticketTypes.length === 0) {
+      console.log("⏸️ Cannot regenerate: No ticket types");
+      return;
+    }
+
+    console.log("✅ Regenerating seats from config...");
+    const newSeats = generateSeatsFromConfig(config, ticketTypes);
     setSeats(newSeats);
     setSelectedSeats(new Set());
     setHasChanges(true);
-  }, [config]);
+  }, [config, ticketTypes]);
+
+  // DISABLED: No auto-regenerate to prevent race conditions
+  // User must click "Apply Config" or "Reset Layout" to generate seats
+  // This prevents the "show correct then jump to wrong" issue
+
+  // Reset to default config
+  const resetToDefault = () => {
+    const defaultConfig = {
+      rows: 10,
+      leftSeats: 5,
+      rightSeats: 5,
+      vipRows: 0,
+      economyRows: 0,
+      aisleWidth: 60,
+    };
+    setConfig(defaultConfig);
+    const newSeats = generateSeatsFromConfig(defaultConfig, ticketTypes);
+    setSeats(newSeats);
+    setSelectedSeats(new Set());
+    setCurrentVersion(null);
+    setHasLoadedSeats(false); // ✅ Reset flag so user can regenerate
+    setHasChanges(true);
+
+    const cheapestTicket =
+      ticketTypes.length > 0
+        ? ticketTypes.reduce(
+            (min, tt) => (tt.level < min.level ? tt : min),
+            ticketTypes[0],
+          )
+        : null;
+    const cheapestName = cheapestTicket?.name || "Economy";
+    const cheapestLevel = cheapestTicket?.level || 1;
+    const cheapestPrice =
+      cheapestTicket?.price.toLocaleString("vi-VN") || "800.000";
+
+    message.success(
+      `Đã tạo layout mới: 100 ghế với vé ${cheapestName} (Level ${cheapestLevel}, ${cheapestPrice}đ)`,
+    );
+  };
 
   // Save draft
   const handleSaveDraft = async () => {
@@ -491,25 +719,104 @@ export default function LayoutEditorPage() {
     setSelectedSeats(newSelected);
   };
 
-  // Get seat stats
+  // Get seat stats by type
   const getSeatStats = () => {
-    const stats = { VIP: 0, STANDARD: 0, ECONOMY: 0, DISABLED: 0 };
+    const stats: Record<SeatType, number> = {
+      VIP: 0,
+      STANDARD: 0,
+      ECONOMY: 0,
+      DISABLED: 0,
+    };
     seats.forEach((s) => stats[s.type]++);
     return stats;
   };
 
+  // Get seat stats grouped by ticket type (level-based) - MEMOIZED
+  const seatStatsByLevel = useMemo(() => {
+    console.log("🔢 Calculating seatStatsByLevel:", {
+      ticketTypesCount: ticketTypes.length,
+      seatsCount: seats.length,
+    });
+
+    if (ticketTypes.length === 0 || seats.length === 0) {
+      console.log("⚠️ Cannot calculate stats - missing data");
+      return {};
+    }
+
+    const statsByLevel: Record<
+      number,
+      { name: string; count: number; color: string }
+    > = {};
+
+    const seatTypesCounts: Record<string, number> = {};
+    seats.forEach((seat) => {
+      if (seat.type === "DISABLED") return;
+
+      seatTypesCounts[seat.type] = (seatTypesCounts[seat.type] || 0) + 1;
+
+      // ✅ Use new dynamic mapping
+      const matchingTicket = getTicketTypeFromSeat(seat.type, ticketTypes);
+
+      if (matchingTicket) {
+        if (!statsByLevel[matchingTicket.level]) {
+          statsByLevel[matchingTicket.level] = {
+            name: matchingTicket.name,
+            count: 0,
+            color: matchingTicket.color,
+          };
+        }
+        statsByLevel[matchingTicket.level].count++;
+      } else {
+        console.warn(`  ❌ No matching ticket for seat type: ${seat.type}`);
+      }
+    });
+
+    console.log("📈 Seat types in seats array:", seatTypesCounts);
+    console.log("📊 Final stats by level:", statsByLevel);
+
+    return statsByLevel;
+  }, [seats, ticketTypes]);
+
   // Render seat component
-  const renderSeat = (seat: Seat) => {
+  const renderSeat = (seat: Seat, index: number) => {
     const isSelected = selectedSeats.has(seat.id);
-    const colors = SEAT_COLORS[seat.type] || SEAT_COLORS.STANDARD;
+
+    // ✅ Get colors dynamically from ticket type
+    let colors = SEAT_COLORS.STANDARD; // fallback
+    let ticketInfo = null;
+
+    if (seat.type === "DISABLED") {
+      colors = SEAT_COLORS.DISABLED;
+    } else {
+      ticketInfo = getTicketTypeFromSeat(seat.type, ticketTypes);
+      if (ticketInfo) {
+        // Use ticket type color
+        const hexColor = ticketInfo.color;
+        colors = {
+          back: `from-[${hexColor}] to-[${hexColor}]`,
+          cushion: `from-[${hexColor}] to-[${hexColor}]`,
+          armrest: `bg-[${hexColor}]`,
+          label: ticketInfo.name,
+        };
+      } else {
+        // Fallback to old hardcoded colors if no match
+        colors = SEAT_COLORS[seat.type as SeatType] || SEAT_COLORS.STANDARD;
+      }
+    }
+
+    // Display full seat number (e.g., "A1", "A10")
+    const displayNumber = seat.seat_number;
 
     return (
       <Tooltip
         key={seat.id}
         title={
           <div className="text-xs">
-            <div>Ghế: {seat.id}</div>
+            <div>Ghế: {seat.seat_number}</div>
             <div>Loại: {colors.label}</div>
+            {seat.price !== undefined && seat.price > 0 && (
+              <div>Giá: {seat.price.toLocaleString("vi-VN")}đ</div>
+            )}
           </div>
         }
       >
@@ -524,8 +831,8 @@ export default function LayoutEditorPage() {
             className={`w-7 h-5 rounded-t-md bg-gradient-to-b ${colors.back} flex items-center justify-center relative border-t border-l border-r border-white/20`}
           >
             <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-md" />
-            <span className="relative text-[10px] font-bold text-white">
-              {seat.col}
+            <span className="relative text-[9px] font-bold text-white">
+              {displayNumber}
             </span>
           </div>
           {/* Seat cushion */}
@@ -564,11 +871,24 @@ export default function LayoutEditorPage() {
     return { leftSeats, rightSeats };
   };
 
-  // Get unique rows
-  const uniqueRows = [...new Set(seats.map((s) => s.row))].sort((a, b) => {
-    const idxA = ROW_LABELS.indexOf(a);
-    const idxB = ROW_LABELS.indexOf(b);
-    return idxA - idxB;
+  // Get unique rows - MEMOIZED
+  const uniqueRows = useMemo(() => {
+    return [...new Set(seats.map((s) => s.row))].sort((a, b) => {
+      const idxA = ROW_LABELS.indexOf(a);
+      const idxB = ROW_LABELS.indexOf(b);
+      return idxA - idxB;
+    });
+  }, [seats]);
+
+  // Debug: Log current state
+  React.useEffect(() => {
+    console.log("🎬 LayoutEditor State:", {
+      seatsCount: seats.length,
+      sampleSeat: seats[0],
+      ticketTypesCount: ticketTypes.length,
+      ticketTypes: ticketTypes,
+      seatStatsByLevel: seatStatsByLevel,
+    });
   });
 
   return (
@@ -692,11 +1012,13 @@ export default function LayoutEditorPage() {
             {ticketTypes.length > 0 && (
               <div className="flex gap-2 ml-4">
                 <span className="text-gray-500">Giá vé:</span>
-                {ticketTypes.map((tt) => (
-                  <Tag key={tt.id} color={tt.color}>
-                    {tt.name}: {tt.price.toLocaleString("vi-VN")}đ
-                  </Tag>
-                ))}
+                {ticketTypes
+                  .sort((a, b) => a.level - b.level)
+                  .map((tt) => (
+                    <Tag key={tt.id} color={tt.color}>
+                      {tt.name}: {Number(tt.price).toLocaleString("vi-VN")}đ
+                    </Tag>
+                  ))}
               </div>
             )}
           </div>
@@ -753,18 +1075,37 @@ export default function LayoutEditorPage() {
                 className="w-full"
               />
             </div>
-            <div className="flex items-end">
-              <Button onClick={regenerateSeats} className="w-full">
-                Tạo lại ghế
+            <div className="flex items-end gap-2">
+              <Button
+                type="primary"
+                onClick={regenerateSeats}
+                className="flex-1"
+              >
+                Apply Config
+              </Button>
+              <Button
+                danger
+                icon={<ReloadOutlined />}
+                onClick={resetToDefault}
+                className="flex-1"
+              >
+                Reset Layout
               </Button>
             </div>
           </div>
 
           {/* Stats */}
           <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
-            <Tag color="orange">VIP: {stats.VIP}</Tag>
-            <Tag color="green">Tiêu chuẩn: {stats.STANDARD}</Tag>
-            <Tag color="cyan">Phổ thông: {stats.ECONOMY}</Tag>
+            {Object.entries(seatStatsByLevel)
+              .sort(([levelA], [levelB]) => Number(levelA) - Number(levelB))
+              .map(([level, data]) => (
+                <Tag
+                  key={level}
+                  style={{ backgroundColor: data.color, color: "#fff" }}
+                >
+                  {data.name} (Level {level}): {data.count}
+                </Tag>
+              ))}
             <Tag color="default">Vô hiệu: {stats.DISABLED}</Tag>
             <Tag color="blue">Tổng: {seats.length}</Tag>
           </div>
@@ -792,9 +1133,20 @@ export default function LayoutEditorPage() {
                   value={currentType}
                   onChange={(v) => setCurrentType(v as SeatType)}
                   options={[
-                    { label: "VIP", value: "VIP" },
-                    { label: "Tiêu chuẩn", value: "STANDARD" },
-                    { label: "Phổ thông", value: "ECONOMY" },
+                    // Get unique seat types by level
+                    ...Array.from(
+                      new Map(
+                        ticketTypes
+                          .sort((a, b) => a.level - b.level)
+                          .map((tt) => [
+                            `LEVEL_${tt.level}`,
+                            {
+                              label: `${tt.name} (Level ${tt.level})`,
+                              value: `LEVEL_${tt.level}` as SeatType,
+                            },
+                          ]),
+                      ).values(),
+                    ),
                     { label: "Vô hiệu", value: "DISABLED" },
                   ]}
                 />
@@ -809,28 +1161,32 @@ export default function LayoutEditorPage() {
                 <Button icon={<ClearOutlined />} onClick={clearSelection}>
                   Bỏ chọn ({selectedSeats.size})
                 </Button>
-                <div className="border-l pl-4 flex gap-2">
+                <div className="border-l pl-4 flex gap-2 flex-wrap">
                   <span className="text-sm font-medium self-center">
                     Đặt loại:
                   </span>
-                  <Button
-                    size="small"
-                    onClick={() => applyTypeToSelected("VIP")}
-                  >
-                    VIP
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => applyTypeToSelected("STANDARD")}
-                  >
-                    Tiêu chuẩn
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => applyTypeToSelected("ECONOMY")}
-                  >
-                    Phổ thông
-                  </Button>
+                  {Array.from(
+                    new Map(
+                      ticketTypes
+                        .sort((a, b) => a.level - b.level)
+                        .map((tt) => [`LEVEL_${tt.level}`, tt]),
+                    ).values(),
+                  ).map((tt) => (
+                    <Button
+                      key={tt.id}
+                      size="small"
+                      style={{
+                        backgroundColor: tt.color,
+                        color: "#fff",
+                        borderColor: tt.color,
+                      }}
+                      onClick={() =>
+                        applyTypeToSelected(`LEVEL_${tt.level}` as SeatType)
+                      }
+                    >
+                      {tt.name}
+                    </Button>
+                  ))}
                   <Button
                     size="small"
                     onClick={() => applyTypeToSelected("DISABLED")}
@@ -866,81 +1222,105 @@ export default function LayoutEditorPage() {
 
             {/* Seats Grid */}
             <div className="space-y-2">
-              {uniqueRows.map((rowLabel) => {
-                const { leftSeats: left, rightSeats: right } =
-                  getSeatsForRow(rowLabel);
+              {uniqueRows.length === 0 ? (
+                <div className="text-center text-gray-400 py-12">
+                  <p>
+                    Không có ghế nào. Vui lòng chọn event hoặc click "Reset
+                    Layout".
+                  </p>
+                  <p className="text-xs mt-2">
+                    Debug: seats={seats.length}, ticketTypes=
+                    {ticketTypes.length}
+                  </p>
+                </div>
+              ) : (
+                uniqueRows.map((rowLabel) => {
+                  const { leftSeats: left, rightSeats: right } =
+                    getSeatsForRow(rowLabel);
 
-                return (
-                  <div
-                    key={rowLabel}
-                    className="flex items-center justify-center gap-2"
-                  >
-                    {/* Row label left */}
-                    <button
-                      onClick={() => isMultiSelect && selectRow(rowLabel)}
-                      className={`w-8 text-center font-bold text-sm ${
-                        left.some((s) => s.type === "VIP")
-                          ? "text-orange-400"
-                          : "text-gray-500"
-                      } ${isMultiSelect ? "hover:text-white cursor-pointer" : ""}`}
-                    >
-                      {rowLabel}
-                    </button>
-
-                    {/* Left seats */}
-                    <div className="flex gap-1">
-                      {left.map((seat) => renderSeat(seat))}
-                    </div>
-
-                    {/* Aisle */}
+                  return (
                     <div
-                      className="flex items-center justify-center text-gray-600 text-xs"
-                      style={{ width: config.aisleWidth }}
+                      key={rowLabel}
+                      className="flex items-center justify-center gap-2"
                     >
-                      │
-                    </div>
+                      {/* Row label left */}
+                      <button
+                        onClick={() => isMultiSelect && selectRow(rowLabel)}
+                        className={`w-8 text-center font-bold text-sm ${
+                          left.some((s) => s.type === "VIP")
+                            ? "text-orange-400"
+                            : "text-gray-500"
+                        } ${isMultiSelect ? "hover:text-white cursor-pointer" : ""}`}
+                      >
+                        {rowLabel}
+                      </button>
 
-                    {/* Right seats */}
-                    <div className="flex gap-1">
-                      {right.map((seat) => renderSeat(seat))}
-                    </div>
+                      {/* Left seats */}
+                      <div className="flex gap-1">
+                        {left.map((seat, idx) => renderSeat(seat, idx))}
+                      </div>
 
-                    {/* Row label right */}
-                    <button
-                      onClick={() => isMultiSelect && selectRow(rowLabel)}
-                      className={`w-8 text-center font-bold text-sm ${
-                        right.some((s) => s.type === "VIP")
-                          ? "text-orange-400"
-                          : "text-gray-500"
-                      } ${isMultiSelect ? "hover:text-white cursor-pointer" : ""}`}
-                    >
-                      {rowLabel}
-                    </button>
-                  </div>
-                );
-              })}
+                      {/* Aisle */}
+                      <div
+                        className="flex items-center justify-center text-gray-600 text-xs"
+                        style={{ width: config.aisleWidth }}
+                      >
+                        │
+                      </div>
+
+                      {/* Right seats */}
+                      <div className="flex gap-1">
+                        {right.map((seat, idx) => renderSeat(seat, idx))}
+                      </div>
+
+                      {/* Row label right */}
+                      <button
+                        onClick={() => isMultiSelect && selectRow(rowLabel)}
+                        className={`w-8 text-center font-bold text-sm ${
+                          right.some((s) => s.type === "VIP")
+                            ? "text-orange-400"
+                            : "text-gray-500"
+                        } ${isMultiSelect ? "hover:text-white cursor-pointer" : ""}`}
+                      >
+                        {rowLabel}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             {/* Legend */}
             <div className="flex flex-wrap justify-center gap-6 mt-8 pt-6 border-t border-white/10">
-              {(["VIP", "STANDARD", "ECONOMY", "DISABLED"] as const).map(
-                (type) => {
-                  const colors = SEAT_COLORS[type];
-                  return (
+              {Array.from(
+                new Map(
+                  ticketTypes
+                    .sort((a, b) => a.level - b.level)
+                    .map((tt) => [`LEVEL_${tt.level}`, tt]),
+                ).values(),
+              ).map((tt) => {
+                return (
+                  <div
+                    key={tt.id}
+                    className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/5"
+                    style={{ borderLeft: `4px solid ${tt.color}` }}
+                  >
                     <div
-                      key={type}
-                      className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/5"
-                    >
-                      <div
-                        className={`w-6 h-6 rounded bg-gradient-to-b ${colors.back}`}
-                      />
-                      <span className="text-white/80 text-sm">
-                        {colors.label}
-                      </span>
-                    </div>
-                  );
-                },
-              )}
+                      className="w-6 h-6 rounded"
+                      style={{
+                        background: `linear-gradient(to bottom, ${tt.color}, ${tt.color})`,
+                      }}
+                    />
+                    <span className="text-white/80 text-sm">
+                      {tt.name} (Level {tt.level})
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/5">
+                <div className="w-6 h-6 rounded bg-gradient-to-b from-gray-600 to-gray-700" />
+                <span className="text-white/80 text-sm">Vô hiệu</span>
+              </div>
             </div>
           </div>
         </Card>

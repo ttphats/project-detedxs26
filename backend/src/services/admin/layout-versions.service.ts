@@ -26,6 +26,7 @@ interface TicketType extends RowDataPacket {
   id: string
   name: string
   price: number
+  level: number
   color: string
 }
 
@@ -53,9 +54,9 @@ export async function listLayoutVersions(eventId: string) {
   // Get events for dropdown
   const [events] = await pool.query<Event[]>('SELECT id, name FROM events ORDER BY created_at DESC')
 
-  // Get ticket types for the event
+  // Get ticket types for the event (including level)
   const [ticketTypes] = await pool.query<TicketType[]>(
-    'SELECT id, name, price, color FROM ticket_types WHERE event_id = ? ORDER BY sort_order',
+    'SELECT id, name, price, level, color FROM ticket_types WHERE event_id = ? ORDER BY level, sort_order',
     [eventId]
   )
 
@@ -213,10 +214,22 @@ export async function publishLayoutVersion(id: string, userId?: string) {
       [version.event_id]
     )
 
-    // Create a map: seat_type (name) -> price
+    // Create a map: seat_type -> price using smart matching
     const priceMap = new Map<string, number>()
     for (const tt of ticketTypes) {
-      priceMap.set(tt.name.toUpperCase(), Number(tt.price))
+      const ttNameLower = tt.name.toLowerCase()
+      // Match VIP
+      if (ttNameLower.includes('vip')) {
+        priceMap.set('VIP', Number(tt.price))
+      }
+      // Match STANDARD (tiêu chuẩn, standard, etc.)
+      else if (ttNameLower.includes('standard') || ttNameLower.includes('tiêu chuẩn')) {
+        priceMap.set('STANDARD', Number(tt.price))
+      }
+      // Match ECONOMY (early bird, economy, phổ thông, etc.)
+      else if (ttNameLower.includes('economy') || ttNameLower.includes('early bird') || ttNameLower.includes('phổ thông')) {
+        priceMap.set('ECONOMY', Number(tt.price))
+      }
     }
 
     // 5. Create seats from seats_data
@@ -225,7 +238,15 @@ export async function publishLayoutVersion(id: string, userId?: string) {
 
     for (const seat of seatsData) {
       const seatId = randomUUID()
-      const seatType = seat.seat_type || 'STANDARD'
+
+      // Convert editor format to database format
+      // Editor uses: side: "left"/"right", type: "VIP"/"STANDARD"
+      // Database uses: section: "LEFT"/"RIGHT", seat_type: "VIP"/"STANDARD"
+      const seatType = seat.type || seat.seat_type || 'STANDARD'
+      const section = seat.side
+        ? (seat.side === 'left' ? 'LEFT' : 'RIGHT')
+        : (seat.section || 'MAIN')
+
       const price = seat.price || priceMap.get(seatType.toUpperCase()) || 0
 
       await connection.query(
@@ -238,7 +259,7 @@ export async function publishLayoutVersion(id: string, userId?: string) {
           seat.seat_number || `${seat.row}${seat.col}`,
           seat.row,
           seat.col,
-          seat.section || 'MAIN',
+          section,
           seatType,
           price,
           seat.position_x || 0,

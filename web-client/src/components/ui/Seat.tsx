@@ -11,6 +11,7 @@ interface SeatProps {
   id: string;
   row: string;
   number: number;
+  seatNumber?: string; // Full seat number like "A1", "B10"
   status: "available" | "selected" | "sold" | "locked" | "locked_by_me";
   price: number;
   seatType?: "VIP" | "STANDARD" | "ECONOMY";
@@ -22,6 +23,7 @@ export default function Seat({
   id,
   row,
   number,
+  seatNumber,
   status,
   price,
   seatType = "STANDARD",
@@ -80,7 +82,8 @@ export default function Seat({
 
   // Title text
   const getTitleText = () => {
-    const priceText = `${row}${number} - ${price.toLocaleString("vi-VN")}đ`;
+    const displaySeat = seatNumber || `${row}${number}`;
+    const priceText = `${displaySeat} - ${price.toLocaleString("vi-VN")}đ`;
     if (status === "sold") return `${priceText} (Đã bán)`;
     if (status === "locked") return `${priceText} (Đang được giữ)`;
     if (status === "locked_by_me" || status === "selected")
@@ -109,9 +112,9 @@ export default function Seat({
         <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-md" />
         {/* Seat number */}
         <span
-          className={`relative text-[11px] sm:text-[9px] font-bold ${isDisabled ? "text-gray-400" : "text-white"}`}
+          className={`relative text-[10px] sm:text-[8px] font-bold ${isDisabled ? "text-gray-400" : "text-white"}`}
         >
-          {number}
+          {seatNumber || `${row}${number}`}
         </span>
       </div>
 

@@ -149,6 +149,7 @@ export async function seedDefaultData() {
       subtitle VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
       description TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
       price DECIMAL(10,2) NOT NULL,
+      level INT NOT NULL DEFAULT 1 COMMENT 'Ticket level: 1=cheapest, 2=mid, 3=expensive',
       benefits TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
       color VARCHAR(20),
       icon VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
@@ -158,12 +159,13 @@ export async function seedDefaultData() {
       sort_order INT DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_event_id (event_id)
+      INDEX idx_event_id (event_id),
+      INDEX idx_level (level)
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci
   `)
-  console.log('[SEED] ✓ ticket_types table recreated with UTF8MB4')
+  console.log('[SEED] ✓ ticket_types table recreated with UTF8MB4 and level column')
 
-  // 6. Create ticket types
+  // 6. Create ticket types (with level)
   console.log('[SEED] Creating ticket types...')
   const ticketTypes = [
     {
@@ -173,6 +175,7 @@ export async function seedDefaultData() {
       subtitle: 'Gia uu dai som',
       description: 'Early bird special price',
       price: 800000,
+      level: 1, // Cheapest
       benefits: null,
       color: '#10b981',
       icon: '🎟️',
@@ -188,6 +191,7 @@ export async function seedDefaultData() {
       subtitle: 'Ve tieu chuan',
       description: 'Standard ticket',
       price: 1500000,
+      level: 2, // Mid-tier
       benefits: null,
       color: '#3b82f6',
       icon: '🎫',
@@ -203,6 +207,7 @@ export async function seedDefaultData() {
       subtitle: 'Ve VIP cao cap',
       description: 'VIP ticket with premium seating',
       price: 2500000,
+      level: 3, // Most expensive
       benefits: null,
       color: '#eab308',
       icon: '👑',
@@ -215,8 +220,8 @@ export async function seedDefaultData() {
 
   for (const ticketType of ticketTypes) {
     await query(
-      `INSERT IGNORE INTO ticket_types (id, event_id, name, subtitle, description, price, benefits, color, icon, max_quantity, sold_quantity, is_active, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      `INSERT IGNORE INTO ticket_types (id, event_id, name, subtitle, description, price, level, benefits, color, icon, max_quantity, sold_quantity, is_active, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         ticketType.id,
         ticketType.event_id,
@@ -224,6 +229,7 @@ export async function seedDefaultData() {
         ticketType.subtitle,
         ticketType.description,
         ticketType.price,
+        ticketType.level,
         ticketType.benefits,
         ticketType.color,
         ticketType.icon,
@@ -237,42 +243,54 @@ export async function seedDefaultData() {
 
   console.log('[SEED] ✓ Ticket types created')
 
-  // 7. Create seats (10 rows x 10 seats = 100 seats)
+  // 7. Create seats (10 rows x 10 seats = 100 seats with LEFT/RIGHT sections)
+  // All seats initially have the CHEAPEST ticket type (level = 1)
   console.log('[SEED] Creating seats...')
   const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
-  const seatsPerRow = 10
+  const leftSeatsPerRow = 5
+  const rightSeatsPerRow = 5
   let seatsCreated = 0
 
+  // Get the cheapest ticket type (lowest level)
+  const cheapestTicketType = ticketTypes.reduce((min, tt) =>
+    tt.level < min.level ? tt : min,
+    ticketTypes[0]
+  )
+  const defaultSeatType = cheapestTicketType.name
+  const defaultPrice = cheapestTicketType.price
+
+  console.log(`[SEED] Using cheapest ticket: ${defaultSeatType} (Level ${cheapestTicketType.level}, ${defaultPrice.toLocaleString('vi-VN')} VNĐ)`)
+
   for (const row of rows) {
-    for (let col = 1; col <= seatsPerRow; col++) {
+    // LEFT section (seats 1-5)
+    for (let col = 1; col <= leftSeatsPerRow; col++) {
       const seatId = randomUUID()
       const seatNumber = `${row}${col}`
 
-      // Determine seat type and price based on row
-      let seatType = 'STANDARD'
-      let price = 1500000
+      await query(
+        `INSERT INTO seats (id, event_id, seat_number, \`row\`, \`col\`, section, seat_type, price, status, position_x, position_y, is_disabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', 0, 0, 0, NOW(), NOW())`,
+        [seatId, eventId, seatNumber, row, col, 'LEFT', defaultSeatType, defaultPrice]
+      )
+      seatsCreated++
+    }
 
-      if (row === 'A' || row === 'B') {
-        // Row A, B: VIP
-        seatType = 'VIP'
-        price = 2500000
-      } else if (row === 'C' || row === 'D') {
-        // Row C, D: ECONOMY (Early Bird pricing)
-        seatType = 'ECONOMY'
-        price = 800000
-      }
-      // Row E-J: STANDARD (default)
+    // RIGHT section (seats 6-10)
+    for (let col = leftSeatsPerRow + 1; col <= leftSeatsPerRow + rightSeatsPerRow; col++) {
+      const seatId = randomUUID()
+      const seatNumber = `${row}${col}`
 
       await query(
-        `INSERT INTO seats (id, event_id, seat_number, row, col, section, seat_type, price, status, position_x, position_y, is_disabled, created_at, updated_at)
+        `INSERT INTO seats (id, event_id, seat_number, \`row\`, \`col\`, section, seat_type, price, status, position_x, position_y, is_disabled, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', 0, 0, 0, NOW(), NOW())`,
-        [seatId, eventId, seatNumber, row, col, 'MAIN', seatType, price]
+        [seatId, eventId, seatNumber, row, col, 'RIGHT', defaultSeatType, defaultPrice]
       )
       seatsCreated++
     }
   }
 
-  console.log(`[SEED] ✓ Created ${seatsCreated} seats (${rows.length} rows x ${seatsPerRow} seats)`)
+  console.log(`[SEED] ✓ Created ${seatsCreated} seats (${rows.length} rows x ${leftSeatsPerRow + rightSeatsPerRow} seats with LEFT/RIGHT sections)`)
+  console.log(`[SEED] ✓ All seats initialized with ECONOMY type (${defaultPrice.toLocaleString('vi-VN')} VNĐ) - cheapest ticket type`)
 
   // 8. Update event available_seats count
   await query(`UPDATE events SET available_seats = ?, max_capacity = ? WHERE id = ?`, [

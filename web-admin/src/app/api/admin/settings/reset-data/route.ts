@@ -45,7 +45,11 @@ export async function POST(request: NextRequest) {
     await query('DELETE FROM seat_locks')
     console.log('[RESET] ✓ Deleted seat_locks')
 
-    // 6. Delete ALL seats (will be recreated by seed)
+    // 6. Delete layout versions
+    await query('DELETE FROM seat_layout_versions')
+    console.log('[RESET] ✓ Deleted layout versions')
+
+    // 7. Delete ALL seats (will be recreated by seed)
     await query('DELETE FROM seats')
     console.log('[RESET] ✓ Deleted all seats')
 
@@ -94,6 +98,7 @@ export async function POST(request: NextRequest) {
         deletedOrders: true,
         deletedSeatLocks: true,
         deletedEmailLogs: true,
+        deletedLayoutVersions: true,
         resetSeats: true,
         updatedEvents: true,
         seedResult,

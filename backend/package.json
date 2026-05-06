@@ -11,8 +11,19 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
+    "prisma:studio": "prisma studio",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy": "npm run build && pm2 restart ecosystem.config.js --env production",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
+    "pm2:stop": "pm2 stop tedx-backend",
+    "pm2:restart": "pm2 restart tedx-backend",
+    "pm2:logs": "pm2 logs tedx-backend",
+    "pm2:status": "pm2 status",
+    "docker:build": "docker build -t tedx-backend .",
+    "docker:run": "docker-compose up -d",
+    "docker:stop": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",

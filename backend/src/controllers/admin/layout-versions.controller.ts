@@ -146,7 +146,7 @@ export async function publish(request: FastifyRequest, reply: FastifyReply) {
       })
     }
 
-    const userId = request.user?.id
+    const userId = request.user?.userId
     const result = await layoutVersionsService.publishLayoutVersion(id, userId)
 
     return reply.send({
