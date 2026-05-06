@@ -49,27 +49,17 @@ export async function POST(request: NextRequest) {
     await query('DELETE FROM seat_layout_versions')
     console.log('[RESET] ✓ Deleted layout versions')
 
-    // 7. Delete ALL seats (will be recreated by seed)
+    // 7. Delete ALL seats (will be recreated from Layout Editor)
     await query('DELETE FROM seats')
     console.log('[RESET] ✓ Deleted all seats')
 
-    // Note: Old schema doesn't have ticket_types table, skipping
-    // 7. Update ticket_types sold_quantity to 0
-    // await query('UPDATE ticket_types SET sold_quantity = 0')
-    // console.log('[RESET] ✓ Reset ticket types sold_quantity')
+    // 8. Update ticket_types sold_quantity to 0
+    await query('UPDATE ticket_types SET sold_quantity = 0')
+    console.log('[RESET] ✓ Reset ticket types sold_quantity')
 
-    // 8. Update events available_seats
-    await query(`
-      UPDATE events e
-      SET available_seats = (
-        SELECT COUNT(*) 
-        FROM seats s 
-        WHERE s.event_id = e.id 
-        AND s.status = 'AVAILABLE'
-        AND s.is_disabled = 0
-      )
-    `)
-    console.log('[RESET] ✓ Updated events available_seats count')
+    // 9. Update events available_seats to 0 (no seats yet)
+    await query('UPDATE events SET available_seats = 0, max_capacity = 0')
+    console.log('[RESET] ✓ Reset events capacity to 0 (no seats)')
 
     // Create audit log
     await query(
