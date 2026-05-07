@@ -89,7 +89,7 @@ export default function TimelinesPage() {
           setEvents(data.data)
           if (data.data.length > 0 && !selectedEvent) {
             // Find PUBLISHED event first, otherwise use first event
-            const publishedEvent = data.data.find((e: Event) => e.status === 'PUBLISHED')
+            const publishedEvent = data.data.find((e: any) => e.status === 'PUBLISHED')
             setSelectedEvent(publishedEvent?.id || data.data[0].id)
           }
         }
