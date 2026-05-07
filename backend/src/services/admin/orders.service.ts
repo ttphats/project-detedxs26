@@ -1,56 +1,56 @@
-import { prisma } from '../../db/prisma.js';
-import { randomBytes, createHash } from 'crypto';
-import { generateTicketQRCode, generateTicketUrl } from '../qrcode.service.js';
-import { sendEmailByPurpose } from '../email.service.js';
-import { createAuditLog } from '../audit.service.js';
+import {prisma} from '../../db/prisma.js'
+import {randomBytes, createHash} from 'crypto'
+import {generateTicketQRCode, generateTicketUrl} from '../qrcode.service.js'
+import {sendEmailByPurpose} from '../email.service.js'
+import {createAuditLog} from '../audit.service.js'
 
 export interface ListOrdersInput {
-  page?: number;
-  limit?: number;
-  status?: string;
-  eventId?: string;
-  search?: string;
+  page?: number
+  limit?: number
+  status?: string
+  eventId?: string
+  search?: string
 }
 
 /**
  * List orders with pagination and filters
  */
 export async function listOrders(input: ListOrdersInput) {
-  const page = Number(input.page) || 1;
-  const limit = Number(input.limit) || 20;
-  const skip = (page - 1) * limit;
+  const page = Number(input.page) || 1
+  const limit = Number(input.limit) || 20
+  const skip = (page - 1) * limit
 
-  const where: any = {};
+  const where: any = {}
 
-  if (input.status) where.status = input.status;
-  if (input.eventId) where.eventId = input.eventId;
+  if (input.status) where.status = input.status
+  if (input.eventId) where.eventId = input.eventId
 
   if (input.search) {
     where.OR = [
-      { orderNumber: { contains: input.search } },
-      { customerName: { contains: input.search } },
-      { customerEmail: { contains: input.search } },
-      { customerPhone: { contains: input.search } },
-    ];
+      {orderNumber: {contains: input.search}},
+      {customerName: {contains: input.search}},
+      {customerEmail: {contains: input.search}},
+      {customerPhone: {contains: input.search}},
+    ]
   }
 
   const [orders, total, pending, paid, cancelled] = await Promise.all([
     prisma.order.findMany({
       where,
       include: {
-        event: { select: { id: true, name: true, eventDate: true, venue: true } },
-        orderItems: { include: { seat: true } },
+        event: {select: {id: true, name: true, eventDate: true, venue: true}},
+        orderItems: {include: {seat: true}},
         payment: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: {createdAt: 'desc'},
       skip,
       take: limit,
     }),
-    prisma.order.count({ where }),
-    prisma.order.count({ where: { ...where, status: 'PENDING' } }),
-    prisma.order.count({ where: { ...where, status: 'PAID' } }),
-    prisma.order.count({ where: { ...where, status: 'CANCELLED' } }),
-  ]);
+    prisma.order.count({where}),
+    prisma.order.count({where: {...where, status: 'PENDING'}}),
+    prisma.order.count({where: {...where, status: 'PAID'}}),
+    prisma.order.count({where: {...where, status: 'CANCELLED'}}),
+  ])
 
   const mappedOrders = orders.map((order: any) => ({
     ...order,
@@ -61,11 +61,11 @@ export async function listOrders(input: ListOrdersInput) {
       row: item.seat?.row ?? '',
       price: Number(item.price),
     })),
-  }));
+  }))
 
   return {
     orders: mappedOrders,
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    pagination: {page, limit, total, totalPages: Math.ceil(total / limit)},
     summary: {
       totalOrders: total,
       pendingOrders: pending,
@@ -75,7 +75,7 @@ export async function listOrders(input: ListOrdersInput) {
       paid,
       cancelled,
     },
-  };
+  }
 }
 
 /**
@@ -83,15 +83,15 @@ export async function listOrders(input: ListOrdersInput) {
  */
 export async function getOrderById(id: string) {
   const order = await prisma.order.findUnique({
-    where: { id },
+    where: {id},
     include: {
       event: true,
-      orderItems: { include: { seat: true } },
+      orderItems: {include: {seat: true}},
       payment: true,
     },
-  });
+  })
 
-  if (!order) return null;
+  if (!order) return null
 
   return {
     ...order,
@@ -102,16 +102,16 @@ export async function getOrderById(id: string) {
       row: item.seat?.row ?? '',
       price: Number(item.price),
     })),
-  };
+  }
 }
 
 /**
  * Generate access token
  */
-function generateAccessToken(): { token: string; hash: string } {
-  const token = randomBytes(32).toString('hex');
-  const hash = createHash('sha256').update(token).digest('hex');
-  return { token, hash };
+function generateAccessToken(): {token: string; hash: string} {
+  const token = randomBytes(32).toString('hex')
+  const hash = createHash('sha256').update(token).digest('hex')
+  return {token, hash}
 }
 
 /**
@@ -119,111 +119,116 @@ function generateAccessToken(): { token: string; hash: string } {
  */
 export async function confirmPayment(
   orderId: string,
-  adminUser: { userId: string; roleName: string },
+  adminUser: {userId: string; roleName: string},
   ipAddress?: string,
   userAgent?: string
 ) {
-  const result = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      include: {
-        event: true,
-        orderItems: { include: { seat: true } },
-        payment: true,
-      },
-    });
-
-    if (!order) throw new Error('Order not found');
-    if (order.status === 'PAID') throw new Error('Order already paid');
-    if (order.status === 'CANCELLED') throw new Error('Order is cancelled');
-    if (order.status === 'EXPIRED') throw new Error('Order has expired');
-
-    // Generate access token (only if not already set)
-    let accessToken: string;
-    let accessTokenHash: string;
-
-    if (order.accessTokenHash) {
-      // Token already exists (user confirmed first), keep it
-      accessTokenHash = order.accessTokenHash;
-      accessToken = ''; // We don't have the plaintext token, but hash is already stored
-      console.log('[CONFIRM PAYMENT] Reusing existing access token hash');
-    } else {
-      // Generate new token (admin confirmed first)
-      const generated = generateAccessToken();
-      accessToken = generated.token;
-      accessTokenHash = generated.hash;
-      console.log('[CONFIRM PAYMENT] Generated new access token');
-    }
-
-    // Update order to PAID
-    const updatedOrder = await tx.order.update({
-      where: { id: orderId },
-      data: {
-        status: 'PAID',
-        paidAt: new Date(),
-        accessTokenHash,
-      },
-    });
-
-    // Update payment
-    if (order.payment) {
-      await tx.payment.update({
-        where: { orderId },
-        data: {
-          status: 'COMPLETED',
-          paidAt: new Date(),
+  const result = await prisma.$transaction(
+    async (tx: any) => {
+      const order = await tx.order.findUnique({
+        where: {id: orderId},
+        include: {
+          event: true,
+          orderItems: {include: {seat: true}},
+          payment: true,
         },
-      });
-    } else {
-      await tx.payment.create({
+      })
+
+      if (!order) throw new Error('Order not found')
+      if (order.status === 'PAID') throw new Error('Order already paid')
+      if (order.status === 'CANCELLED') throw new Error('Order is cancelled')
+      if (order.status === 'EXPIRED') throw new Error('Order has expired')
+
+      // Generate access token (only if not already set)
+      let accessToken: string
+      let accessTokenHash: string
+
+      if (order.accessTokenHash) {
+        // Token already exists (user confirmed first), keep it
+        accessTokenHash = order.accessTokenHash
+        accessToken = '' // We don't have the plaintext token, but hash is already stored
+        console.log('[CONFIRM PAYMENT] Reusing existing access token hash')
+      } else {
+        // Generate new token (admin confirmed first)
+        const generated = generateAccessToken()
+        accessToken = generated.token
+        accessTokenHash = generated.hash
+        console.log('[CONFIRM PAYMENT] Generated new access token')
+      }
+
+      // Update order to PAID
+      const updatedOrder = await tx.order.update({
+        where: {id: orderId},
         data: {
-          orderId,
-          amount: order.totalAmount,
-          paymentMethod: 'BANK_TRANSFER',
-          status: 'COMPLETED',
+          status: 'PAID',
           paidAt: new Date(),
+          accessTokenHash,
         },
-      });
-    }
+      })
 
-    // Mark seats as SOLD
-    const seatIds = order.orderItems.map((item) => item.seatId).filter((id): id is string => id !== null);
-    if (seatIds.length > 0) {
-      await tx.seat.updateMany({
-        where: { id: { in: seatIds } },
-        data: { status: 'SOLD' },
-      });
+      // Update payment
+      if (order.payment) {
+        await tx.payment.update({
+          where: {orderId},
+          data: {
+            status: 'COMPLETED',
+            paidAt: new Date(),
+          },
+        })
+      } else {
+        await tx.payment.create({
+          data: {
+            orderId,
+            amount: order.totalAmount,
+            paymentMethod: 'BANK_TRANSFER',
+            status: 'COMPLETED',
+            paidAt: new Date(),
+          },
+        })
+      }
 
-      // Delete seat locks for these seats (they are now permanently SOLD)
-      await tx.seatLock.deleteMany({
-        where: { seatId: { in: seatIds } },
-      });
-      console.log(`[CONFIRM PAYMENT] Deleted ${seatIds.length} seat locks`);
-    }
+      // Mark seats as SOLD
+      const seatIds = order.orderItems
+        .map((item: any) => item.seatId)
+        .filter((id: any): id is string => id !== null)
+      if (seatIds.length > 0) {
+        await tx.seat.updateMany({
+          where: {id: {in: seatIds}},
+          data: {status: 'SOLD'},
+        })
 
-    // Create audit log
-    await tx.auditLog.create({
-      data: {
-        userId: adminUser.userId,
-        userRole: adminUser.roleName,
-        action: 'CONFIRM',
-        entity: 'PAYMENT',
-        entityId: orderId,
-        oldValue: JSON.stringify({ status: order.status }),
-        newValue: JSON.stringify({ status: 'PAID' }),
-        metadata: JSON.stringify({
-          orderNumber: order.orderNumber,
-          amount: Number(order.totalAmount),
-        }),
-        ipAddress,
-        userAgent,
-      },
-    });
+        // Delete seat locks for these seats (they are now permanently SOLD)
+        await tx.seatLock.deleteMany({
+          where: {seatId: {in: seatIds}},
+        })
+        console.log(`[CONFIRM PAYMENT] Deleted ${seatIds.length} seat locks`)
+      }
 
-    return { order, updatedOrder, accessToken, seatIds };
-  }, { timeout: 30000 });
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          userId: adminUser.userId,
+          userRole: adminUser.roleName,
+          action: 'CONFIRM',
+          entity: 'PAYMENT',
+          entityId: orderId,
+          oldValue: JSON.stringify({status: order.status}),
+          newValue: JSON.stringify({status: 'PAID'}),
+          metadata: JSON.stringify({
+            orderNumber: order.orderNumber,
+            amount: Number(order.totalAmount),
+          }),
+          ipAddress,
+          userAgent,
+        },
+      })
 
-  return result;
+      return {order, updatedOrder, accessToken, seatIds}
+    },
+    {timeout: 30000}
+  )
+
+  return result
 }
 
 /**
@@ -232,85 +237,90 @@ export async function confirmPayment(
 export async function rejectPayment(
   orderId: string,
   reason: string,
-  adminUser: { userId: string; roleName: string },
+  adminUser: {userId: string; roleName: string},
   notes?: string,
   ipAddress?: string,
   userAgent?: string
 ) {
-  const result = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      include: {
-        event: true,
-        orderItems: { include: { seat: true } },
-        payment: true,
-      },
-    });
+  const result = await prisma.$transaction(
+    async (tx: any) => {
+      const order = await tx.order.findUnique({
+        where: {id: orderId},
+        include: {
+          event: true,
+          orderItems: {include: {seat: true}},
+          payment: true,
+        },
+      })
 
-    if (!order) throw new Error('Order not found');
-    if (order.status === 'PAID') throw new Error('Cannot reject paid order');
-    if (order.status === 'CANCELLED') throw new Error('Order already cancelled');
-    if (order.status === 'EXPIRED') throw new Error('Order has expired');
+      if (!order) throw new Error('Order not found')
+      if (order.status === 'PAID') throw new Error('Cannot reject paid order')
+      if (order.status === 'CANCELLED') throw new Error('Order already cancelled')
+      if (order.status === 'EXPIRED') throw new Error('Order has expired')
 
-    // Update order to CANCELLED
-    const updatedOrder = await tx.order.update({
-      where: { id: orderId },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
-        cancellationReason: reason,
-      },
-    });
-
-    // Update payment to FAILED
-    if (order.payment) {
-      await tx.payment.update({
-        where: { orderId },
+      // Update order to CANCELLED
+      const updatedOrder = await tx.order.update({
+        where: {id: orderId},
         data: {
-          status: 'FAILED',
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancellationReason: reason,
+        },
+      })
+
+      // Update payment to FAILED
+      if (order.payment) {
+        await tx.payment.update({
+          where: {orderId},
+          data: {
+            status: 'FAILED',
+            metadata: JSON.stringify({
+              rejectedBy: adminUser.userId,
+              rejectedAt: new Date().toISOString(),
+              reason,
+              notes,
+            }),
+          },
+        })
+      }
+
+      // Release seats back to AVAILABLE
+      const seatIds = order.orderItems
+        .map((item: any) => item.seatId)
+        .filter((id: any): id is string => id !== null)
+      if (seatIds.length > 0) {
+        await tx.seat.updateMany({
+          where: {id: {in: seatIds}},
+          data: {status: 'AVAILABLE'},
+        })
+      }
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          userId: adminUser.userId,
+          userRole: adminUser.roleName,
+          action: 'REJECT',
+          entity: 'PAYMENT',
+          entityId: orderId,
+          oldValue: JSON.stringify({status: order.status}),
+          newValue: JSON.stringify({status: 'CANCELLED', reason}),
           metadata: JSON.stringify({
-            rejectedBy: adminUser.userId,
-            rejectedAt: new Date().toISOString(),
-            reason,
+            orderNumber: order.orderNumber,
+            releasedSeats: seatIds.length,
             notes,
           }),
+          ipAddress,
+          userAgent,
         },
-      });
-    }
+      })
 
-    // Release seats back to AVAILABLE
-    const seatIds = order.orderItems.map((item) => item.seatId).filter((id): id is string => id !== null);
-    if (seatIds.length > 0) {
-      await tx.seat.updateMany({
-        where: { id: { in: seatIds } },
-        data: { status: 'AVAILABLE' },
-      });
-    }
+      return {order, updatedOrder, releasedSeats: seatIds.length}
+    },
+    {timeout: 30000}
+  )
 
-    // Create audit log
-    await tx.auditLog.create({
-      data: {
-        userId: adminUser.userId,
-        userRole: adminUser.roleName,
-        action: 'REJECT',
-        entity: 'PAYMENT',
-        entityId: orderId,
-        oldValue: JSON.stringify({ status: order.status }),
-        newValue: JSON.stringify({ status: 'CANCELLED', reason }),
-        metadata: JSON.stringify({
-          orderNumber: order.orderNumber,
-          releasedSeats: seatIds.length,
-          notes,
-        }),
-        ipAddress,
-        userAgent,
-      },
-    });
-
-    return { order, updatedOrder, releasedSeats: seatIds.length };
-  }, { timeout: 30000 });
-
-  return result;
+  return result
 }
 
 /**
@@ -318,44 +328,44 @@ export async function rejectPayment(
  */
 export async function resendTicketEmail(
   orderId: string,
-  adminUser: { userId: string; roleName: string }
+  adminUser: {userId: string; roleName: string}
 ) {
   const order = await prisma.order.findUnique({
-    where: { id: orderId },
+    where: {id: orderId},
     include: {
       event: true,
-      orderItems: { include: { seat: true } },
+      orderItems: {include: {seat: true}},
     },
-  });
+  })
 
-  if (!order) throw new Error('Order not found');
-  if (order.status !== 'PAID') throw new Error('Can only resend email for PAID orders');
+  if (!order) throw new Error('Order not found')
+  if (order.status !== 'PAID') throw new Error('Can only resend email for PAID orders')
 
   // Generate new access token
-  const { token: accessToken, hash: accessTokenHash } = generateAccessToken();
+  const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
 
   // Update order with new access token
   await prisma.order.update({
-    where: { id: orderId },
-    data: { accessTokenHash },
-  });
+    where: {id: orderId},
+    data: {accessTokenHash},
+  })
 
   // Generate QR code and ticket URL
-  const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId);
-  const ticketUrl = generateTicketUrl(order.orderNumber, accessToken);
+  const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
+  const ticketUrl = generateTicketUrl(order.orderNumber, accessToken)
 
   // Format date
-  const eventDate = new Date(order.event.eventDate);
+  const eventDate = new Date(order.event.eventDate)
   const formattedDate = eventDate.toLocaleDateString('vi-VN', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-  });
+  })
   const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
     hour: '2-digit',
     minute: '2-digit',
-  });
+  })
 
   // Send email with allowDuplicate to bypass anti-spam
   const emailResult = await sendEmailByPurpose({
@@ -371,7 +381,7 @@ export async function resendTicketEmail(
       eventTime: formattedTime,
       eventVenue: order.event.venue,
       orderNumber: order.orderNumber,
-      seats: order.orderItems.map((item) => ({
+      seats: order.orderItems.map((item: any) => ({
         seatNumber: item.seat?.seatNumber || item.seatNumber,
         seatType: item.seat?.seatType || item.seatType,
         section: item.seat?.section || 'N/A',
@@ -382,16 +392,15 @@ export async function resendTicketEmail(
       qrCodeUrl,
       ticketUrl,
     },
-  });
+  })
 
   // Update email_sent_at
   if (emailResult.success) {
     await prisma.order.update({
-      where: { id: orderId },
-      data: { emailSentAt: new Date() },
-    });
+      where: {id: orderId},
+      data: {emailSentAt: new Date()},
+    })
   }
 
-  return { order, emailResult };
+  return {order, emailResult}
 }
-

@@ -1,4 +1,4 @@
-import Redis from 'ioredis'
+import {Redis} from 'ioredis'
 import {config} from '../config/env.js'
 
 // Mock Redis for development without Redis server
@@ -106,7 +106,7 @@ function createRedisClient() {
       console.log(`✅ Redis connected to ${redisUrl.hostname}:${redisUrl.port}`)
     })
 
-    client.on('error', (err) => {
+    client.on('error', (err: Error) => {
       console.error('❌ Redis connection error:', err.message)
     })
 
