@@ -2,7 +2,16 @@
 
 > **Theme:** Finding Flow
 
+[![Deploy TEDx App](https://github.com/ttphats/project-detedxs26/actions/workflows/deploy.yml/badge.svg)](https://github.com/ttphats/project-detedxs26/actions/workflows/deploy.yml)
+
 A production-ready, serverless ticketing platform built with Next.js, designed to handle massive concurrent ticket purchases with zero overselling.
+
+## 🚀 Quick Links
+
+- 📖 [CI/CD Quick Start](./docs/CI_CD_QUICKSTART.md) - Deploy Backend trong 3 phút
+- 📚 [Full Deployment Guide](./docs/DEPLOYMENT_GUIDE.md) - Hướng dẫn chi tiết
+- 🎯 [Business Flow](./docs/BUSINESS_FLOW.md)
+- 💳 [Payment Flow](./docs/PAYMENT_FLOW.md)
 
 ## 🏗️ Architecture
 
@@ -16,18 +25,21 @@ A production-ready, serverless ticketing platform built with Next.js, designed t
 ## ✨ Key Features
 
 ### Anti-Overselling System
+
 - **Redis-based seat locking** with TTL (no database locks)
 - **Atomic lock acquisition** using `SET NX EX`
 - **Automatic lock expiration** after 5 minutes
 - **Idempotent payment webhooks** to prevent double-booking
 
 ### Serverless-Safe Design
+
 - **Stateless API routes** - no in-memory state
 - **Webhook-driven payments** - single source of truth
 - **Retry-safe email sending** - logged and tracked
 - **Rate limiting** with Redis
 
 ### Admin Features
+
 - Event management (CRUD)
 - Visual seat layout builder
 - Order management
@@ -180,6 +192,7 @@ Authorization: Bearer <token>
 ## 🎫 Seat Locking Flow
 
 ### 1. User selects seats
+
 ```typescript
 POST /api/seats/lock
 {
@@ -189,6 +202,7 @@ POST /api/seats/lock
 ```
 
 ### 2. System locks seats in Redis
+
 ```
 SET seat:{eventId}:{seatId} {userId} NX EX 300
 ```
@@ -224,7 +238,7 @@ POST /api/payments/create
 ### 3. Webhook receives payment confirmation
 
 ```typescript
-POST /api/payments/webhook
+POST / api / payments / webhook
 // Stripe/VNPay/MoMo sends webhook
 
 // System:
@@ -240,7 +254,7 @@ POST /api/payments/webhook
 ### Send Ticket Email
 
 ```typescript
-import { sendTicketEmail } from '@/lib/mail';
+import {sendTicketEmail} from '@/lib/mail'
 
 await sendTicketEmail({
   to: 'customer@example.com',
@@ -249,12 +263,10 @@ await sendTicketEmail({
   eventDate: '2026-05-15',
   eventVenue: 'FPT University',
   orderNumber: 'ORD-123',
-  seats: [
-    { seatNumber: 'A1', seatType: 'VIP', price: 50 }
-  ],
+  seats: [{seatNumber: 'A1', seatType: 'VIP', price: 50}],
   totalAmount: 50,
-  qrCodeUrl: 'data:image/png;base64,...'
-});
+  qrCodeUrl: 'data:image/png;base64,...',
+})
 ```
 
 ## 🛡️ Security Features
@@ -326,31 +338,37 @@ npm run db:seed          # Seed database
 ## 📝 API Documentation
 
 ### Authentication
+
 - `POST /api/auth/login` - Login
 - `POST /api/auth/register` - Register
 - `GET /api/auth/me` - Get current user
 
 ### Events (Admin only)
+
 - `GET /api/events` - List events
 - `POST /api/events` - Create event
 - `PUT /api/events/:id` - Update event
 - `DELETE /api/events/:id` - Delete event
 
 ### Seats
+
 - `POST /api/seats/lock` - Lock seats
 - `POST /api/seats/unlock` - Unlock seats
 - `GET /api/seats/:eventId` - Get event seats
 
 ### Orders
+
 - `POST /api/orders` - Create order
 - `GET /api/orders/:id` - Get order details
 
 ### Payments
+
 - `POST /api/payments/create` - Create payment session
 - `POST /api/payments/webhook` - Payment webhook
 - `GET /api/payments/status/:orderId` - Check payment status
 
 ### Email
+
 - `POST /api/email/send` - Send email
 - `GET /api/email/templates` - List templates
 - `POST /api/email/templates` - Create template
@@ -366,4 +384,3 @@ Proprietary - All rights reserved.
 ---
 
 Built with ❤️ by TEDxFPTUniversityHCMC Tech Team
-
