@@ -63,7 +63,7 @@ export async function getPublishedEvents(status: string = 'PUBLISHED', featured?
 }
 
 // Get event by ID
-export async function getEventById(eventId: string) {
+export async function getEventById(eventId: string, sessionId?: string) {
   const event = await queryOne<Event & {speaker_count: number}>(
     `SELECT e.*,
       (SELECT COUNT(*) FROM speakers WHERE event_id = e.id AND is_active = 1) as speaker_count
@@ -84,12 +84,14 @@ export async function getEventById(eventId: string) {
     description: string | null
     price: number
     benefits: string | null
+    level: number
+    color: string
   }>(
-    'SELECT id, name, subtitle, description, price, benefits FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY price ASC',
+    'SELECT id, name, subtitle, description, price, benefits, level, color FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY level ASC',
     [eventId]
   )
 
-  // Get seats grouped by row
+  // Get seats grouped by row with lock information
   const seats = await query<{
     id: string
     seat_number: number
@@ -98,30 +100,47 @@ export async function getEventById(eventId: string) {
     seat_type: string
     price: number
     status: string
+    locked_by: string | null
+    lock_expires_at: Date | null
   }>(
-    'SELECT id, seat_number, row, section, seat_type, price, status FROM seats WHERE event_id = ? ORDER BY row ASC, seat_number ASC',
+    `SELECT s.id, s.seat_number, s.row, s.section, s.seat_type, s.price, s.status,
+            sl.session_id as locked_by, sl.expires_at as lock_expires_at
+     FROM seats s
+     LEFT JOIN seat_locks sl ON s.id = sl.seat_id AND sl.expires_at > NOW()
+     WHERE s.event_id = ?
+     ORDER BY s.row ASC, s.seat_number ASC`,
     [eventId]
   )
 
-  // Map seat types to frontend-supported values
-  const mapSeatType = (type: string): 'VIP' | 'STANDARD' | 'ECONOMY' => {
-    const upperType = type?.toUpperCase() || 'STANDARD'
-    if (upperType === 'VIP') return 'VIP'
-    if (upperType === 'ECONOMY' || upperType === 'EARLY BIRD') return 'ECONOMY'
-    return 'STANDARD'
+  // Extract level from seat_type (LEVEL_1 -> 1)
+  const getSeatLevel = (seatType: string): number => {
+    const upperType = seatType?.toUpperCase() || ''
+    if (upperType.startsWith('LEVEL_')) {
+      return parseInt(upperType.replace('LEVEL_', ''), 10)
+    }
+    return 2 // Default to level 2 (standard)
   }
 
   // Group seats by row
   const seatMap = seats.reduce((acc, seat) => {
     const existing = acc.find((r) => r.row === seat.row)
+    const level = getSeatLevel(seat.seat_type)
+
+    // Determine final status based on DB status and locks
+    let finalStatus = seat.status.toLowerCase()
+    if (seat.locked_by) {
+      finalStatus = seat.locked_by === sessionId ? 'locked_by_me' : 'locked'
+    }
+
     const seatData = {
       id: seat.id,
-      seatNumber: seat.seat_number, // Add seatNumber field
-      row: seat.row, // Add row field
-      number: seat.seat_number, // Keep number for backwards compatibility
-      status: seat.status.toLowerCase(), // Normalize to lowercase for frontend
-      price: Number(seat.price), // Convert Decimal to number
-      seatType: mapSeatType(seat.seat_type),
+      seatNumber: seat.seat_number,
+      row: seat.row,
+      number: seat.seat_number,
+      status: finalStatus,
+      price: Number(seat.price),
+      seatType: seat.seat_type, // Keep original LEVEL_X format
+      level: level, // Add level for client-side mapping
       section: seat.section,
     }
     if (existing) {
@@ -130,7 +149,7 @@ export async function getEventById(eventId: string) {
       acc.push({row: seat.row, seats: [seatData]})
     }
     return acc
-  }, [] as {row: string; seats: {id: string; seatNumber: number; row: string; number: number; status: string; price: number; seatType: string; section: string | null}[]}[])
+  }, [] as {row: string; seats: {id: string; seatNumber: number; row: string; number: number; status: string; price: number; seatType: string; level: number; section: string | null}[]}[])
 
   return {
     id: event.id,
@@ -155,6 +174,8 @@ export async function getEventById(eventId: string) {
       description: tt.description,
       price: tt.price,
       benefits: tt.benefits ? JSON.parse(tt.benefits) : [],
+      level: tt.level,
+      color: tt.color,
     })),
     seatMap,
   }

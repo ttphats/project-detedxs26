@@ -163,6 +163,15 @@ export async function getEventSeats(eventId: string, sessionId?: string): Promis
     [eventId]
   )
 
+  // Helper: Extract level from seat_type (LEVEL_1 -> 1)
+  const getSeatLevel = (seatType: string): number => {
+    const upperType = seatType?.toUpperCase() || ''
+    if (upperType.startsWith('LEVEL_')) {
+      return parseInt(upperType.replace('LEVEL_', ''), 10)
+    }
+    return 2 // Default to level 2 (standard)
+  }
+
   // Group seats by row for seatMap format
   const seatsByRow: Record<string, any[]> = {}
 
@@ -187,7 +196,8 @@ export async function getEventSeats(eventId: string, sessionId?: string): Promis
       number: seat.col,
       section: seat.section,
       status,
-      seatType: seat.seat_type,
+      seatType: seat.seat_type, // Keep original LEVEL_X format
+      level: getSeatLevel(seat.seat_type), // Add level for client-side mapping
       price: Number(seat.price),
       lockExpiresAt: seat.lock_expires_at || null,
     })

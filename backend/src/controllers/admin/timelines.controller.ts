@@ -110,6 +110,38 @@ export async function update(request: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
+ * POST /api/admin/timelines/reorder
+ */
+export async function reorder(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    const user = request.user!;
+    requireAdmin(user);
+
+    const { items } = request.body as { items: Array<{ id: string; order_index: number }> };
+
+    if (!items || !Array.isArray(items)) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Items array is required',
+      });
+    }
+
+    await timelinesService.reorderTimelines(items);
+
+    return reply.send({
+      success: true,
+      message: 'Timelines reordered successfully',
+    });
+  } catch (error: any) {
+    console.error('Reorder timelines error:', error);
+    return reply.status(500).send({
+      success: false,
+      error: error.message || 'Failed to reorder timelines',
+    });
+  }
+}
+
+/**
  * DELETE /api/admin/timelines/:id
  */
 export async function remove(request: FastifyRequest, reply: FastifyReply) {

@@ -16,6 +16,7 @@ import * as layoutVersionsController from '../controllers/admin/layout-versions.
 import * as seatLocksController from '../controllers/admin/seat-locks.controller.js'
 import * as ticketTypesController from '../controllers/admin/ticket-types.controller.js'
 import * as timelinesController from '../controllers/admin/timelines.controller.js'
+import * as customersController from '../controllers/admin/customers.controller.js'
 
 export async function registerAdminRoutes(fastify: FastifyInstance) {
   // All admin routes require authentication
@@ -102,18 +103,26 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
 
   // Seat Locks (Admin)
   fastify.get('/admin/seat-locks', {preHandler}, seatLocksController.list)
+  fastify.delete('/admin/seat-locks/:id', {preHandler}, seatLocksController.remove)
+  fastify.post('/admin/seat-locks/clear-all', {preHandler}, seatLocksController.clearAll)
 
   // Ticket Types
   fastify.get('/admin/ticket-types', {preHandler}, ticketTypesController.list)
   fastify.post('/admin/ticket-types', {preHandler}, ticketTypesController.create)
+  fastify.put('/admin/ticket-types/:id', {preHandler}, ticketTypesController.update)
   fastify.put('/admin/ticket-types', {preHandler}, ticketTypesController.bulkAssign)
   fastify.delete('/admin/ticket-types', {preHandler}, ticketTypesController.remove)
 
   // Timelines
   fastify.get('/admin/timelines', {preHandler}, timelinesController.list)
   fastify.post('/admin/timelines', {preHandler}, timelinesController.create)
+  fastify.post('/admin/timelines/reorder', {preHandler}, timelinesController.reorder)
   fastify.put('/admin/timelines/:id', {preHandler}, timelinesController.update)
   fastify.delete('/admin/timelines/:id', {preHandler}, timelinesController.remove)
+
+  // Customers
+  fastify.get('/admin/customers', {preHandler}, customersController.list)
+  fastify.get('/admin/customers/:id', {preHandler}, customersController.getById)
 
   // Audit Logs
   fastify.get('/admin/audit-logs', {preHandler}, auditLogsController.list)

@@ -110,7 +110,13 @@ export default function SeatLocksPage() {
       const token = localStorage.getItem("token");
       const res = await fetch("/api/admin/seat-locks/clear-all", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          eventId: selectedEvent || undefined,
+        }),
       });
       const data = await res.json();
 

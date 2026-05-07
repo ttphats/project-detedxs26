@@ -19,12 +19,13 @@ export async function getEvents(
 
 // GET /events/:eventId
 export async function getEventById(
-  request: FastifyRequest<{ Params: { eventId: string } }>,
+  request: FastifyRequest<{ Params: { eventId: string }; Querystring: { sessionId?: string } }>,
   reply: FastifyReply
 ) {
   const { eventId } = request.params;
+  const { sessionId } = request.query;
 
-  const event = await eventService.getEventById(eventId);
+  const event = await eventService.getEventById(eventId, sessionId);
 
   return reply.send(successResponse(event));
 }

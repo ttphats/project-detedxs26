@@ -35,7 +35,8 @@ interface TicketType {
   description: string;
   subtitle?: string;
   benefits?: string[];
-  color?: string;
+  color: string;
+  level: number;
   icon?: string;
 }
 
@@ -47,7 +48,8 @@ interface SeatType {
   section?: string;
   status: "available" | "selected" | "sold" | "locked" | "locked_by_me";
   ticketTypeId: string;
-  seatType?: "VIP" | "STANDARD" | "ECONOMY";
+  seatType?: "VIP" | "STANDARD" | "ECONOMY" | string;
+  level?: number; // Seat level from backend
   price: number;
   lockExpiresAt?: string | null;
 }
@@ -87,6 +89,13 @@ export default function SeatSelectionPage({
   const [error, setError] = useState<string | null>(null);
   const [selectedSeats, setSelectedSeats] = useState<SeatType[]>([]);
 
+  // Helper: Get ticket type color by level
+  const getColorByLevel = (level?: number): string | undefined => {
+    if (!event?.ticketTypes || !level) return undefined;
+    const ticketType = event.ticketTypes.find((tt) => tt.level === level);
+    return ticketType?.color;
+  };
+
   // Seat locking states
   const [sessionId, setSessionId] = useState<string>("");
   const [lockExpiresAt, setLockExpiresAt] = useState<Date | null>(null);
@@ -121,8 +130,12 @@ export default function SeatSelectionPage({
           sessionStorage.removeItem("navigating_to_checkout");
         }
 
-        // Fetch event data
-        const res = await fetch(`/api/events/${id}?sessionId=${sessionId}`);
+        // ✅ Fetch event data from backend Fastify
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+        const res = await fetch(
+          `${apiUrl}/events/${id}?sessionId=${sessionId}`,
+        );
         const data = await res.json();
 
         if (!data.success) {
@@ -138,7 +151,7 @@ export default function SeatSelectionPage({
         // Always restore locks from DB (supports page reload + checkout return)
         try {
           const locksRes = await fetch(
-            `/api/seats/lock?sessionId=${sessionId}&eventId=${id}`,
+            `${apiUrl}/seats/lock?sessionId=${sessionId}&eventId=${id}`,
           );
           const locksData = await locksRes.json();
 
@@ -238,17 +251,63 @@ export default function SeatSelectionPage({
 
     console.log("[POLLING] Starting polling every 10s...");
 
+    const apiUrl =
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
     // Poll every 10 seconds
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(
-          `/api/events/${id}/seats?sessionId=${sessionId}`,
+          `${apiUrl}/events/${id}/seats?sessionId=${sessionId}`,
         );
         const data = await res.json();
-        if (data.success && data.data.seatMap) {
+        if (data.success && data.data) {
+          // Backend returns different structure
+          const seats = data.data;
           setEvent((prev) =>
-            prev ? { ...prev, seatMap: data.data.seatMap } : prev,
+            prev
+              ? {
+                  ...prev,
+                  seatMap: Array.isArray(seats)
+                    ? seats
+                    : seats.seatMap || prev.seatMap,
+                }
+              : prev,
           );
+
+          // Verify that selected seats are still locked by this session
+          if (selectedSeats.length > 0) {
+            const seatMap = Array.isArray(seats) ? seats : seats.seatMap || [];
+            const allSeats: SeatType[] = [];
+            seatMap.forEach((row: SeatRow) => {
+              allSeats.push(...row.seats);
+            });
+
+            // Check if any selected seat is no longer locked_by_me
+            const stillLocked = selectedSeats.filter((selected) => {
+              const seatInMap = allSeats.find((s) => s.id === selected.id);
+              return seatInMap && seatInMap.status === "locked_by_me";
+            });
+
+            // If some seats were unlocked (e.g., by admin), update local state
+            if (stillLocked.length !== selectedSeats.length) {
+              console.log(
+                `[POLLING] Detected ${selectedSeats.length - stillLocked.length} seats unlocked by admin`,
+              );
+              setSelectedSeats(stillLocked);
+              if (stillLocked.length === 0) {
+                setLockExpiresAt(null);
+                setLockError(
+                  "Ghế của bạn đã được admin giải phóng. Vui lòng chọn lại.",
+                );
+              }
+              // Broadcast to other tabs
+              broadcastSeatChange(
+                stillLocked,
+                stillLocked.length > 0 ? lockExpiresAt : null,
+              );
+            }
+          }
         }
       } catch (err) {
         console.error("[POLLING] Error:", err);
@@ -379,7 +438,9 @@ export default function SeatSelectionPage({
       // Unlock this seat
       setLocking(seatId);
       try {
-        await fetch("/api/seats/lock", {
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+        await fetch(`${apiUrl}/seats/lock`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -407,7 +468,9 @@ export default function SeatSelectionPage({
       // Lock this seat
       setLocking(seatId);
       try {
-        const res = await fetch("/api/seats/lock", {
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+        const res = await fetch(`${apiUrl}/seats/lock`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -458,8 +521,11 @@ export default function SeatSelectionPage({
 
     setIsCheckingOut(true);
     try {
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
       // Step 1: Extend lock duration to 15 minutes
-      const extendResponse = await fetch("/api/seats/extend-lock", {
+      const extendResponse = await fetch(`${apiUrl}/seats/extend-lock`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -479,7 +545,7 @@ export default function SeatSelectionPage({
       setLockExpiresAt(new Date(extendData.data.expiresAt));
 
       // Step 2: Create PENDING order
-      const orderResponse = await fetch("/api/orders/create-pending", {
+      const orderResponse = await fetch(`${apiUrl}/orders/create-pending`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -751,33 +817,30 @@ export default function SeatSelectionPage({
                   </div>
                 </div>
 
-                {/* Zone Labels with enhanced styling */}
+                {/* Zone Labels - Dynamic based on ticket types */}
                 <div className="flex flex-wrap justify-center gap-3 sm:gap-6 md:gap-10 mb-4 sm:mb-8 text-xs sm:text-sm">
                   {(() => {
-                    // Get unique rows for each seat type
-                    const vipRows = new Set<string>();
-                    const standardRows = new Set<string>();
-                    const economyRows = new Set<string>();
+                    if (!event.ticketTypes || event.ticketTypes.length === 0) {
+                      return null;
+                    }
+
+                    // Group rows by level
+                    const rowsByLevel: Record<number, Set<string>> = {};
 
                     event.seatMap?.forEach((row) => {
                       row.seats.forEach((seat) => {
-                        if (seat.seatType === "VIP") vipRows.add(row.row);
-                        else if (seat.seatType === "ECONOMY")
-                          economyRows.add(row.row);
-                        else standardRows.add(row.row);
+                        const level = seat.level || 2;
+                        if (!rowsByLevel[level]) {
+                          rowsByLevel[level] = new Set<string>();
+                        }
+                        rowsByLevel[level].add(row.row);
                       });
                     });
-
-                    // Convert to sorted arrays
-                    const vipRowsArray = Array.from(vipRows).sort();
-                    const standardRowsArray = Array.from(standardRows).sort();
-                    const economyRowsArray = Array.from(economyRows).sort();
 
                     // Format row ranges (e.g., "A-B" or "A, C, E")
                     const formatRows = (rows: string[]) => {
                       if (rows.length === 0) return "";
                       if (rows.length === 1) return rows[0];
-                      // Check if consecutive
                       const isConsecutive = rows.every(
                         (row, i) =>
                           i === 0 ||
@@ -788,34 +851,40 @@ export default function SeatSelectionPage({
                       return rows.join(", ");
                     };
 
-                    return (
-                      <>
-                        {vipRowsArray.length > 0 && (
-                          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30">
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gradient-to-r from-yellow-400 to-orange-500 rounded shadow-lg shadow-orange-500/50 animate-pulse"></div>
-                            <span className="text-yellow-400 font-semibold">
-                              VIP ({formatRows(vipRowsArray)})
+                    // Render zone for each ticket type
+                    return event.ticketTypes
+                      .sort((a, b) => b.level - a.level) // VIP first
+                      .map((ticketType) => {
+                        const rows = rowsByLevel[ticketType.level];
+                        if (!rows || rows.size === 0) return null;
+
+                        const rowsArray = Array.from(rows).sort();
+
+                        return (
+                          <div
+                            key={ticketType.id}
+                            className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/5 border border-white/10"
+                            style={{
+                              borderColor: `${ticketType.color}40`,
+                              background: `linear-gradient(to right, ${ticketType.color}10, transparent)`,
+                            }}
+                          >
+                            <div
+                              className="w-3 h-3 sm:w-4 sm:h-4 rounded shadow-lg"
+                              style={{
+                                backgroundColor: ticketType.color,
+                                boxShadow: `0 0 10px ${ticketType.color}80`,
+                              }}
+                            />
+                            <span
+                              className="font-medium"
+                              style={{ color: ticketType.color }}
+                            >
+                              {ticketType.name} ({formatRows(rowsArray)})
                             </span>
                           </div>
-                        )}
-                        {standardRowsArray.length > 0 && (
-                          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/5 border border-white/10">
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-emerald-500 rounded shadow-lg shadow-emerald-500/50"></div>
-                            <span className="text-gray-300">
-                              Tiêu chuẩn ({formatRows(standardRowsArray)})
-                            </span>
-                          </div>
-                        )}
-                        {economyRowsArray.length > 0 && (
-                          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/5 border border-blue-400/20">
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-blue-400 rounded shadow-lg shadow-blue-400/50"></div>
-                            <span className="text-blue-300">
-                              Economy ({formatRows(economyRowsArray)})
-                            </span>
-                          </div>
-                        )}
-                      </>
-                    );
+                        );
+                      });
                   })()}
                 </div>
 
@@ -908,12 +977,9 @@ export default function SeatSelectionPage({
                                     seatNumber={seat.seatNumber}
                                     status={finalStatus}
                                     price={seat.price}
-                                    seatType={
-                                      seat.seatType as
-                                        | "VIP"
-                                        | "STANDARD"
-                                        | "ECONOMY"
-                                    }
+                                    seatType={seat.seatType}
+                                    level={seat.level}
+                                    color={getColorByLevel(seat.level)}
                                     onSelect={handleSeatSelect}
                                   />
                                 );
@@ -944,12 +1010,9 @@ export default function SeatSelectionPage({
                                     seatNumber={seat.seatNumber}
                                     status={finalStatus}
                                     price={seat.price}
-                                    seatType={
-                                      seat.seatType as
-                                        | "VIP"
-                                        | "STANDARD"
-                                        | "ECONOMY"
-                                    }
+                                    seatType={seat.seatType}
+                                    level={seat.level}
+                                    color={getColorByLevel(seat.level)}
                                     onSelect={handleSeatSelect}
                                   />
                                 );
@@ -969,109 +1032,9 @@ export default function SeatSelectionPage({
                   </div>
                 </div>
 
-                {/* Legend with seat-style icons */}
-                <div className="flex flex-wrap justify-center gap-4 md:gap-8 mt-10 pt-6 border-t border-white/10">
-                  {/* Available seat */}
-                  <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-                    <div className="relative w-7 h-9 flex flex-col items-center">
-                      {/* Seat back */}
-                      <div className="w-5 h-4 rounded-t-md bg-gradient-to-b from-emerald-400 to-emerald-500 border-t border-l border-r border-white/20" />
-                      {/* Seat cushion */}
-                      <div className="w-6 h-3 rounded-b-sm bg-gradient-to-b from-emerald-500 to-emerald-600 border-b border-l border-r border-white/10" />
-                      {/* Armrests */}
-                      <div className="absolute bottom-0 -left-0.5 w-0.5 h-2 rounded-b-sm bg-emerald-600" />
-                      <div className="absolute bottom-0 -right-0.5 w-0.5 h-2 rounded-b-sm bg-emerald-600" />
-                    </div>
-                    <span className="text-gray-300 text-sm font-medium">
-                      Trống
-                    </span>
-                  </div>
-
-                  {/* Selected seat */}
-                  <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-                    <div className="relative w-7 h-9 flex flex-col items-center">
-                      {/* Glow */}
-                      <div className="absolute inset-0 bg-red-500/30 blur-sm rounded animate-pulse" />
-                      {/* Seat back */}
-                      <div className="relative w-5 h-4 rounded-t-md bg-gradient-to-b from-red-500 to-red-600 border-t border-l border-r border-white/20 shadow-lg shadow-red-500/50" />
-                      {/* Seat cushion */}
-                      <div className="relative w-6 h-3 rounded-b-sm bg-gradient-to-b from-red-600 to-red-700 border-b border-l border-r border-white/10" />
-                      {/* Armrests */}
-                      <div className="absolute bottom-0 -left-0.5 w-0.5 h-2 rounded-b-sm bg-red-700" />
-                      <div className="absolute bottom-0 -right-0.5 w-0.5 h-2 rounded-b-sm bg-red-700" />
-                      {/* Checkmark */}
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full flex items-center justify-center shadow">
-                        <svg
-                          className="w-2 h-2 text-red-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                    <span className="text-gray-300 text-sm font-medium">
-                      Đã chọn
-                    </span>
-                  </div>
-
-                  {/* Sold seat */}
-                  <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-                    <div className="relative w-7 h-9 flex flex-col items-center">
-                      {/* Seat back */}
-                      <div className="w-5 h-4 rounded-t-md bg-gradient-to-b from-gray-600 to-gray-700 border-t border-l border-r border-white/10 opacity-60" />
-                      {/* Seat cushion */}
-                      <div className="w-6 h-3 rounded-b-sm bg-gradient-to-b from-gray-700 to-gray-800 border-b border-l border-r border-white/10 opacity-60" />
-                      {/* Armrests */}
-                      <div className="absolute bottom-0 -left-0.5 w-0.5 h-2 rounded-b-sm bg-gray-800 opacity-60" />
-                      <div className="absolute bottom-0 -right-0.5 w-0.5 h-2 rounded-b-sm bg-gray-800 opacity-60" />
-                      {/* X indicator */}
-                      <div className="absolute inset-0 top-0 flex items-start justify-center pt-0.5 pointer-events-none">
-                        <svg
-                          className="w-4 h-4 text-white drop-shadow"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M6 6l12 12M18 6L6 18"
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                    <span className="text-gray-300 text-sm font-medium">
-                      Đã bán
-                    </span>
-                  </div>
-
-                  {/* Locked seat */}
-                  <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-                    <div className="relative w-7 h-9 flex flex-col items-center opacity-60">
-                      {/* Seat back */}
-                      <div className="w-5 h-4 rounded-t-md bg-gradient-to-b from-amber-500 to-amber-600 border-t border-l border-r border-white/10" />
-                      {/* Seat cushion */}
-                      <div className="w-6 h-3 rounded-b-sm bg-gradient-to-b from-amber-600 to-amber-700 border-b border-l border-r border-white/10" />
-                      {/* Armrests */}
-                      <div className="absolute bottom-0 -left-0.5 w-0.5 h-2 rounded-b-sm bg-amber-700" />
-                      <div className="absolute bottom-0 -right-0.5 w-0.5 h-2 rounded-b-sm bg-amber-700" />
-                      {/* Clock indicator */}
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center">
-                        <Clock className="w-2 h-2 text-white" />
-                      </div>
-                    </div>
-                    <span className="text-gray-300 text-sm font-medium">
-                      Đang giữ
-                    </span>
-                  </div>
+                {/* Dynamic legend based on ticket types */}
+                <div className="mt-10 pt-6 border-t border-white/10">
+                  <SeatLegend ticketTypes={event.ticketTypes || []} />
                 </div>
               </div>
             </div>
