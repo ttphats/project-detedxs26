@@ -9,6 +9,7 @@ interface CreateTicketTypeBody {
   subtitle?: string;
   benefits?: string[];
   price?: number;
+  level?: number;
   color?: string;
   icon?: string;
   max_quantity?: number;
@@ -65,6 +66,38 @@ export async function create(request: FastifyRequest, reply: FastifyReply) {
     return reply.status(500).send({
       success: false,
       error: error.message || 'Failed to create ticket type',
+    });
+  }
+}
+
+/**
+ * PUT /api/admin/ticket-types/:id
+ * Update a single ticket type
+ */
+export async function update(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    requireAdmin(request.user!);
+    const { id } = request.params as { id: string };
+    const body = request.body as Partial<CreateTicketTypeBody>;
+
+    if (!id) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Ticket type ID is required',
+      });
+    }
+
+    await ticketTypesService.updateTicketType(id, body);
+
+    return reply.send({
+      success: true,
+      message: 'Ticket type updated successfully',
+    });
+  } catch (error: any) {
+    console.error('Update ticket type error:', error);
+    return reply.status(500).send({
+      success: false,
+      error: error.message || 'Failed to update ticket type',
     });
   }
 }

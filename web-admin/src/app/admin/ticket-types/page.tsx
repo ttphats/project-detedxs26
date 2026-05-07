@@ -126,6 +126,7 @@ export default function TicketTypesPage() {
       const payload = {
         ...values,
         price: Number(values.price) || 0,
+        level: Number(values.level) || 1,
         max_quantity: values.max_quantity ? Number(values.max_quantity) : null,
         sort_order: Number(values.sort_order) || 0,
         benefits: benefitsArray,
@@ -258,6 +259,16 @@ export default function TicketTypesPage() {
           className="w-8 h-8 rounded-full border-2 border-gray-200"
           style={{ backgroundColor: color }}
         />
+      ),
+    },
+    {
+      title: "Level",
+      dataIndex: "level",
+      key: "level",
+      render: (level) => (
+        <Tag color={level === 1 ? "green" : level === 2 ? "blue" : "gold"}>
+          Level {level}
+        </Tag>
       ),
     },
     {

@@ -138,8 +138,22 @@ export async function confirmPayment(
     if (order.status === 'CANCELLED') throw new Error('Order is cancelled');
     if (order.status === 'EXPIRED') throw new Error('Order has expired');
 
-    // Generate access token
-    const { token: accessToken, hash: accessTokenHash } = generateAccessToken();
+    // Generate access token (only if not already set)
+    let accessToken: string;
+    let accessTokenHash: string;
+
+    if (order.accessTokenHash) {
+      // Token already exists (user confirmed first), keep it
+      accessTokenHash = order.accessTokenHash;
+      accessToken = ''; // We don't have the plaintext token, but hash is already stored
+      console.log('[CONFIRM PAYMENT] Reusing existing access token hash');
+    } else {
+      // Generate new token (admin confirmed first)
+      const generated = generateAccessToken();
+      accessToken = generated.token;
+      accessTokenHash = generated.hash;
+      console.log('[CONFIRM PAYMENT] Generated new access token');
+    }
 
     // Update order to PAID
     const updatedOrder = await tx.order.update({
@@ -179,6 +193,12 @@ export async function confirmPayment(
         where: { id: { in: seatIds } },
         data: { status: 'SOLD' },
       });
+
+      // Delete seat locks for these seats (they are now permanently SOLD)
+      await tx.seatLock.deleteMany({
+        where: { seatId: { in: seatIds } },
+      });
+      console.log(`[CONFIRM PAYMENT] Deleted ${seatIds.length} seat locks`);
     }
 
     // Create audit log

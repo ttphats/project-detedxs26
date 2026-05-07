@@ -90,3 +90,30 @@ export async function listSeatLocks(eventId?: string) {
   };
 }
 
+/**
+ * Delete a specific seat lock
+ */
+export async function deleteSeatLock(lockId: string) {
+  const pool = getPool();
+  await pool.query('DELETE FROM seat_locks WHERE id = ?', [lockId]);
+  return { success: true };
+}
+
+/**
+ * Clear all seat locks (optionally filtered by event)
+ */
+export async function clearAllLocks(eventId?: string) {
+  const pool = getPool();
+
+  let sql = 'DELETE FROM seat_locks WHERE 1=1';
+  const params: any[] = [];
+
+  if (eventId) {
+    sql += ' AND event_id = ?';
+    params.push(eventId);
+  }
+
+  const [result] = await pool.query<any>(sql, params);
+  return { count: result.affectedRows || 0 };
+}
+

@@ -65,6 +65,7 @@ export async function createTicketType(data: {
   subtitle?: string;
   benefits?: string[];
   price?: number;
+  level?: number;
   color?: string;
   icon?: string;
   max_quantity?: number;
@@ -73,8 +74,8 @@ export async function createTicketType(data: {
   const pool = getPool();
   const id = randomUUID();
   await pool.query(
-    `INSERT INTO ticket_types (id, event_id, name, description, subtitle, benefits, price, color, icon, max_quantity, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ticket_types (id, event_id, name, description, subtitle, benefits, price, level, color, icon, max_quantity, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       data.event_id,
@@ -83,6 +84,7 @@ export async function createTicketType(data: {
       data.subtitle || null,
       data.benefits ? JSON.stringify(data.benefits) : null,
       data.price || 0,
+      data.level || 1, // Default to level 1 if not provided
       data.color || '#10b981',
       data.icon || '🎫',
       data.max_quantity || null,
@@ -91,6 +93,86 @@ export async function createTicketType(data: {
   );
 
   return { id };
+}
+
+/**
+ * Update ticket type
+ */
+export async function updateTicketType(id: string, data: {
+  name?: string;
+  description?: string;
+  subtitle?: string;
+  benefits?: string[];
+  price?: number;
+  level?: number;
+  color?: string;
+  icon?: string;
+  max_quantity?: number;
+  sort_order?: number;
+  is_active?: boolean;
+}) {
+  const pool = getPool();
+  const updates: string[] = [];
+  const params: any[] = [];
+
+  if (data.name !== undefined) {
+    updates.push('name = ?');
+    params.push(data.name);
+  }
+  if (data.description !== undefined) {
+    updates.push('description = ?');
+    params.push(data.description || null);
+  }
+  if (data.subtitle !== undefined) {
+    updates.push('subtitle = ?');
+    params.push(data.subtitle || null);
+  }
+  if (data.benefits !== undefined) {
+    updates.push('benefits = ?');
+    params.push(data.benefits ? JSON.stringify(data.benefits) : null);
+  }
+  if (data.price !== undefined) {
+    updates.push('price = ?');
+    params.push(data.price);
+  }
+  if (data.level !== undefined) {
+    updates.push('level = ?');
+    params.push(data.level);
+  }
+  if (data.color !== undefined) {
+    updates.push('color = ?');
+    params.push(data.color);
+  }
+  if (data.icon !== undefined) {
+    updates.push('icon = ?');
+    params.push(data.icon);
+  }
+  if (data.max_quantity !== undefined) {
+    updates.push('max_quantity = ?');
+    params.push(data.max_quantity || null);
+  }
+  if (data.sort_order !== undefined) {
+    updates.push('sort_order = ?');
+    params.push(data.sort_order);
+  }
+  if (data.is_active !== undefined) {
+    updates.push('is_active = ?');
+    params.push(data.is_active);
+  }
+
+  if (updates.length === 0) {
+    throw new Error('No fields to update');
+  }
+
+  updates.push('updated_at = NOW()');
+  params.push(id);
+
+  await pool.query(
+    `UPDATE ticket_types SET ${updates.join(', ')} WHERE id = ?`,
+    params
+  );
+
+  return { success: true };
 }
 
 /**

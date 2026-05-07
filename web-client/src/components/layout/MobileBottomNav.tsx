@@ -25,12 +25,12 @@ const navItems: NavItem[] = [
     active: (pathname) => pathname.includes("/seats"),
   },
   {
-    href: "#program",
+    href: "/#program",
     icon: <Calendar className="w-5 h-5" />,
     label: "Lịch trình",
   },
   {
-    href: "#speakers",
+    href: "/#speakers",
     icon: <User className="w-5 h-5" />,
     label: "Speakers",
   },

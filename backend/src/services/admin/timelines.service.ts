@@ -178,6 +178,23 @@ export async function updateTimeline(id: string, data: Partial<CreateTimelineInp
 }
 
 /**
+ * Reorder timelines
+ */
+export async function reorderTimelines(items: Array<{ id: string; order_index: number }>) {
+  const pool = getPool();
+
+  // Update each timeline's order_index
+  for (const item of items) {
+    await pool.query(
+      'UPDATE event_timelines SET order_index = ?, updated_at = NOW() WHERE id = ?',
+      [item.order_index, item.id]
+    );
+  }
+
+  return { success: true };
+}
+
+/**
  * Delete timeline
  */
 export async function deleteTimeline(id: string) {

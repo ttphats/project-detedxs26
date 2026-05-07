@@ -95,8 +95,10 @@ function CheckoutContent() {
 
       try {
         console.log("[CHECKOUT] Fetching order:", orderNumber);
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
         const res = await fetch(
-          `/api/orders/${orderNumber}?token=${accessToken}`,
+          `${apiUrl}/orders/${orderNumber}?token=${accessToken}`,
         );
         const data = await res.json();
 
@@ -161,7 +163,9 @@ function CheckoutContent() {
       }
 
       try {
-        const res = await fetch(`/api/events/${eventId}`);
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+        const res = await fetch(`${apiUrl}/events/${eventId}`);
         const data = await res.json();
 
         if (data.success) {
@@ -251,7 +255,9 @@ function CheckoutContent() {
 
     try {
       // Call API to confirm payment (update order status to PAID)
-      const response = await fetch("/api/orders/confirm-payment", {
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const response = await fetch(`${apiUrl}/orders/confirm-payment`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

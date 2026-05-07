@@ -14,7 +14,9 @@ interface SeatProps {
   seatNumber?: string; // Full seat number like "A1", "B10"
   status: "available" | "selected" | "sold" | "locked" | "locked_by_me";
   price: number;
-  seatType?: "VIP" | "STANDARD" | "ECONOMY";
+  seatType?: "VIP" | "STANDARD" | "ECONOMY" | string; // Allow custom types
+  level?: number; // Seat level (1, 2, 3...)
+  color?: string; // Custom color from ticket types
   onSelect?: (id: string) => void;
   showType?: boolean; // Show VIP/STD badge
 }
@@ -27,6 +29,8 @@ export default function Seat({
   status,
   price,
   seatType = "STANDARD",
+  level,
+  color,
   onSelect,
   showType = false,
 }: SeatProps) {
@@ -42,13 +46,18 @@ export default function Seat({
     }
   };
 
-  const isVIP = seatType === "VIP";
+  // Use custom color if provided, otherwise fallback to type-based colors
+  const isVIP = seatType === "VIP" || (level && level >= 3);
 
   // Get colors from shared config based on seat type
-  const availableColors = SEAT_COLORS[seatType] || SEAT_COLORS.STANDARD;
+  const availableColors =
+    SEAT_COLORS[seatType as keyof typeof SEAT_COLORS] || SEAT_COLORS.STANDARD;
   const selectedColors = SELECTED_SEAT_COLORS;
   const soldColors = SOLD_SEAT_COLORS;
   const lockedColors = LOCKED_SEAT_COLORS;
+
+  // Use custom color for available state if provided
+  const hasCustomColor = color && status === "available";
 
   // VIP hover colors
   const hoverBack = isVIP
@@ -104,9 +113,16 @@ export default function Seat({
     >
       {/* Seat back (top part) */}
       <div
-        className={`mobile-seat-back sm:w-6 sm:h-4 rounded-t-md ${backStyles[displayStatus]} flex items-center justify-center relative ${
-          displayStatus === "selected" ? "ring-2 ring-white/50" : ""
-        }`}
+        className={`mobile-seat-back sm:w-6 sm:h-4 rounded-t-md flex items-center justify-center relative ${
+          !hasCustomColor ? backStyles[displayStatus] : ""
+        } ${displayStatus === "selected" ? "ring-2 ring-white/50" : ""}`}
+        style={
+          hasCustomColor
+            ? {
+                background: `linear-gradient(to bottom, ${color}, ${color}dd)`,
+              }
+            : undefined
+        }
       >
         {/* Shine effect */}
         <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-md" />
@@ -120,9 +136,16 @@ export default function Seat({
 
       {/* Seat cushion (bottom part) */}
       <div
-        className={`mobile-seat-cushion sm:w-7 sm:h-2.5 rounded-b-sm ${cushionStyles[displayStatus]} ${
-          displayStatus === "selected" ? "ring-2 ring-white/50" : ""
-        }`}
+        className={`mobile-seat-cushion sm:w-7 sm:h-2.5 rounded-b-sm ${
+          !hasCustomColor ? cushionStyles[displayStatus] : ""
+        } ${displayStatus === "selected" ? "ring-2 ring-white/50" : ""}`}
+        style={
+          hasCustomColor
+            ? {
+                background: `linear-gradient(to bottom, ${color}dd, ${color}aa)`,
+              }
+            : undefined
+        }
       />
 
       {/* Sold X indicator */}
@@ -146,7 +169,7 @@ export default function Seat({
 
       {/* Locked indicator (clock icon) */}
       {status === "locked" && (
-        <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center shadow-sm">
+        <div className="absolute -top-1 -right-1 z-10 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center shadow-sm">
           <svg
             className="w-2 h-2 text-white"
             fill="none"
@@ -166,30 +189,43 @@ export default function Seat({
   );
 }
 
-export function SeatLegend() {
-  // Use shared config colors
-  const availableColors = SEAT_COLORS.STANDARD;
-  const vipColors = SEAT_COLORS.VIP;
+interface TicketType {
+  id: string;
+  name: string;
+  price: number;
+  level: number;
+  color: string;
+}
+
+interface SeatLegendProps {
+  ticketTypes?: TicketType[];
+}
+
+export function SeatLegend({ ticketTypes = [] }: SeatLegendProps) {
   const selectedColors = SELECTED_SEAT_COLORS;
   const soldColors = SOLD_SEAT_COLORS;
   const lockedColors = LOCKED_SEAT_COLORS;
 
+  // Sort ticket types by level (ascending)
+  const sortedTicketTypes = [...ticketTypes].sort((a, b) => a.level - b.level);
+
   return (
     <div className="flex flex-wrap items-center gap-4 sm:gap-6 justify-center py-4">
-      {/* VIP seat */}
-      <div className="flex items-center gap-2">
-        <div
-          className={`w-6 h-6 rounded-md bg-gradient-to-b ${vipColors.back}`}
-        />
-        <span className="text-sm text-gray-300">VIP</span>
-      </div>
-      {/* Standard seat */}
-      <div className="flex items-center gap-2">
-        <div
-          className={`w-6 h-6 rounded-md bg-gradient-to-b ${availableColors.back}`}
-        />
-        <span className="text-sm text-gray-300">Thường</span>
-      </div>
+      {/* Dynamic ticket types */}
+      {sortedTicketTypes.map((tt) => {
+        return (
+          <div key={tt.id} className="flex items-center gap-2">
+            <div
+              className="w-6 h-6 rounded-md"
+              style={{
+                background: `linear-gradient(to bottom, ${tt.color}, ${tt.color}dd)`,
+              }}
+            />
+            <span className="text-sm text-gray-300">{tt.name}</span>
+          </div>
+        );
+      })}
+
       {/* Selected */}
       <div className="flex items-center gap-2">
         <div

@@ -17,6 +17,7 @@ import {
   History,
   Clock,
   Lock,
+  UserCheck,
   LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +30,7 @@ const menuItems = [
   { href: "/admin/layout-editor", label: "Seats & Layout", icon: Grid3X3 },
   { href: "/admin/seat-locks", label: "Seat Locks", icon: Lock },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
+  { href: "/admin/customers", label: "Khách hàng", icon: UserCheck },
   { href: "/admin/email-templates", label: "Email Templates", icon: Mail },
   { href: "/admin/audit-logs", label: "Audit Logs", icon: History },
   { href: "/admin/users", label: "Users", icon: Users },
