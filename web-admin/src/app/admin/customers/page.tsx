@@ -1,294 +1,259 @@
-"use client";
+'use client'
 
-import React, { useEffect, useState } from "react";
-import {
-  Table,
-  Input,
-  Select,
-  Space,
-  Tag,
-  Card,
-  Statistic,
-  Row,
-  Col,
-  message,
-} from "antd";
-import {
-  UserOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-} from "@ant-design/icons";
-import dayjs from "dayjs";
-import AdminLayout from "@/components/admin/AdminLayout";
+import React, {useEffect, useState} from 'react'
+import {Table, Input, Select, Space, Tag, Card, Statistic, Row, Col, message} from 'antd'
+import {UserOutlined, CheckCircleOutlined, ClockCircleOutlined} from '@ant-design/icons'
+import dayjs from 'dayjs'
+import AdminLayout from '@/components/admin/AdminLayout'
 
-const { Search } = Input;
-const { Option } = Select;
+const {Search} = Input
+const {Option} = Select
 
 interface Customer {
-  id: string;
-  order_number: string;
-  customer_name: string;
-  customer_email: string;
-  customer_phone: string;
-  event_id: string;
-  event_name: string;
-  total_amount: number;
-  seat_count: number;
-  seat_numbers: string;
-  status: string;
-  checked_in: boolean;
-  checked_in_at: string | null;
-  checked_in_by: string | null;
-  checked_in_by_name: string | null;
-  created_at: string;
-  paid_at: string;
+  id: string
+  order_number: string
+  customer_name: string
+  customer_email: string
+  customer_phone: string
+  event_id: string
+  event_name: string
+  total_amount: number
+  seat_count: number
+  seat_numbers: string
+  status: string
+  checked_in: boolean
+  checked_in_at: string | null
+  checked_in_by: string | null
+  checked_in_by_name: string | null
+  created_at: string
+  paid_at: string
 }
 
 interface Event {
-  id: string;
-  name: string;
+  id: string
+  name: string
 }
 
 interface Stats {
-  total: number;
-  checkedIn: number;
-  pending: number;
+  total: number
+  checkedIn: number
+  pending: number
 }
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [events, setEvents] = useState<Event[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [events, setEvents] = useState<Event[]>([])
   const [stats, setStats] = useState<Stats>({
     total: 0,
     checkedIn: 0,
     pending: 0,
-  });
-  const [loading, setLoading] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<string>("");
-  const [searchText, setSearchText] = useState("");
+  })
+  const [loading, setLoading] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState<string>('')
+  const [searchText, setSearchText] = useState('')
 
   const fetchCustomers = async () => {
-    setLoading(true);
+    setLoading(true)
     try {
-      const token = localStorage.getItem("token");
-      const params = new URLSearchParams();
-      if (selectedEvent) params.append("eventId", selectedEvent);
-      if (searchText) params.append("search", searchText);
+      const token = localStorage.getItem('token')
+      const params = new URLSearchParams()
+      if (selectedEvent) params.append('eventId', selectedEvent)
+      if (searchText) params.append('search', searchText)
 
-      const response = await fetch(
-        `/api/admin/customers?${params.toString()}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      const result = await response.json();
+      const response = await fetch(`/api/admin/customers?${params.toString()}`, {
+        headers: {Authorization: `Bearer ${token}`},
+      })
+      const result = await response.json()
 
       if (result.success) {
-        setCustomers(result.data.customers);
-        setEvents(result.data.events);
-        setStats(result.data.stats);
+        setCustomers(result.data.customers)
+        setEvents(result.data.events)
+        setStats(result.data.stats)
 
         // Auto-select first event if none selected
         if (!selectedEvent && result.data.events.length > 0) {
-          setSelectedEvent(result.data.events[0].id);
+          setSelectedEvent(result.data.events[0].id)
         }
       } else {
-        message.error(result.error || "Failed to fetch customers");
+        message.error(result.error || 'Failed to fetch customers')
       }
     } catch (error) {
-      console.error("Fetch customers error:", error);
-      message.error("Có lỗi xảy ra khi tải danh sách khách hàng");
+      console.error('Fetch customers error:', error)
+      message.error('Có lỗi xảy ra khi tải danh sách khách hàng')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    fetchCustomers();
-  }, [selectedEvent]);
+    fetchCustomers()
+  }, [selectedEvent])
 
   const handleSearch = async (value: string) => {
-    setSearchText(value);
+    setSearchText(value)
     // Fetch immediately with new search text
-    setLoading(true);
+    setLoading(true)
     try {
-      const token = localStorage.getItem("token");
-      const params = new URLSearchParams();
-      if (selectedEvent) params.append("eventId", selectedEvent);
-      if (value) params.append("search", value);
+      const token = localStorage.getItem('token')
+      const params = new URLSearchParams()
+      if (selectedEvent) params.append('eventId', selectedEvent)
+      if (value) params.append('search', value)
 
-      const response = await fetch(
-        `/api/admin/customers?${params.toString()}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      const result = await response.json();
+      const response = await fetch(`/api/admin/customers?${params.toString()}`, {
+        headers: {Authorization: `Bearer ${token}`},
+      })
+      const result = await response.json()
 
       if (result.success) {
-        setCustomers(result.data.customers);
-        setEvents(result.data.events);
-        setStats(result.data.stats);
+        setCustomers(result.data.customers)
+        setEvents(result.data.events)
+        setStats(result.data.stats)
       } else {
-        message.error(result.error || "Không thể tải danh sách khách hàng");
+        message.error(result.error || 'Không thể tải danh sách khách hàng')
       }
     } catch (error) {
-      console.error("Fetch customers error:", error);
-      message.error("Có lỗi xảy ra khi tải danh sách khách hàng");
+      console.error('Fetch customers error:', error)
+      message.error('Có lỗi xảy ra khi tải danh sách khách hàng')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const columns = [
     {
-      title: "Mã đơn",
-      dataIndex: "order_number",
-      key: "order_number",
+      title: 'Mã đơn',
+      dataIndex: 'order_number',
+      key: 'order_number',
       width: 130,
       render: (text: string) => (
-        <span style={{ fontFamily: "monospace", fontWeight: 500 }}>{text}</span>
+        <span style={{fontFamily: 'monospace', fontWeight: 500}}>{text}</span>
       ),
     },
     {
-      title: "Khách hàng",
-      key: "customer",
+      title: 'Khách hàng',
+      key: 'customer',
       width: 200,
       render: (_: any, record: Customer) => (
         <div>
-          <div style={{ fontWeight: 500 }}>{record.customer_name}</div>
-          <div style={{ fontSize: "12px", color: "#888" }}>
-            {record.customer_email}
-          </div>
-          <div style={{ fontSize: "12px", color: "#888" }}>
-            {record.customer_phone}
-          </div>
+          <div style={{fontWeight: 500}}>{record.customer_name}</div>
+          <div style={{fontSize: '12px', color: '#888'}}>{record.customer_email}</div>
+          <div style={{fontSize: '12px', color: '#888'}}>{record.customer_phone}</div>
         </div>
       ),
     },
     {
-      title: "Ghế",
-      key: "seats",
+      title: 'Ghế',
+      key: 'seats',
       width: 150,
       render: (_: any, record: Customer) => (
         <div>
-          <div style={{ fontWeight: 500 }}>{record.seat_count} ghế</div>
-          <div style={{ fontSize: "12px", color: "#666" }}>
-            {record.seat_numbers}
-          </div>
+          <div style={{fontWeight: 500}}>{record.seat_count} ghế</div>
+          <div style={{fontSize: '12px', color: '#666'}}>{record.seat_numbers}</div>
         </div>
       ),
     },
     {
-      title: "Tổng tiền",
-      dataIndex: "total_amount",
-      key: "total_amount",
+      title: 'Tổng tiền',
+      dataIndex: 'total_amount',
+      key: 'total_amount',
       width: 130,
       render: (amount: number) => (
-        <span style={{ fontWeight: 500 }}>
-          {new Intl.NumberFormat("vi-VN", {
-            style: "currency",
-            currency: "VND",
+        <span style={{fontWeight: 500}}>
+          {new Intl.NumberFormat('vi-VN', {
+            style: 'currency',
+            currency: 'VND',
           }).format(amount)}
         </span>
       ),
     },
     {
-      title: "Trạng thái",
-      key: "checked_in",
+      title: 'Trạng thái',
+      key: 'checked_in',
       width: 120,
       render: (_: any, record: Customer) =>
         record.checked_in ? (
-          <Tag icon={<CheckCircleOutlined />} color="success">
+          <Tag icon={<CheckCircleOutlined />} color='success'>
             Đã check-in
           </Tag>
         ) : (
-          <Tag icon={<ClockCircleOutlined />} color="default">
+          <Tag icon={<ClockCircleOutlined />} color='default'>
             Chưa check-in
           </Tag>
         ),
     },
     {
-      title: "Người check-in",
-      key: "checked_in_by",
+      title: 'Người check-in',
+      key: 'checked_in_by',
       width: 150,
       render: (_: any, record: Customer) =>
         record.checked_in_by_name ? (
           <span>{record.checked_in_by_name}</span>
         ) : (
-          <span style={{ color: "#999" }}>-</span>
+          <span style={{color: '#999'}}>-</span>
         ),
     },
     {
-      title: "Thời gian check-in",
-      dataIndex: "checked_in_at",
-      key: "checked_in_at",
+      title: 'Thời gian check-in',
+      dataIndex: 'checked_in_at',
+      key: 'checked_in_at',
       width: 160,
       render: (date: string | null) =>
-        date ? (
-          dayjs(date).format("DD/MM/YYYY HH:mm")
-        ) : (
-          <span style={{ color: "#999" }}>-</span>
-        ),
+        date ? dayjs(date).format('DD/MM/YYYY HH:mm') : <span style={{color: '#999'}}>-</span>,
     },
     {
-      title: "Ngày mua",
-      dataIndex: "paid_at",
-      key: "paid_at",
+      title: 'Ngày mua',
+      dataIndex: 'paid_at',
+      key: 'paid_at',
       width: 150,
-      render: (date: string) => dayjs(date).format("DD/MM/YYYY HH:mm"),
+      render: (date: string) => dayjs(date).format('DD/MM/YYYY HH:mm'),
     },
-  ];
+  ]
 
   return (
     <AdminLayout>
-      <div style={{ padding: "24px" }}>
-        <h1 style={{ fontSize: "24px", marginBottom: "24px" }}>
+      <div style={{padding: '24px'}}>
+        <h1 style={{fontSize: '24px', marginBottom: '24px'}}>
           <UserOutlined /> Quản lý khách hàng
         </h1>
 
         {/* Stats */}
-        <Row gutter={16} style={{ marginBottom: "24px" }}>
+        <Row gutter={16} style={{marginBottom: '24px'}}>
           <Col span={8}>
             <Card>
-              <Statistic
-                title="Tổng khách hàng"
-                value={stats.total}
-                prefix={<UserOutlined />}
-              />
+              <Statistic title='Tổng khách hàng' value={stats.total} prefix={<UserOutlined />} />
             </Card>
           </Col>
           <Col span={8}>
             <Card>
               <Statistic
-                title="Đã check-in"
+                title='Đã check-in'
                 value={stats.checkedIn}
                 prefix={<CheckCircleOutlined />}
-                styles={{ value: { color: "#52c41a" } }}
+                valueStyle={{color: '#52c41a'}}
               />
             </Card>
           </Col>
           <Col span={8}>
             <Card>
               <Statistic
-                title="Chưa check-in"
+                title='Chưa check-in'
                 value={stats.pending}
                 prefix={<ClockCircleOutlined />}
-                styles={{ value: { color: "#faad14" } }}
+                valueStyle={{color: '#faad14'}}
               />
             </Card>
           </Col>
         </Row>
 
         {/* Filters */}
-        <Card style={{ marginBottom: "16px" }}>
-          <Space size="middle" style={{ width: "100%" }}>
+        <Card style={{marginBottom: '16px'}}>
+          <Space size='middle' style={{width: '100%'}}>
             <Select
-              style={{ width: 250 }}
-              placeholder="Chọn sự kiện"
+              style={{width: 250}}
+              placeholder='Chọn sự kiện'
               allowClear
               value={selectedEvent || undefined}
-              onChange={(value) => setSelectedEvent(value || "")}
+              onChange={(value) => setSelectedEvent(value || '')}
             >
               {events.map((event) => (
                 <Option key={event.id} value={event.id}>
@@ -298,10 +263,10 @@ export default function CustomersPage() {
             </Select>
 
             <Search
-              placeholder="Tìm theo tên, email, SĐT, mã đơn..."
+              placeholder='Tìm theo tên, email, SĐT, mã đơn...'
               allowClear
-              enterButton="Tìm kiếm"
-              style={{ width: 400 }}
+              enterButton='Tìm kiếm'
+              style={{width: 400}}
               onSearch={handleSearch}
             />
           </Space>
@@ -312,17 +277,17 @@ export default function CustomersPage() {
           <Table
             columns={columns}
             dataSource={customers}
-            rowKey="id"
+            rowKey='id'
             loading={loading}
             pagination={{
               pageSize: 20,
               showSizeChanger: true,
               showTotal: (total) => `Tổng ${total} khách hàng`,
             }}
-            scroll={{ x: 1350 }}
+            scroll={{x: 1350}}
           />
         </Card>
       </div>
     </AdminLayout>
-  );
+  )
 }
