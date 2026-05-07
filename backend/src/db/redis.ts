@@ -131,7 +131,7 @@ export async function lockSeat(
   sessionId: string
 ): Promise<boolean> {
   const key = `seat:${eventId}:${seatId}`
-  const result = await redis.set(key, sessionId, {ex: config.seatLockTtl, nx: true})
+  const result = await redis.set(key, sessionId, 'EX', config.seatLockTtl, 'NX')
   return result === 'OK'
 }
 
@@ -166,7 +166,7 @@ export async function checkRateLimit(
   const current = await redis.get(key)
 
   if (!current) {
-    await redis.set(key, '1', {ex: config.rateLimit.window})
+    await redis.set(key, '1', 'EX', config.rateLimit.window)
     return {allowed: true, remaining: config.rateLimit.max - 1}
   }
 
@@ -176,6 +176,6 @@ export async function checkRateLimit(
     return {allowed: false, remaining: 0}
   }
 
-  await redis.set(key, (count + 1).toString(), {ex: config.rateLimit.window})
+  await redis.set(key, (count + 1).toString(), 'EX', config.rateLimit.window)
   return {allowed: true, remaining: config.rateLimit.max - count - 1}
 }
