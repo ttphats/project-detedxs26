@@ -33,7 +33,25 @@ async function main() {
 
   // Register plugins
   await fastify.register(cors, {
-    origin: config.corsOrigins,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        callback(null, true)
+        return
+      }
+
+      // Check if origin is in allowed list or matches Vercel pattern
+      const isAllowed =
+        config.corsOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
+        origin.includes('localhost')
+
+      if (isAllowed) {
+        callback(null, true)
+      } else {
+        callback(new Error('Not allowed by CORS'), false)
+      }
+    },
     credentials: true,
   })
 
