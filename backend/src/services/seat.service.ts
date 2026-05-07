@@ -2,8 +2,11 @@ import {query, execute, queryOne} from '../db/mysql.js'
 import {BadRequestError, NotFoundError, ConflictError} from '../utils/errors.js'
 import {generateUUID} from '../utils/helpers.js'
 import {Seat, SeatLock} from '../types/index.js'
+import {redis} from '../db/redis.js'
+import {config} from '../config/env.js'
 
 const LOCK_DURATION_MINUTES = 10
+const LOCK_DURATION_SECONDS = LOCK_DURATION_MINUTES * 60
 
 interface LockSeatParams {
   eventId: string
@@ -89,25 +92,34 @@ export async function lockSeats(
     )
   }
 
-  // Check existing locks by other sessions
-  const existingLocks = await query<SeatLock>(
-    `SELECT * FROM seat_locks WHERE seat_id IN (${placeholders}) AND session_id != ? AND expires_at > NOW()`,
-    [...seatIds, sessionId]
-  )
+  // ✅ CHECK REDIS LOCKS FIRST (Primary locking mechanism)
+  const lockedByOthers: string[] = []
+  for (const seatId of seatIds) {
+    const key = `seat:${eventId}:${seatId}`
+    const lockedBy = await redis.get(key)
 
-  if (existingLocks.length > 0) {
-    const lockedSeatIds = existingLocks.map((l) => l.seat_id)
-    const lockedSeats = seats.filter((s) => lockedSeatIds.includes(s.id))
+    if (lockedBy && lockedBy !== sessionId) {
+      const seat = seats.find((s) => s.id === seatId)
+      lockedByOthers.push(seat?.seat_number || seatId)
+    }
+  }
+
+  if (lockedByOthers.length > 0) {
     throw new ConflictError(
-      `Seats ${lockedSeats
-        .map((s) => s.seat_number)
-        .join(', ')} are being selected by another customer`
+      `Seats ${lockedByOthers.join(', ')} are being selected by another customer`
     )
   }
 
-  // Lock seats (upsert)
+  // ✅ LOCK IN REDIS (Primary - Fast TTL-based locking)
   const expiresAt = new Date(Date.now() + LOCK_DURATION_MINUTES * 60 * 1000)
 
+  for (const seatId of seatIds) {
+    const key = `seat:${eventId}:${seatId}`
+    // SET with EX (expiry in seconds) - ioredis syntax
+    await redis.set(key, sessionId, 'EX', LOCK_DURATION_SECONDS)
+  }
+
+  // ✅ LOCK IN MYSQL (Backup/Persistence for recovery)
   for (const seatId of seatIds) {
     const lockId = generateUUID()
     await execute(
@@ -118,7 +130,12 @@ export async function lockSeats(
     )
   }
 
-  console.log(`[LOCK] Locked ${seatIds.length} seats for session ${sessionId.substring(0, 15)}...`)
+  console.log(
+    `[LOCK] ✅ Redis+MySQL: Locked ${seatIds.length} seats for session ${sessionId.substring(
+      0,
+      15
+    )}...`
+  )
 
   return {
     lockedSeats: seatIds,
@@ -126,13 +143,37 @@ export async function lockSeats(
   }
 }
 
-// Unlock seats
-export async function unlockSeats(seatIds: string[], sessionId: string): Promise<void> {
+// Unlock seats (Redis + MySQL)
+export async function unlockSeats(
+  seatIds: string[],
+  sessionId: string,
+  eventId?: string
+): Promise<void> {
+  // ✅ UNLOCK FROM REDIS (Primary)
+  if (eventId) {
+    for (const seatId of seatIds) {
+      const key = `seat:${eventId}:${seatId}`
+      // Verify ownership before unlocking
+      const lockedBy = await redis.get(key)
+      if (lockedBy === sessionId) {
+        await redis.del(key)
+      }
+    }
+  }
+
+  // ✅ UNLOCK FROM MYSQL (Backup)
   const placeholders = seatIds.map(() => '?').join(',')
   await execute(`DELETE FROM seat_locks WHERE seat_id IN (${placeholders}) AND session_id = ?`, [
     ...seatIds,
     sessionId,
   ])
+
+  console.log(
+    `[UNLOCK] ✅ Redis+MySQL: Unlocked ${seatIds.length} seats for session ${sessionId.substring(
+      0,
+      15
+    )}...`
+  )
 }
 
 // Extend seat lock (for pending orders)

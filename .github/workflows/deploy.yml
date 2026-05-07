@@ -1,0 +1,62 @@
+name: Deploy Backend to Ubuntu
+
+on:
+  push:
+    branches:
+      - main # Production
+      - feature/fastify-backend # Staging
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  # =====================================
+  # Deploy Backend to Ubuntu Server
+  # =====================================
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Ubuntu Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "🚀 Starting deployment..."
+
+            # Navigate to project directory
+            cd /var/www/tedx-backend || exit 1
+
+            # Pull latest code
+            echo "📥 Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/${{ github.ref_name }}
+
+            # Navigate to backend directory
+            cd backend
+
+            # Install dependencies
+            echo "📦 Installing dependencies..."
+            npm ci --production
+
+            # Build TypeScript
+            echo "🔨 Building TypeScript..."
+            npm run build
+
+            # Restart PM2
+            echo "🔄 Restarting PM2..."
+            pm2 restart tedx-backend || pm2 start npm --name "tedx-backend" -- run start
+
+            # Save PM2 config
+            pm2 save
+
+            # Show status
+            echo "✅ Deployment completed!"
+            pm2 status tedx-backend
