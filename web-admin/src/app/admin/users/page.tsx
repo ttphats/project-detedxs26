@@ -176,13 +176,23 @@ export default function UsersPage() {
         : "/api/admin/users";
       const method = editingUser ? "PUT" : "POST";
 
+      // Map roleId to role name (backend expects role name, not roleId)
+      const selectedRole = roles.find((r) => r.id === values.roleId);
+      const payload = {
+        ...values,
+        role: selectedRole?.name, // Backend expects role name
+        phone: values.phoneNumber, // Map phoneNumber to phone
+      };
+      delete payload.roleId; // Remove roleId from payload
+      delete payload.phoneNumber; // Remove phoneNumber (already mapped to phone)
+
       const res = await fetch(url, {
         method,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(values),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
