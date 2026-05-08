@@ -55,7 +55,7 @@ export async function listUsers(input: ListUsersInput) {
     where.isActive = false;
   }
 
-  const [users, total] = await Promise.all([
+  const [users, total, roles] = await Promise.all([
     prisma.user.findMany({
       where,
       select: {
@@ -65,8 +65,9 @@ export async function listUsers(input: ListUsersInput) {
         fullName: true,
         phoneNumber: true,
         roleId: true,
-        role: { select: { name: true } },
+        role: { select: { name: true, description: true } },
         isActive: true,
+        lastLoginAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -75,10 +76,26 @@ export async function listUsers(input: ListUsersInput) {
       take: limit,
     }),
     prisma.user.count({ where }),
+    prisma.role.findMany({
+      select: {
+        id: true,
+        name: true,
+        description: true,
+      },
+      orderBy: { name: 'asc' },
+    }),
   ]);
 
+  // Transform users to include flat role properties
+  const transformedUsers = users.map((user) => ({
+    ...user,
+    roleName: user.role?.name || '',
+    roleDescription: user.role?.description || null,
+  }));
+
   return {
-    users,
+    users: transformedUsers,
+    roles,
     pagination: {
       page,
       limit,
