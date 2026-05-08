@@ -121,7 +121,9 @@ export default function UsersPage() {
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
-        setCurrentUserRole(user.roleName || "");
+        // Check both roleName and role for backward compatibility
+        const role = user.roleName || user.role || "";
+        setCurrentUserRole(role);
       } catch (e) {
         console.error("Failed to parse user:", e);
       }

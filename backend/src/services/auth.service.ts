@@ -83,7 +83,8 @@ export async function login(
       id: user.id,
       email: user.email,
       fullName: user.fullName,
-      role: user.role.name,
+      roleName: user.role.name, // Fixed: use roleName instead of role
+      role: user.role.name, // Keep for backward compatibility
     },
     token,
   }
@@ -166,7 +167,8 @@ export async function register(
       id: user.id,
       email: user.email,
       fullName: user.fullName,
-      role: user.role.name,
+      roleName: user.role.name, // Primary field for permission checks
+      role: user.role.name, // Keep for backward compatibility
     },
     token,
   }
