@@ -3,10 +3,28 @@
 ## ⚠️ Mixed Content Error Fix
 
 Khi deploy lên server Ubuntu với IP `222.255.180.85`, client gặp lỗi **Mixed Content** vì:
+
 - Client (web-client) có thể chạy trên HTTPS
 - Backend API chạy HTTP → Browser block requests
 
-## 📋 Solutions
+## ✅ Current Setup: Cloudflare Tunnel (RECOMMENDED)
+
+**Backend URL:** `https://api.tedxfptuniversityhcmc.com`
+
+Cloudflare Tunnel đã được setup và tự động cung cấp HTTPS cho backend!
+
+- ✅ No SSL certificate needed on server
+- ✅ No Nginx SSL config needed
+- ✅ Automatic HTTPS with Cloudflare's certificate
+- ✅ DDoS protection & CDN
+
+**Environment Variables Updated:**
+
+```bash
+NEXT_PUBLIC_API_URL=https://api.tedxfptuniversityhcmc.com/api
+```
+
+## 📋 Alternative Solutions (If not using Cloudflare Tunnel)
 
 ### ✅ Solution 1: Enable HTTPS for Backend (Recommended)
 
@@ -24,6 +42,7 @@ sudo bash setup-ssl.sh
 ```
 
 Script sẽ tự động:
+
 - ✅ Cài đặt Nginx (nếu chưa có)
 - ✅ Tạo self-signed SSL certificate
 - ✅ Config Nginx với HTTPS (port 443)
@@ -33,11 +52,13 @@ Script sẽ tự động:
 #### Step 2: Update Environment Variables
 
 **web-client/.env.production**
+
 ```bash
 NEXT_PUBLIC_API_URL=https://222.255.180.85/api
 ```
 
 **web-admin/.env.production**
+
 ```bash
 NEXT_PUBLIC_API_URL=https://222.255.180.85/api
 ```
@@ -75,6 +96,7 @@ sudo certbot renew --dry-run
 ```
 
 Update env:
+
 ```bash
 NEXT_PUBLIC_API_URL=https://api.tedx.com/api
 ```
@@ -98,13 +120,15 @@ Hoặc chạy backend cũng trên HTTPS bằng self-signed cert trong code.
 ## 📝 Current Issue Analysis
 
 ### Error Messages:
+
 ```
-Mixed Content: The page at '<URL>' was loaded over HTTPS, 
-but requested an insecure resource 'http://222.255.180.85:4000/api/events/...'. 
+Mixed Content: The page at '<URL>' was loaded over HTTPS,
+but requested an insecure resource 'http://222.255.180.85:4000/api/events/...'.
 This request has been blocked
 ```
 
 ### Root Cause:
+
 - ❌ Client → Backend: HTTPS → HTTP (blocked)
 - ✅ Client → Backend: HTTPS → HTTPS (allowed)
 - ✅ Client → Backend: HTTP → HTTP (allowed)
@@ -124,6 +148,7 @@ MySQL Database
 ```
 
 **Benefits:**
+
 - ✅ SSL termination tại Nginx
 - ✅ Backend chỉ listen localhost (secure)
 - ✅ Nginx handle load balancing, caching, rate limiting
@@ -134,23 +159,26 @@ MySQL Database
 ## 🔍 Verify Setup
 
 ### 1. Check Backend HTTPS:
+
 ```bash
 curl -k https://222.255.180.85/health
 # Expected: {"status":"ok"}
 ```
 
 ### 2. Check CORS:
+
 ```bash
 curl -I -X OPTIONS https://222.255.180.85/api/events
 # Expected: Access-Control-Allow-Origin: *
 ```
 
 ### 3. Test from Client:
+
 ```javascript
 // Browser console
-fetch('https://222.255.180.85/api/events')
-  .then(r => r.json())
-  .then(console.log)
+fetch("https://222.255.180.85/api/events")
+  .then((r) => r.json())
+  .then(console.log);
 ```
 
 ---
@@ -158,18 +186,21 @@ fetch('https://222.255.180.85/api/events')
 ## 🐛 Troubleshooting
 
 ### Port already in use:
+
 ```bash
 sudo lsof -i :443
 sudo kill -9 <PID>
 ```
 
 ### Nginx errors:
+
 ```bash
 sudo nginx -t
 sudo tail -f /var/log/nginx/error.log
 ```
 
 ### Backend not accessible:
+
 ```bash
 # Check if backend is running
 pm2 list
@@ -178,7 +209,8 @@ netstat -tlnp | grep :4000
 ```
 
 ### Self-signed certificate warning:
-Browser sẽ hiển thị warning "Your connection is not private". 
+
+Browser sẽ hiển thị warning "Your connection is not private".
 User cần click "Advanced" → "Proceed to 222.255.180.85"
 
 ---
