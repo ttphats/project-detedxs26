@@ -209,12 +209,29 @@ export async function deleteUser(id: string) {
 
 /**
  * Check if user can manage role
+ *
+ * Permission hierarchy:
+ * - SUPER_ADMIN can manage everyone (SUPER_ADMIN, ADMIN, STAFF, USER)
+ * - ADMIN can manage STAFF and USER only
+ * - STAFF cannot manage users
+ * - USER cannot manage users
  */
 export function canManageRole(actorRole: string, targetRole: string): boolean {
-  // Only SUPER_ADMIN can manage ADMIN users
-  if (targetRole === 'ADMIN' && actorRole !== 'SUPER_ADMIN') {
+  // Only SUPER_ADMIN can manage SUPER_ADMIN and ADMIN users
+  if ((targetRole === 'SUPER_ADMIN' || targetRole === 'ADMIN') && actorRole !== 'SUPER_ADMIN') {
     return false;
   }
-  return true;
+
+  // ADMIN can manage STAFF and USER
+  if ((targetRole === 'STAFF' || targetRole === 'USER') && (actorRole === 'SUPER_ADMIN' || actorRole === 'ADMIN')) {
+    return true;
+  }
+
+  // SUPER_ADMIN can manage everyone
+  if (actorRole === 'SUPER_ADMIN') {
+    return true;
+  }
+
+  return false;
 }
 
