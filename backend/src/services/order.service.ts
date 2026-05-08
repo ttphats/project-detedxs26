@@ -22,6 +22,61 @@ interface CreatePendingOrderResult {
 export async function createPendingOrder(params: CreatePendingOrderParams): Promise<CreatePendingOrderResult> {
   const { eventId, seatIds, sessionId } = params;
 
+  // Check if there's already a pending order with these exact seats
+  // Use simpler query: find all PENDING orders for this event, then verify seats match
+  const pendingOrders = await query<{
+    id: string;
+    order_number: string;
+    total_amount: number;
+    status: string;
+    expires_at: Date;
+    access_token_hash: string;
+  }>(
+    `SELECT o.* FROM orders o
+     WHERE o.event_id = ?
+     AND o.status = 'PENDING'
+     AND o.expires_at > NOW()
+     ORDER BY o.created_at DESC`,
+    [eventId]
+  );
+
+  console.log(`[CREATE PENDING ORDER] Found ${pendingOrders.length} pending orders for event ${eventId}`);
+
+  // Check each pending order to see if it has exactly the same seats
+  for (const order of pendingOrders) {
+    const orderSeats = await query<{ seat_id: string }>(
+      'SELECT seat_id FROM order_items WHERE order_id = ?',
+      [order.id]
+    );
+
+    const orderSeatIds = orderSeats.map(s => s.seat_id).sort();
+    const requestedSeatIds = [...seatIds].sort();
+
+    console.log(`[CREATE PENDING ORDER] Order ${order.order_number}: has seats [${orderSeatIds.join(', ')}], requested [${requestedSeatIds.join(', ')}]`);
+
+    // Check if seat lists match exactly
+    const seatsMatch = orderSeatIds.length === requestedSeatIds.length &&
+      orderSeatIds.every((seatId, index) => seatId === requestedSeatIds[index]);
+
+    if (seatsMatch) {
+      console.log(`[CREATE PENDING ORDER] ✅ Reusing existing order ${order.order_number} for session ${sessionId.substring(0, 15)}...`);
+
+      // Generate new access token (original token is not stored)
+      const { token: accessToken } = generateAccessToken();
+
+      return {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        totalAmount: Number(order.total_amount),
+        status: order.status,
+        expiresAt: new Date(order.expires_at).toISOString(),
+        accessToken, // Return new token for this session
+      };
+    }
+  }
+
+  console.log(`[CREATE PENDING ORDER] No matching pending order found, creating new order...`);
+
   // Check event exists and is published
   const event = await queryOne<{ id: string; status: string; name: string }>(
     'SELECT id, status, name FROM events WHERE id = ?',

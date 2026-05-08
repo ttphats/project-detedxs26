@@ -20,6 +20,7 @@ interface LoginResult {
     email: string | null
     fullName: string
     role: string
+    roleName?: string
   }
   token: string
 }

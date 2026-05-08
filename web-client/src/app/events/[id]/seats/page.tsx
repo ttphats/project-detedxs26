@@ -106,6 +106,7 @@ export default function SeatSelectionPage({
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const lastLockTimeRef = useRef<number>(0); // Track last lock time to skip immediate polling
 
   // Initialize session ID on mount
   useEffect(() => {
@@ -314,7 +315,7 @@ export default function SeatSelectionPage({
       } catch (err) {
         console.error("[POLLING] Error:", err);
       }
-    }, 10000); // Poll every 10s instead of 5s
+    }, 5000); // Poll every 5s (balance between responsiveness and avoiding race conditions)
 
     // Cleanup on unmount
     return () => {
@@ -460,6 +461,28 @@ export default function SeatSelectionPage({
         }
         // Broadcast to other tabs
         broadcastSeatChange(newSelectedSeats, newExpiresAt);
+
+        // Refresh seat map immediately to show unlocked seat
+        try {
+          const seatsRes = await fetch(
+            `${apiUrl}/events/${id}/seats?sessionId=${sessionId}`,
+          );
+          const seatsData = await seatsRes.json();
+          if (seatsData.success) {
+            setEvent((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    seatMap: Array.isArray(seatsData.data)
+                      ? seatsData.data
+                      : seatsData.data.seatMap || prev.seatMap,
+                  }
+                : prev,
+            );
+          }
+        } catch (refreshErr) {
+          console.error("[UNLOCK] Failed to refresh seat map:", refreshErr);
+        }
       } catch (err) {
         console.error("Error unlocking seat:", err);
         setLockError("Không thể bỏ chọn ghế. Vui lòng thử lại.");
