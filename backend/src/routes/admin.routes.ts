@@ -33,6 +33,7 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
   fastify.post('/admin/orders/:id/resend-email', {preHandler}, ordersController.resendEmail)
   // Alias: frontend web-admin uses /send-email — keep both working
   fastify.post('/admin/orders/:id/send-email', {preHandler}, ordersController.resendEmail)
+  fastify.delete('/admin/orders/:id', {preHandler}, ordersController.remove)
 
   // Speakers
   fastify.get('/admin/speakers', {preHandler}, speakersController.list)

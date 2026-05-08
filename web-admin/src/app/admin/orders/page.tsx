@@ -19,6 +19,21 @@ function formatVNDate(dateStr: string | Date, includeTime = true): string {
   }
   return vnDate.toLocaleDateString('vi-VN')
 }
+
+// Helper function to calculate time remaining for pending orders
+function getTimeRemaining(expiresAt: string | Date | null) {
+  if (!expiresAt) return null
+  const now = new Date()
+  const expires = new Date(expiresAt)
+  const diffMs = expires.getTime() - now.getTime()
+  const diffMins = Math.floor(diffMs / 1000 / 60)
+
+  if (diffMins < 0) return {expired: true, text: 'Đã hết hạn', color: 'red'}
+  if (diffMins < 5) return {expired: false, text: `${diffMins} phút`, color: 'red'}
+  if (diffMins < 10) return {expired: false, text: `${diffMins} phút`, color: 'orange'}
+  return {expired: false, text: `${diffMins} phút`, color: 'green'}
+}
+
 import {
   Table,
   Button,
@@ -46,6 +61,7 @@ import {
   ClockCircleOutlined,
   SearchOutlined,
   DownloadOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
 import {exportOrdersToExcel} from '@/lib/excel-export'
 import type {ColumnsType} from 'antd/es/table'
@@ -176,6 +192,17 @@ export default function OrdersPage() {
 
   useEffect(() => {
     fetchData()
+  }, [statusFilter])
+
+  // Auto-refresh pending orders every 30 seconds
+  useEffect(() => {
+    if (statusFilter === 'PENDING' || statusFilter === '') {
+      const interval = setInterval(() => {
+        fetchData()
+      }, 30000) // 30 seconds
+
+      return () => clearInterval(interval)
+    }
   }, [statusFilter])
 
   // Fetch email templates when email modal opens
@@ -368,9 +395,60 @@ export default function OrdersPage() {
     }
   }
 
+  // Handle delete order
+  const handleDeleteOrder = (record: Order) => {
+    Modal.confirm({
+      title: 'Xác nhận xóa đơn hàng',
+      content: (
+        <div>
+          <p>
+            Bạn có chắc chắn muốn xóa đơn hàng <strong>{record.orderNumber}</strong>?
+          </p>
+          <p className='text-red-600 mt-2'>⚠️ Hành động này không thể hoàn tác!</p>
+          <ul className='mt-2 text-sm text-gray-600'>
+            <li>• Đơn hàng sẽ bị xóa hoàn toàn khỏi hệ thống</li>
+            <li>• Ghế sẽ được giải phóng và có thể bán lại</li>
+            <li>• Lịch sử thanh toán sẽ bị xóa</li>
+          </ul>
+        </div>
+      ),
+      okText: 'Xóa đơn hàng',
+      cancelText: 'Hủy',
+      okButtonProps: {danger: true},
+      onOk: async () => {
+        setActionLoading(record.id)
+        try {
+          const token = localStorage.getItem('token')
+          const res = await fetch(`/api/admin/orders/${record.id}`, {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+          const data = await res.json()
+          if (data.success) {
+            message.success(
+              `Đã xóa đơn hàng ${record.orderNumber}. ${data.data?.releasedSeats || 0} ghế đã được giải phóng.`
+            )
+            fetchData()
+          } else {
+            message.error(data.error || 'Không thể xóa đơn hàng')
+          }
+        } catch (error) {
+          console.error('Delete order error:', error)
+          message.error('Lỗi khi xóa đơn hàng')
+        } finally {
+          setActionLoading(null)
+        }
+      },
+    })
+  }
+
   // Get selected orders
   const selectedOrders = orders.filter((o) => selectedRowKeys.includes(o.id))
   const pendingSelectedOrders = selectedOrders.filter((o) => o.status === 'PENDING')
+  const pendingSelectedOrdersWithEmail = pendingSelectedOrders.filter((o) => o.customerEmail)
+  const selectedOrdersWithEmail = selectedOrders.filter((o) => o.customerEmail)
 
   // Open batch email modal
   const openBatchEmailModal = (action: 'confirm' | 'reject' | 'email') => {
@@ -386,13 +464,17 @@ export default function OrdersPage() {
       message.warning('Vui lòng chọn template email')
       return
     }
+    if (pendingSelectedOrdersWithEmail.length === 0) {
+      message.warning('Không có đơn hàng PENDING nào có thông tin email')
+      return
+    }
     setBatchLoading(true)
     const token = localStorage.getItem('token')
     let successCount = 0
     let failCount = 0
     let emailFailCount = 0
 
-    for (const order of pendingSelectedOrders) {
+    for (const order of pendingSelectedOrdersWithEmail) {
       try {
         const res = await fetch(`/api/admin/orders/${order.id}/confirm`, {
           method: 'POST',
@@ -438,13 +520,17 @@ export default function OrdersPage() {
       message.warning('Vui lòng chọn template email')
       return
     }
+    if (pendingSelectedOrdersWithEmail.length === 0) {
+      message.warning('Không có đơn hàng PENDING nào có thông tin email')
+      return
+    }
     setBatchLoading(true)
     const token = localStorage.getItem('token')
     let successCount = 0
     let failCount = 0
     let emailFailCount = 0
 
-    for (const order of pendingSelectedOrders) {
+    for (const order of pendingSelectedOrdersWithEmail) {
       try {
         const res = await fetch(`/api/admin/orders/${order.id}/reject`, {
           method: 'POST',
@@ -489,12 +575,16 @@ export default function OrdersPage() {
       message.warning('Vui lòng chọn template email')
       return
     }
+    if (selectedOrdersWithEmail.length === 0) {
+      message.warning('Không có đơn hàng nào có thông tin email')
+      return
+    }
     setBatchLoading(true)
     const token = localStorage.getItem('token')
     let successCount = 0
     let failCount = 0
 
-    for (const order of selectedOrders) {
+    for (const order of selectedOrdersWithEmail) {
       try {
         const res = await fetch(`/api/admin/orders/${order.id}/send-email`, {
           method: 'POST',
@@ -519,6 +609,69 @@ export default function OrdersPage() {
       `Đã gửi email cho ${successCount} đơn hàng${failCount > 0 ? `, ${failCount} thất bại` : ''}`
     )
     fetchData()
+  }
+
+  // Handle batch delete
+  const handleBatchDelete = () => {
+    Modal.confirm({
+      title: 'Xác nhận xóa hàng loạt',
+      content: (
+        <div>
+          <p>
+            Bạn có chắc chắn muốn xóa <strong>{selectedRowKeys.length}</strong> đơn hàng đã chọn?
+          </p>
+          <p className='text-red-600 mt-2'>⚠️ Hành động này không thể hoàn tác!</p>
+          <ul className='mt-2 text-sm text-gray-600'>
+            <li>• Tất cả đơn hàng sẽ bị xóa hoàn toàn khỏi hệ thống</li>
+            <li>• Ghế sẽ được giải phóng và có thể bán lại</li>
+            <li>• Lịch sử thanh toán sẽ bị xóa</li>
+          </ul>
+        </div>
+      ),
+      okText: `Xóa ${selectedRowKeys.length} đơn hàng`,
+      cancelText: 'Hủy',
+      okButtonProps: {danger: true},
+      onOk: async () => {
+        setBatchLoading(true)
+        const token = localStorage.getItem('token')
+        let successCount = 0
+        let failCount = 0
+        let totalReleasedSeats = 0
+
+        for (const order of selectedOrders) {
+          try {
+            const res = await fetch(`/api/admin/orders/${order.id}`, {
+              method: 'DELETE',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            })
+            const data = await res.json()
+            if (data.success) {
+              successCount++
+              totalReleasedSeats += data.data?.releasedSeats || 0
+            } else {
+              failCount++
+            }
+          } catch {
+            failCount++
+          }
+        }
+
+        setBatchLoading(false)
+        setSelectedRowKeys([])
+        const parts = [`Đã xóa ${successCount} đơn hàng`]
+        if (totalReleasedSeats > 0) parts.push(`${totalReleasedSeats} ghế đã được giải phóng`)
+        if (failCount > 0) parts.push(`${failCount} thất bại`)
+
+        if (failCount > 0) {
+          message.warning({content: parts.join(', '), duration: 8})
+        } else {
+          message.success(parts.join(', '))
+        }
+        fetchData()
+      },
+    })
   }
 
   // Row selection config
@@ -651,20 +804,31 @@ export default function OrdersPage() {
               >
                 Từ chối
               </Button>
-              <Tooltip title='Gửi email (chọn template)'>
-                <Button
-                  size='small'
-                  icon={<MailOutlined />}
-                  onClick={() => openEmailModal(record)}
-                />
-              </Tooltip>
+              {record.customerEmail && (
+                <Tooltip title='Gửi email (chọn template)'>
+                  <Button
+                    size='small'
+                    icon={<MailOutlined />}
+                    onClick={() => openEmailModal(record)}
+                  />
+                </Tooltip>
+              )}
             </>
           )}
-          {record.status === 'PAID' && (
+          {record.status === 'PAID' && record.customerEmail && (
             <Tooltip title='Gửi email (chọn template)'>
               <Button size='small' icon={<MailOutlined />} onClick={() => openEmailModal(record)} />
             </Tooltip>
           )}
+          <Tooltip title='Xóa đơn hàng'>
+            <Button
+              size='small'
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleDeleteOrder(record)}
+              loading={actionLoading === record.id}
+            />
+          </Tooltip>
         </Space>
       ),
     },
@@ -727,7 +891,7 @@ export default function OrdersPage() {
                 title='Chờ thanh toán'
                 value={summary.pendingOrders}
                 prefix={<ClockCircleOutlined />}
-                styles={{content: {color: '#faad14'}}}
+                styles={{value: {color: '#faad14'}}}
               />
             </Card>
           </Col>
@@ -737,7 +901,7 @@ export default function OrdersPage() {
                 title='Đã thanh toán'
                 value={summary.paidOrders}
                 prefix={<CheckCircleOutlined />}
-                styles={{content: {color: '#52c41a'}}}
+                styles={{value: {color: '#52c41a'}}}
               />
             </Card>
           </Col>
@@ -748,7 +912,7 @@ export default function OrdersPage() {
                 value={totalRevenue}
                 prefix={<DollarOutlined />}
                 suffix='₫'
-                styles={{content: {color: '#1890ff'}}}
+                styles={{value: {color: '#1890ff'}}}
                 formatter={(value) => `${Math.round(Number(value)).toLocaleString('vi-VN')}`}
               />
             </Card>
@@ -789,14 +953,14 @@ export default function OrdersPage() {
             <div className='flex items-center justify-between'>
               <span className='font-medium'>
                 Đã chọn {selectedRowKeys.length} đơn hàng
-                {pendingSelectedOrders.length > 0 && (
+                {pendingSelectedOrdersWithEmail.length > 0 && (
                   <span className='text-orange-600 ml-2'>
-                    ({pendingSelectedOrders.length} chờ thanh toán)
+                    ({pendingSelectedOrdersWithEmail.length} chờ thanh toán có email)
                   </span>
                 )}
               </span>
               <Space>
-                {pendingSelectedOrders.length > 0 && (
+                {pendingSelectedOrdersWithEmail.length > 0 && (
                   <>
                     <Button
                       type='primary'
@@ -807,19 +971,24 @@ export default function OrdersPage() {
                         borderColor: '#52c41a',
                       }}
                     >
-                      Xác nhận ({pendingSelectedOrders.length})
+                      Xác nhận ({pendingSelectedOrdersWithEmail.length})
                     </Button>
                     <Button
                       danger
                       icon={<CloseCircleOutlined />}
                       onClick={() => openBatchEmailModal('reject')}
                     >
-                      Từ chối ({pendingSelectedOrders.length})
+                      Từ chối ({pendingSelectedOrdersWithEmail.length})
                     </Button>
                   </>
                 )}
-                <Button icon={<MailOutlined />} onClick={() => openBatchEmailModal('email')}>
-                  Gửi email ({selectedRowKeys.length})
+                {selectedOrdersWithEmail.length > 0 && (
+                  <Button icon={<MailOutlined />} onClick={() => openBatchEmailModal('email')}>
+                    Gửi email ({selectedOrdersWithEmail.length})
+                  </Button>
+                )}
+                <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete}>
+                  Xóa ({selectedRowKeys.length})
                 </Button>
                 <Button onClick={() => setSelectedRowKeys([])}>Bỏ chọn</Button>
               </Space>

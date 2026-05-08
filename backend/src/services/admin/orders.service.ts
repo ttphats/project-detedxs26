@@ -3,6 +3,8 @@ import {randomBytes, createHash} from 'crypto'
 import {generateTicketQRCode, generateTicketUrl} from '../qrcode.service.js'
 import {sendEmailByPurpose} from '../email.service.js'
 import {createAuditLog} from '../audit.service.js'
+import {execute, query as rawQuery} from '../../db/mysql.js'
+import {redis} from '../../db/redis.js'
 
 export interface ListOrdersInput {
   page?: number
@@ -403,4 +405,90 @@ export async function resendTicketEmail(
   }
 
   return {order, emailResult}
+}
+
+/**
+ * Delete order completely (admin action)
+ */
+export async function deleteOrder(
+  orderId: string,
+  adminUser: {userId: string; roleName: string},
+  ipAddress?: string,
+  userAgent?: string
+): Promise<{orderNumber: string; releasedSeats: number}> {
+  const order = await prisma.order.findUnique({
+    where: {id: orderId},
+    include: {
+      orderItems: {include: {seat: true}},
+      event: true,
+    },
+  })
+
+  if (!order) {
+    throw new Error('Order not found')
+  }
+
+  const seatIds = order.orderItems
+    .map((item) => item.seatId)
+    .filter((id) => id !== null) as string[]
+
+  // Release seats back to AVAILABLE
+  if (seatIds.length > 0) {
+    await execute(
+      `UPDATE seats
+       SET status = 'AVAILABLE', updated_at = NOW()
+       WHERE id IN (${seatIds.map(() => '?').join(',')})`,
+      seatIds
+    )
+  }
+
+  // Delete seat locks for this order
+  if (seatIds.length > 0) {
+    await execute(
+      `DELETE FROM seat_locks
+       WHERE event_id = ? AND seat_id IN (${seatIds.map(() => '?').join(',')})`,
+      [order.eventId, ...seatIds]
+    )
+  }
+
+  // Delete from Redis
+  for (const seatId of seatIds) {
+    await redis.del(`seat_lock:${order.eventId}:${seatId}`)
+  }
+
+  // Delete order items first (foreign key constraint)
+  await prisma.orderItem.deleteMany({where: {orderId}})
+
+  // Delete payment record if exists
+  await prisma.payment.deleteMany({where: {orderId}})
+
+  // Delete the order itself
+  await prisma.order.delete({where: {id: orderId}})
+
+  // Create audit log
+  await createAuditLog({
+    userId: adminUser.userId,
+    userRole: adminUser.roleName,
+    action: 'DELETE',
+    entity: 'ORDER',
+    entityId: orderId,
+    metadata: {
+      orderNumber: order.orderNumber,
+      status: order.status,
+      customerEmail: order.customerEmail,
+      releasedSeats: seatIds.length,
+      eventId: order.eventId,
+    },
+    ipAddress,
+    userAgent,
+  })
+
+  console.log(
+    `[ADMIN DELETE ORDER] Deleted order ${order.orderNumber}, released ${seatIds.length} seats`
+  )
+
+  return {
+    orderNumber: order.orderNumber,
+    releasedSeats: seatIds.length,
+  }
 }

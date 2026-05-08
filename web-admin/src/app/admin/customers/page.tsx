@@ -4,7 +4,7 @@ import React, {useEffect, useState} from 'react'
 import {Table, Input, Select, Space, Tag, Card, Statistic, Row, Col, message} from 'antd'
 import {UserOutlined, CheckCircleOutlined, ClockCircleOutlined} from '@ant-design/icons'
 import dayjs from 'dayjs'
-import AdminLayout from '@/components/admin/AdminLayout'
+import {AdminLayout} from '@/components/admin'
 
 const {Search} = Input
 const {Option} = Select
@@ -124,7 +124,8 @@ export default function CustomersPage() {
       title: 'Mã đơn',
       dataIndex: 'order_number',
       key: 'order_number',
-      width: 130,
+      width: 110,
+      fixed: 'left' as const,
       render: (text: string) => (
         <span style={{fontFamily: 'monospace', fontWeight: 500}}>{text}</span>
       ),
@@ -144,7 +145,7 @@ export default function CustomersPage() {
     {
       title: 'Ghế',
       key: 'seats',
-      width: 150,
+      width: 160,
       render: (_: any, record: Customer) => (
         <div>
           <div style={{fontWeight: 500}}>{record.seat_count} ghế</div>
@@ -184,7 +185,7 @@ export default function CustomersPage() {
     {
       title: 'Người check-in',
       key: 'checked_in_by',
-      width: 150,
+      width: 130,
       render: (_: any, record: Customer) =>
         record.checked_in_by_name ? (
           <span>{record.checked_in_by_name}</span>
@@ -196,7 +197,7 @@ export default function CustomersPage() {
       title: 'Thời gian check-in',
       dataIndex: 'checked_in_at',
       key: 'checked_in_at',
-      width: 160,
+      width: 150,
       render: (date: string | null) =>
         date ? dayjs(date).format('DD/MM/YYYY HH:mm') : <span style={{color: '#999'}}>-</span>,
     },
@@ -211,13 +212,16 @@ export default function CustomersPage() {
 
   return (
     <AdminLayout>
-      <div style={{padding: '24px'}}>
-        <h1 style={{fontSize: '24px', marginBottom: '24px'}}>
-          <UserOutlined /> Quản lý khách hàng
-        </h1>
+      <div className='space-y-6'>
+        {/* Header */}
+        <div className='flex justify-between items-center'>
+          <h1 className='text-2xl font-bold'>
+            <UserOutlined /> Quản lý khách hàng
+          </h1>
+        </div>
 
         {/* Stats */}
-        <Row gutter={16} style={{marginBottom: '24px'}}>
+        <Row gutter={16}>
           <Col span={8}>
             <Card>
               <Statistic title='Tổng khách hàng' value={stats.total} prefix={<UserOutlined />} />
@@ -229,7 +233,7 @@ export default function CustomersPage() {
                 title='Đã check-in'
                 value={stats.checkedIn}
                 prefix={<CheckCircleOutlined />}
-                valueStyle={{color: '#52c41a'}}
+                styles={{value: {color: '#52c41a'}}}
               />
             </Card>
           </Col>
@@ -239,14 +243,14 @@ export default function CustomersPage() {
                 title='Chưa check-in'
                 value={stats.pending}
                 prefix={<ClockCircleOutlined />}
-                valueStyle={{color: '#faad14'}}
+                styles={{value: {color: '#faad14'}}}
               />
             </Card>
           </Col>
         </Row>
 
         {/* Filters */}
-        <Card style={{marginBottom: '16px'}}>
+        <Card>
           <Space size='middle' style={{width: '100%'}}>
             <Select
               style={{width: 250}}
@@ -284,7 +288,7 @@ export default function CustomersPage() {
               showSizeChanger: true,
               showTotal: (total) => `Tổng ${total} khách hàng`,
             }}
-            scroll={{x: 1350}}
+            scroll={{x: 1150}}
           />
         </Card>
       </div>
