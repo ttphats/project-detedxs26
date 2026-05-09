@@ -165,6 +165,7 @@ model Order {
   paidAt             DateTime? @map("paid_at")
   cancelledAt        DateTime? @map("cancelled_at")
   cancellationReason String?   @map("cancellation_reason") @db.Text
+  accessToken        String?   @map("access_token") @db.VarChar(64)
   accessTokenHash    String?   @map("access_token_hash") @db.VarChar(64)
   qrCodeUrl          String?   @map("qr_code_url") @db.VarChar(500)
   emailSentAt        DateTime? @map("email_sent_at")

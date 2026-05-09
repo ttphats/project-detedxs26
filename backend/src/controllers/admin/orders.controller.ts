@@ -94,42 +94,55 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       .map((item: any) => `${item.seat.seatNumber} (${item.seat.seatType})`)
       .join(', ')
 
-    // Send confirmation email (await so we can surface status to admin UI)
-    let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
+    // Only send email if NEW token was created (no existing token)
+    // If token already exists, user already has the link - just update status
+    let emailStatus: 'SENT' | 'FAILED' | 'SKIPPED' = result.hasExistingToken ? 'SKIPPED' : 'FAILED'
     let emailError: string | null = null
-    try {
-      const emailResult = await sendEmailByPurpose({
-        purpose: 'TICKET_CONFIRMED',
-        to: result.order.customerEmail,
-        orderId: result.order.id,
-        triggeredBy: user.userId,
-        data: {
-          customerName: result.order.customerName,
-          eventName: result.order.event.name,
-          eventDate: formattedDate,
-          eventTime: formattedTime,
-          eventVenue: result.order.event.venue,
-          eventAddress: result.order.event.venue,
-          orderNumber: result.order.orderNumber,
-          seats: seatsList,  // ✅ String: "A1 (VIP), A2 (Standard)"
-          totalAmount: Number(result.order.totalAmount),
-          qrCodeUrl,
-          ticketUrl,
-        },
-      })
-      if (emailResult.success) {
-        emailStatus = 'SENT'
-        console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`)
-      } else {
-        emailError = emailResult.error || 'Unknown error'
-        console.error(
-          `❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`
-        )
+
+    if (!result.hasExistingToken) {
+      // New token - send email
+      try {
+        const emailResult = await sendEmailByPurpose({
+          purpose: 'TICKET_CONFIRMED',
+          to: result.order.customerEmail,
+          orderId: result.order.id,
+          triggeredBy: user.userId,
+          data: {
+            customerName: result.order.customerName,
+            eventName: result.order.event.name,
+            eventDate: formattedDate,
+            eventTime: formattedTime,
+            eventVenue: result.order.event.venue,
+            eventAddress: result.order.event.venue,
+            orderNumber: result.order.orderNumber,
+            seats: seatsList,
+            totalAmount: Number(result.order.totalAmount),
+            qrCodeUrl,
+            ticketUrl,
+          },
+        })
+        if (emailResult.success) {
+          emailStatus = 'SENT'
+          console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`)
+        } else {
+          emailError = emailResult.error || 'Unknown error'
+          console.error(
+            `❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`
+          )
+        }
+      } catch (err: any) {
+        emailError = err?.message || 'Unknown error'
+        console.error('Failed to send confirmation email:', err)
       }
-    } catch (err: any) {
-      emailError = err?.message || 'Unknown error'
-      console.error('Failed to send confirmation email:', err)
+    } else {
+      console.log('📧 Email skipped - user already has ticket link from previous email')
     }
+
+    const message = emailStatus === 'SENT'
+      ? 'Xác nhận thanh toán thành công. Email xác nhận đã được gửi.'
+      : emailStatus === 'SKIPPED'
+      ? 'Xác nhận thanh toán thành công. Khách hàng đã có link vé từ trước.'
+      : 'Xác nhận thanh toán thành công nhưng gửi email thất bại.';
 
     return reply.send({
       success: true,
@@ -142,7 +155,7 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         emailError,
         emailSentTo: result.order.customerEmail,
       },
-      message: 'Payment confirmed successfully',
+      message,
     })
   } catch (error: any) {
     throw new BadRequestError(error.message)
@@ -255,7 +268,7 @@ export async function resendEmail(request: FastifyRequest, reply: FastifyReply) 
         emailSentTo: result.order.customerEmail,
         emailId: result.emailResult.emailId,
       },
-      message: 'Email resent successfully',
+      message: 'Email đã gửi lại thành công. Link vé cũ sẽ không còn hiệu lực.',
     })
   } catch (error: any) {
     if (error instanceof BadRequestError) throw error

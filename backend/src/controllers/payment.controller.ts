@@ -158,10 +158,13 @@ async function processPaymentConfirmation(
       const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
       console.log('[DEBUG] Final ticketUrl:', ticketUrl)
 
-      // Update order with access token hash for ticket verification
+      // Update order with BOTH plaintext token and hash
       await tx.order.update({
         where: {id: orderId},
-        data: {accessTokenHash},
+        data: {
+          accessToken,      // ← Save plaintext for reuse
+          accessTokenHash,  // ← Save hash for verification
+        },
       })
 
       // Send email (fire and forget)

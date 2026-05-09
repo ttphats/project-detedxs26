@@ -141,25 +141,38 @@ export async function confirmPayment(
       if (order.status === 'CANCELLED') throw new Error('Order is cancelled')
       if (order.status === 'EXPIRED') throw new Error('Order has expired')
 
-      // Generate NEW access token ALWAYS (for email)
-      // Even if hash exists, we need plaintext token for email URL
-      const generated = generateAccessToken()
-      const accessToken = generated.token
-      const accessTokenHash = generated.hash
+      // Keep existing token OR generate new one
+      let accessToken: string
+      let accessTokenHash: string
+      let hasExistingToken = false
 
-      console.log('[CONFIRM PAYMENT] Generated access token:', accessToken.substring(0, 16) + '...')
-      console.log('[CONFIRM PAYMENT] Token length:', accessToken.length)
+      if (order.accessToken && order.accessTokenHash) {
+        // Token already exists (stored in DB) - REUSE IT!
+        // User already has the link, keep it valid
+        accessToken = order.accessToken
+        accessTokenHash = order.accessTokenHash
+        hasExistingToken = true
+        console.log('[CONFIRM PAYMENT] Reusing existing token - keeping user link valid')
+      } else {
+        // No token yet - generate new one and SAVE PLAINTEXT
+        const generated = generateAccessToken()
+        accessToken = generated.token
+        accessTokenHash = generated.hash
+        hasExistingToken = false
+        console.log('[CONFIRM PAYMENT] Generated new token and saving plaintext')
+      }
 
       // Generate QR code
       const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
 
-      // Update order to PAID
+      // Update order to PAID and save plaintext token
       const updatedOrder = await tx.order.update({
         where: {id: orderId},
         data: {
           status: 'PAID',
           paidAt: new Date(),
-          accessTokenHash,
+          accessToken,        // ← Save plaintext token
+          accessTokenHash,    // ← Save hash for verification
           qrCodeUrl,
         },
       })
@@ -221,7 +234,7 @@ export async function confirmPayment(
         },
       })
 
-      return {order, updatedOrder, accessToken, seatIds}
+      return {order, updatedOrder, accessToken, seatIds, hasExistingToken}
     },
     {timeout: 30000}
   )
@@ -339,13 +352,16 @@ export async function resendTicketEmail(
   if (!order) throw new Error('Order not found')
   if (order.status !== 'PAID') throw new Error('Can only resend email for PAID orders')
 
-  // Generate new access token
+  // Generate new access token (resend = invalidate old link)
   const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
 
-  // Update order with new access token
+  // Update order with new plaintext token AND hash
   await prisma.order.update({
     where: {id: orderId},
-    data: {accessTokenHash},
+    data: {
+      accessToken,      // ← Save plaintext
+      accessTokenHash,  // ← Save hash
+    },
   })
 
   // Generate QR code and ticket URL
