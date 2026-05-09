@@ -158,6 +158,9 @@ export async function confirmPayment(
         console.log('[CONFIRM PAYMENT] Generated new access token')
       }
 
+      // Generate QR code
+      const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
+
       // Update order to PAID
       const updatedOrder = await tx.order.update({
         where: {id: orderId},
@@ -165,6 +168,7 @@ export async function confirmPayment(
           status: 'PAID',
           paidAt: new Date(),
           accessTokenHash,
+          qrCodeUrl,
         },
       })
 
@@ -451,9 +455,9 @@ export async function deleteOrder(
     )
   }
 
-  // Delete from Redis
+  // Delete from Redis (correct key format)
   for (const seatId of seatIds) {
-    await redis.del(`seat_lock:${order.eventId}:${seatId}`)
+    await redis.del(`seat:${order.eventId}:${seatId}`)
   }
 
   // Delete order items first (foreign key constraint)

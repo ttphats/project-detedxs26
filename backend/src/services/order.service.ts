@@ -386,9 +386,9 @@ export async function cancelPendingOrder(
     )
   }
 
-  // Delete from Redis
+  // Delete from Redis (correct key format)
   for (const seatId of seatIdList) {
-    await redis.del(`seat_lock:${order.event_id}:${seatId}`)
+    await redis.del(`seat:${order.event_id}:${seatId}`)
   }
 
   // Delete order items first (foreign key constraint)
