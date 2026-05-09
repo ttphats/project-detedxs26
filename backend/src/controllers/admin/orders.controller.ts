@@ -94,54 +94,49 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       .map((item: any) => `${item.seat.seatNumber} (${item.seat.seatType})`)
       .join(', ')
 
-    // Only send email if NEW token was created (no existing token)
-    // If token already exists, user already has the link - just update status
-    let emailStatus: 'SENT' | 'FAILED' | 'SKIPPED' = result.hasExistingToken ? 'SKIPPED' : 'FAILED'
+    // ALWAYS send confirmation email (with existing or new token)
+    let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
     let emailError: string | null = null
 
-    if (!result.hasExistingToken) {
-      // New token - send email
-      try {
-        const emailResult = await sendEmailByPurpose({
-          purpose: 'TICKET_CONFIRMED',
-          to: result.order.customerEmail,
-          orderId: result.order.id,
-          triggeredBy: user.userId,
-          data: {
-            customerName: result.order.customerName,
-            eventName: result.order.event.name,
-            eventDate: formattedDate,
-            eventTime: formattedTime,
-            eventVenue: result.order.event.venue,
-            eventAddress: result.order.event.venue,
-            orderNumber: result.order.orderNumber,
-            seats: seatsList,
-            totalAmount: Number(result.order.totalAmount),
-            qrCodeUrl,
-            ticketUrl,
-          },
-        })
-        if (emailResult.success) {
-          emailStatus = 'SENT'
-          console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`)
-        } else {
-          emailError = emailResult.error || 'Unknown error'
-          console.error(
-            `❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`
-          )
-        }
-      } catch (err: any) {
-        emailError = err?.message || 'Unknown error'
-        console.error('Failed to send confirmation email:', err)
+    try {
+      const emailResult = await sendEmailByPurpose({
+        purpose: 'TICKET_CONFIRMED',
+        to: result.order.customerEmail,
+        orderId: result.order.id,
+        triggeredBy: user.userId,
+        data: {
+          customerName: result.order.customerName,
+          eventName: result.order.event.name,
+          eventDate: formattedDate,
+          eventTime: formattedTime,
+          eventVenue: result.order.event.venue,
+          eventAddress: result.order.event.venue,
+          orderNumber: result.order.orderNumber,
+          seats: seatsList,
+          totalAmount: Number(result.order.totalAmount),
+          qrCodeUrl,
+          ticketUrl,
+        },
+      })
+      if (emailResult.success) {
+        emailStatus = 'SENT'
+        const tokenStatus = result.hasExistingToken ? '(link vé giữ nguyên)' : '(link vé mới)'
+        console.log(`📧 Confirmation email sent to ${result.order.customerEmail} ${tokenStatus}`)
+      } else {
+        emailError = emailResult.error || 'Unknown error'
+        console.error(
+          `❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`
+        )
       }
-    } else {
-      console.log('📧 Email skipped - user already has ticket link from previous email')
+    } catch (err: any) {
+      emailError = err?.message || 'Unknown error'
+      console.error('Failed to send confirmation email:', err)
     }
 
     const message = emailStatus === 'SENT'
-      ? 'Xác nhận thanh toán thành công. Email xác nhận đã được gửi.'
-      : emailStatus === 'SKIPPED'
-      ? 'Xác nhận thanh toán thành công. Khách hàng đã có link vé từ trước.'
+      ? result.hasExistingToken
+        ? 'Xác nhận thanh toán thành công. Email đã gửi (link vé giữ nguyên).'
+        : 'Xác nhận thanh toán thành công. Email đã gửi với link vé mới.'
       : 'Xác nhận thanh toán thành công nhưng gửi email thất bại.';
 
     return reply.send({
