@@ -53,7 +53,7 @@ export async function generateTicketPDF(
     const pdfUrl = `${clientUrl}/api/ticket/${orderNumber}/pdf?token=${token}`;
 
     // Redirect to web-client PDF endpoint
-    return reply.redirect(302, pdfUrl);
+    return reply.status(302).redirect(pdfUrl);
   } catch (error) {
     console.error('PDF generation error:', error);
     return reply.status(500).send({
