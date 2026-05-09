@@ -525,10 +525,11 @@ export default function EmailTemplatesPage() {
     {
       title: "Thao tác",
       key: "actions",
-      width: 280,
+      width: 200,
       align: "center",
+      fixed: "right" as const,
       render: (_, record) => (
-        <Space size="small" wrap>
+        <Space size="small" wrap style={{ maxWidth: 200 }}>
           <Tooltip title="Xem trước">
             <Button
               size="small"
@@ -653,6 +654,7 @@ export default function EmailTemplatesPage() {
               showSizeChanger: true,
               showTotal: (total) => `Tổng ${total} templates`,
             }}
+            scroll={{ x: "max-content" }}
             rowClassName={(record) => (record.isActive ? "bg-green-50/50" : "")}
             locale={{
               emptyText: (

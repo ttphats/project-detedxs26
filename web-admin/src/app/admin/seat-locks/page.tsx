@@ -217,7 +217,7 @@ export default function SeatLocksPage() {
       title: "Hành động",
       key: "actions",
       width: 120,
-      fixed: "right",
+      fixed: "right" as const,
       render: (_, record) => (
         <Popconfirm
           title="Giải phóng ghế"
@@ -282,8 +282,8 @@ export default function SeatLocksPage() {
         </div>
 
         {/* Statistics */}
-        <Row gutter={16}>
-          <Col span={8}>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={8}>
             <Card>
               <Statistic
                 title="Tổng ghế đang lock"
@@ -293,7 +293,7 @@ export default function SeatLocksPage() {
               />
             </Card>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} lg={8}>
             <Card>
               <Statistic
                 title="Ghế còn hiệu lực"
@@ -303,7 +303,7 @@ export default function SeatLocksPage() {
               />
             </Card>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} lg={8}>
             <Card>
               <Statistic
                 title="Ghế đã hết hạn"
@@ -337,7 +337,7 @@ export default function SeatLocksPage() {
             dataSource={locks}
             rowKey="id"
             loading={loading}
-            scroll={{ x: 1200 }}
+            scroll={{ x: "max-content" }}
             pagination={{
               pageSize: 20,
               showSizeChanger: true,

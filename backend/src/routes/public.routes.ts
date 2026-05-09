@@ -1,11 +1,11 @@
-import { FastifyInstance } from 'fastify';
-import * as eventController from '../controllers/event.controller.js';
-import * as seatController from '../controllers/seat.controller.js';
-import * as orderController from '../controllers/order.controller.js';
-import * as cronController from '../controllers/cron.controller.js';
-import * as seatLockController from '../controllers/seat-lock.controller.js';
-import * as ticketController from '../controllers/ticket.controller.js';
-import * as paymentController from '../controllers/payment.controller.js';
+import {FastifyInstance} from 'fastify'
+import * as eventController from '../controllers/event.controller.js'
+import * as seatController from '../controllers/seat.controller.js'
+import * as orderController from '../controllers/order.controller.js'
+import * as cronController from '../controllers/cron.controller.js'
+import * as seatLockController from '../controllers/seat-lock.controller.js'
+import * as ticketController from '../controllers/ticket.controller.js'
+import * as paymentController from '../controllers/payment.controller.js'
 
 export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // =====================================
@@ -13,93 +13,98 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // =====================================
 
   // GET /events - List published events
-  fastify.get('/events', eventController.getEvents);
+  fastify.get('/events', eventController.getEvents)
 
   // GET /events/:eventId - Get event by ID
-  fastify.get('/events/:eventId', eventController.getEventById);
+  fastify.get('/events/:eventId', eventController.getEventById)
 
   // GET /events/slug/:slug - Get event by slug
-  fastify.get('/events/slug/:slug', eventController.getEventBySlug);
+  fastify.get('/events/slug/:slug', eventController.getEventBySlug)
 
   // GET /events/:eventId/seats - Get seats for an event
-  fastify.get('/events/:eventId/seats', seatController.getEventSeats);
+  fastify.get('/events/:eventId/seats', seatController.getEventSeats)
 
   // GET /events/:eventId/seats/stream - SSE stream for real-time seat updates
-  fastify.get('/events/:eventId/seats/stream', seatController.seatsStream);
+  fastify.get('/events/:eventId/seats/stream', seatController.seatsStream)
 
   // GET /events/:eventId/speakers - Get speakers for an event
-  fastify.get('/events/:eventId/speakers', eventController.getEventSpeakers);
+  fastify.get('/events/:eventId/speakers', eventController.getEventSpeakers)
 
   // GET /events/:eventId/timeline - Get timeline for an event
-  fastify.get('/events/:eventId/timeline', eventController.getEventTimeline);
+  fastify.get('/events/:eventId/timeline', eventController.getEventTimeline)
 
   // =====================================
   // SEAT ROUTES
   // =====================================
 
   // GET /seats/lock - Get session locks
-  fastify.get('/seats/lock', seatController.getSessionLocks);
+  fastify.get('/seats/lock', seatController.getSessionLocks)
 
   // POST /seats/lock - Lock seats
-  fastify.post('/seats/lock', seatController.lockSeats);
+  fastify.post('/seats/lock', seatController.lockSeats)
 
   // DELETE /seats/lock - Unlock seats
-  fastify.delete('/seats/lock', seatController.unlockSeats);
+  fastify.delete('/seats/lock', seatController.unlockSeats)
 
   // POST /seats/unlock - Unlock seats (for sendBeacon which only supports POST)
-  fastify.post('/seats/unlock', seatController.unlockSeats);
+  fastify.post('/seats/unlock', seatController.unlockSeats)
 
   // POST /seats/extend-lock - Extend lock duration for checkout
-  fastify.post('/seats/extend-lock', seatLockController.extendLock);
+  fastify.post('/seats/extend-lock', seatLockController.extendLock)
 
   // =====================================
   // ORDER ROUTES
   // =====================================
 
+  // GET /orders/check-pending - Check if session has pending order (must be before /:orderNumber)
+  fastify.get('/orders/check-pending', orderController.checkPendingOrder)
+
   // POST /orders/create-pending - Create pending order
-  fastify.post('/orders/create-pending', orderController.createPendingOrder);
+  fastify.post('/orders/create-pending', orderController.createPendingOrder)
 
   // POST /orders/confirm-payment - Confirm payment
-  fastify.post('/orders/confirm-payment', orderController.confirmPayment);
+  fastify.post('/orders/confirm-payment', orderController.confirmPayment)
+
+  // POST /orders/:orderNumber/cancel - Cancel pending order
+  fastify.post('/orders/:orderNumber/cancel', orderController.cancelPendingOrder)
 
   // GET /orders/:orderNumber - Get order by number
-  fastify.get('/orders/:orderNumber', orderController.getOrderByNumber);
+  fastify.get('/orders/:orderNumber', orderController.getOrderByNumber)
 
   // =====================================
   // TICKET ROUTES
   // =====================================
 
   // GET /ticket/:orderNumber - Public ticket viewing with token
-  fastify.get('/ticket/:orderNumber', ticketController.getTicket);
+  fastify.get('/ticket/:orderNumber', ticketController.getTicket)
 
   // =====================================
   // PAYMENT ROUTES
   // =====================================
 
   // POST /payments/webhook - Payment webhook handler
-  fastify.post('/payments/webhook', paymentController.handleWebhook);
+  fastify.post('/payments/webhook', paymentController.handleWebhook)
 
   // =====================================
   // CRON ROUTES
   // =====================================
 
   // GET /cron/expire-orders - Expire pending orders (cron job)
-  fastify.get('/cron/expire-orders', cronController.expireOrders);
+  fastify.get('/cron/expire-orders', cronController.expireOrders)
 
   // GET /cron/cleanup-locks - Cleanup expired locks (cron job)
-  fastify.get('/cron/cleanup-locks', cronController.cleanupLocks);
+  fastify.get('/cron/cleanup-locks', cronController.cleanupLocks)
 
   // =====================================
   // DEBUG ROUTES
   // =====================================
 
   // GET /debug/seat-locks - Debug endpoint for seat locks
-  fastify.get('/debug/seat-locks', seatLockController.getDebugInfo);
+  fastify.get('/debug/seat-locks', seatLockController.getDebugInfo)
 
   // POST /debug/seat-locks - Create seat_locks table
-  fastify.post('/debug/seat-locks', seatLockController.createTable);
+  fastify.post('/debug/seat-locks', seatLockController.createTable)
 
   // DELETE /debug/seat-locks - Clear expired locks
-  fastify.delete('/debug/seat-locks', seatLockController.clearExpired);
+  fastify.delete('/debug/seat-locks', seatLockController.clearExpired)
 }
-

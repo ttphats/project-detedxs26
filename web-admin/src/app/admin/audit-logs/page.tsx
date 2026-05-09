@@ -274,6 +274,7 @@ export default function AuditLogsPage() {
       title: "",
       key: "actions",
       width: 60,
+      fixed: "right" as const,
       render: (_, record) => (
         <Button
           size="small"
@@ -300,8 +301,8 @@ export default function AuditLogsPage() {
         </div>
 
         {/* Statistics */}
-        <Row gutter={16}>
-          <Col span={6}>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
                 title="Tổng log"
@@ -310,7 +311,7 @@ export default function AuditLogsPage() {
               />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
                 title="Hành động phổ biến"
@@ -320,7 +321,7 @@ export default function AuditLogsPage() {
               />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
                 title="Đối tượng phổ biến"
@@ -330,7 +331,7 @@ export default function AuditLogsPage() {
               />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
                 title="Người dùng hoạt động"
@@ -424,7 +425,7 @@ export default function AuditLogsPage() {
               showTotal: (total) => `Tổng ${total} bản ghi`,
               onChange: (page) => fetchData(page),
             }}
-            scroll={{ x: 1100 }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
 

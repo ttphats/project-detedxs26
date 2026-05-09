@@ -5,7 +5,8 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "npx tsx watch src/index.ts",
+    "dev": "nodemon --exec \"npm run build && npm start\" --watch src -e ts",
+    "dev:tsx": "npx tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
@@ -54,6 +55,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.13.4",
     "@types/uuid": "^10.0.0",
+    "nodemon": "^3.1.14",
     "prisma": "^6.19.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"

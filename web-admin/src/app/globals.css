@@ -24,3 +24,25 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Admin Layout - Ensure proper overflow handling */
+.ant-table-wrapper {
+  max-width: 100%;
+}
+
+/* Ensure cards don't overflow */
+.ant-card {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Completely disable vertical scrollbar in table */
+.ant-table-body {
+  overflow-y: hidden !important;
+}
+
+/* Only horizontal scroll */
+.ant-table-content {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}

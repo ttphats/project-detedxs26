@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useTransition } from "react";
+import { useCallback, useTransition, useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Calendar,
@@ -19,22 +19,41 @@ import {
   Lock,
   UserCheck,
   LucideIcon,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { MENU_LABELS } from "@/constants/menu";
 
 const menuItems = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/events", label: "Events", icon: Calendar },
-  { href: "/admin/ticket-types", label: "Ticket Types", icon: Ticket },
-  { href: "/admin/speakers", label: "Speakers", icon: Mic2 },
-  { href: "/admin/timelines", label: "Timeline", icon: Clock },
-  { href: "/admin/layout-editor", label: "Seats & Layout", icon: Grid3X3 },
-  { href: "/admin/seat-locks", label: "Seat Locks", icon: Lock },
-  { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
-  { href: "/admin/customers", label: "Khách hàng", icon: UserCheck },
-  { href: "/admin/email-templates", label: "Email Templates", icon: Mail },
-  { href: "/admin/audit-logs", label: "Audit Logs", icon: History },
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/settings", label: "Settings", icon: Settings },
+  {
+    href: "/admin/dashboard",
+    label: MENU_LABELS.DASHBOARD,
+    icon: LayoutDashboard,
+  },
+  { href: "/admin/events", label: MENU_LABELS.EVENTS, icon: Calendar },
+  {
+    href: "/admin/ticket-types",
+    label: MENU_LABELS.TICKET_TYPES,
+    icon: Ticket,
+  },
+  { href: "/admin/speakers", label: MENU_LABELS.SPEAKERS, icon: Mic2 },
+  { href: "/admin/timelines", label: MENU_LABELS.TIMELINE, icon: Clock },
+  {
+    href: "/admin/layout-editor",
+    label: MENU_LABELS.SEATS_LAYOUT,
+    icon: Grid3X3,
+  },
+  { href: "/admin/seat-locks", label: MENU_LABELS.SEAT_LOCKS, icon: Lock },
+  { href: "/admin/orders", label: MENU_LABELS.ORDERS, icon: ShoppingCart },
+  { href: "/admin/customers", label: MENU_LABELS.CUSTOMERS, icon: UserCheck },
+  {
+    href: "/admin/email-templates",
+    label: MENU_LABELS.EMAIL_TEMPLATES,
+    icon: Mail,
+  },
+  { href: "/admin/audit-logs", label: MENU_LABELS.AUDIT_LOGS, icon: History },
+  { href: "/admin/users", label: MENU_LABELS.USERS, icon: Users },
+  { href: "/admin/settings", label: MENU_LABELS.SETTINGS, icon: Settings },
 ];
 
 interface MenuItemProps {
@@ -53,7 +72,8 @@ function MenuItem({
   isActive,
   isPending,
   onClick,
-}: MenuItemProps) {
+  isCollapsed,
+}: MenuItemProps & { isCollapsed: boolean }) {
   return (
     <li>
       <Link
@@ -65,9 +85,10 @@ function MenuItem({
             ? "bg-[#e62b1e] text-white shadow-lg shadow-red-500/20"
             : "text-gray-400 hover:bg-white/5 hover:text-white"
         }`}
+        title={isCollapsed ? label : undefined}
       >
-        <Icon className="w-5 h-5" />
-        <span className="font-medium">{label}</span>
+        <Icon className="w-5 h-5 shrink-0" />
+        {!isCollapsed && <span className="font-medium">{label}</span>}
       </Link>
     </li>
   );
@@ -77,6 +98,19 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    // Initialize from localStorage
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sidebar-collapsed");
+      return saved === "true";
+    }
+    return false;
+  });
+
+  // Save to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem("sidebar-collapsed", String(isCollapsed));
+  }, [isCollapsed]);
 
   const handleNavigation = useCallback(
     (href: string) => {
@@ -95,17 +129,32 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="w-64 bg-[#1a1a1a] min-h-screen flex flex-col sticky top-0">
-      {/* Logo */}
-      <div className="p-6 border-b border-white/10">
-        <Link href="/admin/dashboard" className="flex items-center gap-2">
-          <span className="text-2xl font-black text-white">
-            TED<span className="text-[#e62b1e]">x</span>
-          </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider">
-            Admin
-          </span>
-        </Link>
+    <aside
+      className={`${isCollapsed ? "w-20" : "w-64"} shrink-0 bg-[#1a1a1a] min-h-screen flex flex-col sticky top-0 transition-all duration-300`}
+    >
+      {/* Logo & Toggle */}
+      <div className="p-6 border-b border-white/10 flex items-center justify-between">
+        {!isCollapsed && (
+          <Link href="/admin/dashboard" className="flex items-center gap-2">
+            <span className="text-2xl font-black text-white">
+              TED<span className="text-[#e62b1e]">x</span>
+            </span>
+            <span className="text-xs text-gray-400 uppercase tracking-wider">
+              Admin
+            </span>
+          </Link>
+        )}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="p-2 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition-colors ml-auto"
+          title={isCollapsed ? "Mở rộng" : "Thu gọn"}
+        >
+          {isCollapsed ? (
+            <ChevronRight className="w-5 h-5" />
+          ) : (
+            <ChevronLeft className="w-5 h-5" />
+          )}
+        </button>
       </div>
 
       {/* Navigation */}
@@ -124,6 +173,7 @@ export default function Sidebar() {
                 isActive={isActive}
                 isPending={isPending}
                 onClick={() => handleNavigation(item.href)}
+                isCollapsed={isCollapsed}
               />
             );
           })}
@@ -135,9 +185,12 @@ export default function Sidebar() {
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
+          title={isCollapsed ? MENU_LABELS.LOGOUT : undefined}
         >
-          <LogOut className="w-5 h-5" />
-          <span className="font-medium">Logout</span>
+          <LogOut className="w-5 h-5 shrink-0" />
+          {!isCollapsed && (
+            <span className="font-medium">{MENU_LABELS.LOGOUT}</span>
+          )}
         </button>
       </div>
     </aside>

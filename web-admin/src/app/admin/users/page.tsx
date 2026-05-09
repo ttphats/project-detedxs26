@@ -257,6 +257,8 @@ export default function UsersPage() {
     {
       title: "Actions",
       key: "actions",
+      fixed: "right" as const,
+      width: 120,
       render: (_, record) => {
         const canManage = canManageUser(record.roleName);
 
@@ -265,7 +267,7 @@ export default function UsersPage() {
         }
 
         return (
-          <Space>
+          <Space size="small" wrap>
             <Button
               size="small"
               icon={<EditOutlined />}
@@ -311,8 +313,8 @@ export default function UsersPage() {
         </div>
 
         {/* Statistics */}
-        <Row gutter={16}>
-          <Col span={8}>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={8}>
             <Card>
               <Statistic
                 title="Tổng Users"
@@ -321,7 +323,7 @@ export default function UsersPage() {
               />
             </Card>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} lg={8}>
             <Card>
               <Statistic
                 title="Đang hoạt động"
@@ -331,7 +333,7 @@ export default function UsersPage() {
               />
             </Card>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} lg={8}>
             <Card>
               <Statistic
                 title="Admin/Super Admin"
@@ -357,6 +359,7 @@ export default function UsersPage() {
               showTotal: (total) => `Tổng ${total} users`,
               onChange: (page) => fetchData(page),
             }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
 

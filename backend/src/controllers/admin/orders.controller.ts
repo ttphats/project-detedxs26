@@ -1,80 +1,97 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
-import * as ordersService from '../../services/admin/orders.service.js';
-import { generateTicketQRCode, generateTicketUrl } from '../../services/qrcode.service.js';
-import { sendEmailByPurpose } from '../../services/email.service.js';
-import { UnauthorizedError, ForbiddenError, NotFoundError, BadRequestError } from '../../utils/errors.js';
-import { requireAdmin } from '../../utils/auth.js';
+import {FastifyRequest, FastifyReply} from 'fastify'
+import * as ordersService from '../../services/admin/orders.service.js'
+import {generateTicketQRCode, generateTicketUrl} from '../../services/qrcode.service.js'
+import {sendEmailByPurpose} from '../../services/email.service.js'
+import {
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  BadRequestError,
+} from '../../utils/errors.js'
+import {requireAdmin} from '../../utils/auth.js'
 
 /**
  * GET /api/admin/orders
  */
 export async function list(request: FastifyRequest, reply: FastifyReply) {
-  const user = request.user;
-  if (!user) throw new UnauthorizedError();
-  try { requireAdmin(user); } catch { throw new ForbiddenError(); }
+  const user = request.user
+  if (!user) throw new UnauthorizedError()
+  try {
+    requireAdmin(user)
+  } catch {
+    throw new ForbiddenError()
+  }
 
-  const query = request.query as ordersService.ListOrdersInput;
-  const result = await ordersService.listOrders(query);
+  const query = request.query as ordersService.ListOrdersInput
+  const result = await ordersService.listOrders(query)
 
-  return reply.send({ success: true, data: result });
+  return reply.send({success: true, data: result})
 }
 
 /**
  * GET /api/admin/orders/:id
  */
 export async function getById(request: FastifyRequest, reply: FastifyReply) {
-  const user = request.user;
-  if (!user) throw new UnauthorizedError();
-  try { requireAdmin(user); } catch { throw new ForbiddenError(); }
+  const user = request.user
+  if (!user) throw new UnauthorizedError()
+  try {
+    requireAdmin(user)
+  } catch {
+    throw new ForbiddenError()
+  }
 
-  const { id } = request.params as { id: string };
-  const order = await ordersService.getOrderById(id);
+  const {id} = request.params as {id: string}
+  const order = await ordersService.getOrderById(id)
 
-  if (!order) throw new NotFoundError('Order not found');
+  if (!order) throw new NotFoundError('Order not found')
 
-  return reply.send({ success: true, data: order });
+  return reply.send({success: true, data: order})
 }
 
 /**
  * POST /api/admin/orders/:id/confirm
  */
 export async function confirmPayment(request: FastifyRequest, reply: FastifyReply) {
-  const user = request.user;
-  if (!user) throw new UnauthorizedError();
-  try { requireAdmin(user); } catch { throw new ForbiddenError(); }
+  const user = request.user
+  if (!user) throw new UnauthorizedError()
+  try {
+    requireAdmin(user)
+  } catch {
+    throw new ForbiddenError()
+  }
 
-  const { id } = request.params as { id: string };
-  const ipAddress = request.ip;
-  const userAgent = request.headers['user-agent'];
+  const {id} = request.params as {id: string}
+  const ipAddress = request.ip
+  const userAgent = request.headers['user-agent']
 
   try {
     const result = await ordersService.confirmPayment(
       id,
-      { userId: user.userId, roleName: user.roleName },
+      {userId: user.userId, roleName: user.roleName},
       ipAddress,
       userAgent
-    );
+    )
 
     // Generate QR code
-    const qrCodeUrl = await generateTicketQRCode(result.order.orderNumber, result.order.eventId);
-    const ticketUrl = generateTicketUrl(result.order.orderNumber, result.accessToken);
+    const qrCodeUrl = await generateTicketQRCode(result.order.orderNumber, result.order.eventId)
+    const ticketUrl = generateTicketUrl(result.order.orderNumber, result.accessToken)
 
     // Format date
-    const eventDate = new Date(result.order.event.eventDate);
+    const eventDate = new Date(result.order.event.eventDate)
     const formattedDate = eventDate.toLocaleDateString('vi-VN', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-    });
+    })
     const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
       hour: '2-digit',
       minute: '2-digit',
-    });
+    })
 
     // Send confirmation email (await so we can surface status to admin UI)
-    let emailStatus: 'SENT' | 'FAILED' = 'FAILED';
-    let emailError: string | null = null;
+    let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
+    let emailError: string | null = null
     try {
       const emailResult = await sendEmailByPurpose({
         purpose: 'TICKET_CONFIRMED',
@@ -99,17 +116,19 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
           qrCodeUrl,
           ticketUrl,
         },
-      });
+      })
       if (emailResult.success) {
-        emailStatus = 'SENT';
-        console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`);
+        emailStatus = 'SENT'
+        console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`)
       } else {
-        emailError = emailResult.error || 'Unknown error';
-        console.error(`❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`);
+        emailError = emailResult.error || 'Unknown error'
+        console.error(
+          `❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`
+        )
       }
     } catch (err: any) {
-      emailError = err?.message || 'Unknown error';
-      console.error('Failed to send confirmation email:', err);
+      emailError = err?.message || 'Unknown error'
+      console.error('Failed to send confirmation email:', err)
     }
 
     return reply.send({
@@ -124,9 +143,9 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         emailSentTo: result.order.customerEmail,
       },
       message: 'Payment confirmed successfully',
-    });
+    })
   } catch (error: any) {
-    throw new BadRequestError(error.message);
+    throw new BadRequestError(error.message)
   }
 }
 
@@ -134,30 +153,34 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
  * POST /api/admin/orders/:id/reject
  */
 export async function rejectPayment(request: FastifyRequest, reply: FastifyReply) {
-  const user = request.user;
-  if (!user) throw new UnauthorizedError();
-  try { requireAdmin(user); } catch { throw new ForbiddenError(); }
+  const user = request.user
+  if (!user) throw new UnauthorizedError()
+  try {
+    requireAdmin(user)
+  } catch {
+    throw new ForbiddenError()
+  }
 
-  const { id } = request.params as { id: string };
-  const { reason, notes } = request.body as { reason: string; notes?: string };
-  const ipAddress = request.ip;
-  const userAgent = request.headers['user-agent'];
+  const {id} = request.params as {id: string}
+  const {reason, notes} = request.body as {reason: string; notes?: string}
+  const ipAddress = request.ip
+  const userAgent = request.headers['user-agent']
 
-  if (!reason) throw new BadRequestError('Reason is required');
+  if (!reason) throw new BadRequestError('Reason is required')
 
   try {
     const result = await ordersService.rejectPayment(
       id,
       reason,
-      { userId: user.userId, roleName: user.roleName },
+      {userId: user.userId, roleName: user.roleName},
       notes,
       ipAddress,
       userAgent
-    );
+    )
 
     // Send rejection email (await so we can surface status to admin UI)
-    let emailStatus: 'SENT' | 'FAILED' = 'FAILED';
-    let emailError: string | null = null;
+    let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
+    let emailError: string | null = null
     try {
       const emailResult = await sendEmailByPurpose({
         purpose: 'PAYMENT_REJECTED',
@@ -170,16 +193,16 @@ export async function rejectPayment(request: FastifyRequest, reply: FastifyReply
           reason,
           eventName: result.order.event.name,
         },
-      });
+      })
       if (emailResult.success) {
-        emailStatus = 'SENT';
+        emailStatus = 'SENT'
       } else {
-        emailError = emailResult.error || 'Unknown error';
-        console.error(`❌ Rejection email failed for ${result.order.customerEmail}: ${emailError}`);
+        emailError = emailResult.error || 'Unknown error'
+        console.error(`❌ Rejection email failed for ${result.order.customerEmail}: ${emailError}`)
       }
     } catch (err: any) {
-      emailError = err?.message || 'Unknown error';
-      console.error('Failed to send rejection email:', err);
+      emailError = err?.message || 'Unknown error'
+      console.error('Failed to send rejection email:', err)
     }
 
     return reply.send({
@@ -194,9 +217,9 @@ export async function rejectPayment(request: FastifyRequest, reply: FastifyReply
         emailSentTo: result.order.customerEmail,
       },
       message: 'Payment rejected',
-    });
+    })
   } catch (error: any) {
-    throw new BadRequestError(error.message);
+    throw new BadRequestError(error.message)
   }
 }
 
@@ -204,20 +227,24 @@ export async function rejectPayment(request: FastifyRequest, reply: FastifyReply
  * POST /api/admin/orders/:id/resend-email
  */
 export async function resendEmail(request: FastifyRequest, reply: FastifyReply) {
-  const user = request.user;
-  if (!user) throw new UnauthorizedError();
-  try { requireAdmin(user); } catch { throw new ForbiddenError(); }
+  const user = request.user
+  if (!user) throw new UnauthorizedError()
+  try {
+    requireAdmin(user)
+  } catch {
+    throw new ForbiddenError()
+  }
 
-  const { id } = request.params as { id: string };
+  const {id} = request.params as {id: string}
 
   try {
-    const result = await ordersService.resendTicketEmail(
-      id,
-      { userId: user.userId, roleName: user.roleName }
-    );
+    const result = await ordersService.resendTicketEmail(id, {
+      userId: user.userId,
+      roleName: user.roleName,
+    })
 
     if (!result.emailResult.success) {
-      throw new BadRequestError(`Failed to send email: ${result.emailResult.error}`);
+      throw new BadRequestError(`Failed to send email: ${result.emailResult.error}`)
     }
 
     return reply.send({
@@ -229,10 +256,46 @@ export async function resendEmail(request: FastifyRequest, reply: FastifyReply) 
         emailId: result.emailResult.emailId,
       },
       message: 'Email resent successfully',
-    });
+    })
   } catch (error: any) {
-    if (error instanceof BadRequestError) throw error;
-    throw new BadRequestError(error.message);
+    if (error instanceof BadRequestError) throw error
+    throw new BadRequestError(error.message)
   }
 }
 
+/**
+ * DELETE /api/admin/orders/:id
+ */
+export async function remove(request: FastifyRequest, reply: FastifyReply) {
+  const user = request.user
+  if (!user) throw new UnauthorizedError()
+  try {
+    requireAdmin(user)
+  } catch {
+    throw new ForbiddenError()
+  }
+
+  const {id} = request.params as {id: string}
+  const ipAddress = request.ip
+  const userAgent = request.headers['user-agent']
+
+  try {
+    const result = await ordersService.deleteOrder(
+      id,
+      {userId: user.userId, roleName: user.roleName},
+      ipAddress,
+      userAgent
+    )
+
+    return reply.send({
+      success: true,
+      message: 'Order deleted successfully',
+      data: result,
+    })
+  } catch (error: any) {
+    if (error.message === 'Order not found') {
+      throw new NotFoundError(error.message)
+    }
+    throw new BadRequestError(error.message)
+  }
+}

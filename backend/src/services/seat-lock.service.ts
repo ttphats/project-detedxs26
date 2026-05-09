@@ -42,6 +42,24 @@ export async function extendSeatLock(
     throw new Error('Some seats are locked by another session');
   }
 
+  // Check current remaining time
+  const [nowResult] = await pool.query<RowDataPacket[]>('SELECT NOW() as now');
+  const serverNow = new Date(nowResult[0].now);
+  const currentExpiresAt = new Date(locks[0].expires_at);
+  const remainingMinutes = Math.floor((currentExpiresAt.getTime() - serverNow.getTime()) / 1000 / 60);
+
+  // Only extend if remaining time <= 10 minutes (initial lock duration)
+  // If > 10 minutes, it means already extended, so don't extend again
+  if (remainingMinutes > 10) {
+    console.log(`[EXTEND LOCK] Already extended (${remainingMinutes} mins remaining), skipping extend`);
+    return {
+      affectedRows: 0,
+      expiresAt: locks[0].expires_at,
+      expiresIn: Math.floor((currentExpiresAt.getTime() - serverNow.getTime()) / 1000),
+      durationMinutes: CHECKOUT_LOCK_DURATION_MINUTES,
+    };
+  }
+
   // Extend lock duration using MySQL DATE_ADD for timezone safety
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE seat_locks

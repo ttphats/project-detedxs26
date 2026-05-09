@@ -87,7 +87,7 @@ export async function listUsers(input: ListUsersInput) {
   ]);
 
   // Transform users to include flat role properties
-  const transformedUsers = users.map((user) => ({
+  const transformedUsers = users.map((user: any) => ({
     ...user,
     roleName: user.role?.name || '',
     roleDescription: user.role?.description || null,
