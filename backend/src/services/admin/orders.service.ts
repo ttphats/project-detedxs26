@@ -141,22 +141,14 @@ export async function confirmPayment(
       if (order.status === 'CANCELLED') throw new Error('Order is cancelled')
       if (order.status === 'EXPIRED') throw new Error('Order has expired')
 
-      // Generate access token (only if not already set)
-      let accessToken: string
-      let accessTokenHash: string
+      // Generate NEW access token ALWAYS (for email)
+      // Even if hash exists, we need plaintext token for email URL
+      const generated = generateAccessToken()
+      const accessToken = generated.token
+      const accessTokenHash = generated.hash
 
-      if (order.accessTokenHash) {
-        // Token already exists (user confirmed first), keep it
-        accessTokenHash = order.accessTokenHash
-        accessToken = '' // We don't have the plaintext token, but hash is already stored
-        console.log('[CONFIRM PAYMENT] Reusing existing access token hash')
-      } else {
-        // Generate new token (admin confirmed first)
-        const generated = generateAccessToken()
-        accessToken = generated.token
-        accessTokenHash = generated.hash
-        console.log('[CONFIRM PAYMENT] Generated new access token')
-      }
+      console.log('[CONFIRM PAYMENT] Generated access token:', accessToken.substring(0, 16) + '...')
+      console.log('[CONFIRM PAYMENT] Token length:', accessToken.length)
 
       // Generate QR code
       const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
