@@ -183,6 +183,7 @@ async function processPaymentConfirmation(
       // Debug: Log ticketUrl to verify token is present
       console.log('[EMAIL] Sending ticket email with URL:', ticketUrl)
       console.log('[EMAIL] Access token length:', accessToken.length)
+      console.log('[EMAIL] CODE VERSION: 2026-05-09-v2 - TOKEN GENERATION ACTIVE')
 
       sendEmailByPurpose({
         purpose: 'TICKET_CONFIRMED',
