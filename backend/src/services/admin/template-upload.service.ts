@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { pipeline } from 'stream/promises';
+// @ts-ignore
 import AdmZip from 'adm-zip';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'email-templates');

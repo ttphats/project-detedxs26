@@ -1,4 +1,6 @@
+// @ts-ignore
 import jwt from 'jsonwebtoken';
+// @ts-ignore
 import bcryptjs from 'bcryptjs';
 import { config } from '../config/env.js';
 

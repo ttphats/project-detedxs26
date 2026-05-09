@@ -52,6 +52,11 @@ export function generateCheckInUrl(orderNumber: string, token: string): string {
  * Generate ticket URL with access token
  */
 export function generateTicketUrl(orderNumber: string, accessToken: string): string {
-  return `${config.clientUrl}/ticket/${orderNumber}?token=${accessToken}`;
+  console.log('[generateTicketUrl] Input orderNumber:', orderNumber);
+  console.log('[generateTicketUrl] Input accessToken:', accessToken);
+  console.log('[generateTicketUrl] Token length:', accessToken?.length || 0);
+  const url = `${config.clientUrl}/ticket/${orderNumber}?token=${accessToken}`;
+  console.log('[generateTicketUrl] Generated URL:', url);
+  return url;
 }
 

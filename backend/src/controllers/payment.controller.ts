@@ -152,7 +152,11 @@ async function processPaymentConfirmation(
 
       // Generate new access token for ticket URL
       const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
+      console.log('[DEBUG] Generated accessToken:', accessToken)
+      console.log('[DEBUG] Token length:', accessToken?.length || 0)
+      console.log('[DEBUG] Token type:', typeof accessToken)
       const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
+      console.log('[DEBUG] Final ticketUrl:', ticketUrl)
 
       // Update order with access token hash for ticket verification
       await tx.order.update({

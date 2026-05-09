@@ -1,5 +1,6 @@
 import { prisma } from '../../db/prisma.js';
 import { randomUUID } from 'crypto';
+// @ts-ignore
 import bcrypt from 'bcryptjs';
 
 export interface ListUsersInput {

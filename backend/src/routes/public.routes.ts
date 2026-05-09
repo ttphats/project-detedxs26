@@ -78,6 +78,10 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ticket/:orderNumber - Public ticket viewing with token
   fastify.get('/ticket/:orderNumber', ticketController.getTicket)
 
+  // GET /ticket/:orderNumber/pdf - Generate PDF ticket
+  const ticketPdfController = await import('../controllers/ticket-pdf.controller.js')
+  fastify.get('/ticket/:orderNumber/pdf', ticketPdfController.generateTicketPDF)
+
   // =====================================
   // PAYMENT ROUTES
   // =====================================
