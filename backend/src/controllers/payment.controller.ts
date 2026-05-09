@@ -3,6 +3,7 @@ import {prisma} from '../db/prisma.js'
 import * as qrcodeService from '../services/qrcode.service.js'
 import {sendEmailByPurpose} from '../services/email.service.js'
 import {config} from '../config/env.js'
+import {generateAccessToken} from '../utils/helpers.js'
 
 /**
  * POST /api/payments/webhook
@@ -149,6 +150,10 @@ async function processPaymentConfirmation(
       // Generate QR code
       const qrCodeUrl = await qrcodeService.generateTicketQRCode(order.orderNumber, order.eventId)
 
+      // Generate new access token for ticket URL
+      const {token: accessToken} = generateAccessToken()
+      const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
+
       // Send email (fire and forget)
       const eventDate = new Date(order.event.eventDate)
       sendEmailByPurpose({
@@ -170,6 +175,7 @@ async function processPaymentConfirmation(
           })),
           totalAmount: Number(order.totalAmount),
           qrCodeUrl,
+          ticketUrl,
         },
       }).catch((err) => console.error('Failed to send ticket email:', err))
 
