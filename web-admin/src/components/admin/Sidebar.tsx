@@ -18,6 +18,7 @@ import {
   Clock,
   Lock,
   UserCheck,
+  QrCode,
   LucideIcon,
   ChevronLeft,
   ChevronRight,
@@ -30,6 +31,7 @@ const menuItems = [
     label: MENU_LABELS.DASHBOARD,
     icon: LayoutDashboard,
   },
+  { href: "/admin/check-in", label: "QR Check-In", icon: QrCode },
   { href: "/admin/events", label: MENU_LABELS.EVENTS, icon: Calendar },
   {
     href: "/admin/ticket-types",
@@ -94,7 +96,15 @@ function MenuItem({
   );
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export default function Sidebar({
+  isMobileOpen = false,
+  onMobileClose,
+}: SidebarProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -112,13 +122,34 @@ export default function Sidebar() {
     localStorage.setItem("sidebar-collapsed", String(isCollapsed));
   }, [isCollapsed]);
 
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    if (!isMobileOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        !target.closest("aside") &&
+        !target.closest("[data-mobile-menu-button]")
+      ) {
+        onMobileClose?.();
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isMobileOpen, onMobileClose]);
+
   const handleNavigation = useCallback(
     (href: string) => {
+      // Close mobile menu on navigation
+      onMobileClose?.();
+
       startTransition(() => {
         router.push(href);
       });
     },
-    [router],
+    [router, onMobileClose],
   );
 
   const handleLogout = useCallback(() => {
@@ -129,70 +160,92 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside
-      className={`${isCollapsed ? "w-20" : "w-64"} shrink-0 bg-[#1a1a1a] min-h-screen flex flex-col sticky top-0 transition-all duration-300`}
-    >
-      {/* Logo & Toggle */}
-      <div className="p-6 border-b border-white/10 flex items-center justify-between">
-        {!isCollapsed && (
-          <Link href="/admin/dashboard" className="flex items-center gap-2">
-            <span className="text-2xl font-black text-white">
-              TED<span className="text-[#e62b1e]">x</span>
-            </span>
-            <span className="text-xs text-gray-400 uppercase tracking-wider">
-              Admin
-            </span>
-          </Link>
-        )}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-2 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition-colors ml-auto"
-          title={isCollapsed ? "Mở rộng" : "Thu gọn"}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <ChevronLeft className="w-5 h-5" />
-          )}
-        </button>
-      </div>
+    <>
+      {/* Mobile Overlay */}
+      {isMobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity"
+          onClick={onMobileClose}
+        />
+      )}
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 overflow-y-auto">
-        <ul className="space-y-1">
-          {menuItems.map((item) => {
-            const isActive =
-              pathname === item.href || pathname.startsWith(item.href + "/");
+      {/* Sidebar */}
+      <aside
+        className={`
+          ${isCollapsed ? "w-20" : "w-64"}
+          shrink-0 bg-[#1a1a1a] min-h-screen flex flex-col
+          transition-all duration-300
 
-            return (
-              <MenuItem
-                key={item.href}
-                href={item.href}
-                label={item.label}
-                icon={item.icon}
-                isActive={isActive}
-                isPending={isPending}
-                onClick={() => handleNavigation(item.href)}
-                isCollapsed={isCollapsed}
-              />
-            );
-          })}
-        </ul>
-      </nav>
+          /* Desktop: Sticky sidebar */
+          md:sticky md:top-0 md:relative md:translate-x-0
 
-      {/* Logout */}
-      <div className="p-4 border-t border-white/10">
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
-          title={isCollapsed ? MENU_LABELS.LOGOUT : undefined}
-        >
-          <LogOut className="w-5 h-5 shrink-0" />
+          /* Mobile: Fixed overlay drawer */
+          fixed inset-y-0 left-0 z-50
+          ${isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+        `}
+      >
+        {/* Logo & Toggle */}
+        <div className="p-6 border-b border-white/10 flex items-center justify-between">
           {!isCollapsed && (
-            <span className="font-medium">{MENU_LABELS.LOGOUT}</span>
+            <Link href="/admin/dashboard" className="flex items-center gap-2">
+              <span className="text-2xl font-black text-white">
+                TED<span className="text-[#e62b1e]">x</span>
+              </span>
+              <span className="text-xs text-gray-400 uppercase tracking-wider">
+                Admin
+              </span>
+            </Link>
           )}
-        </button>
-      </div>
-    </aside>
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-2 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition-colors ml-auto"
+            title={isCollapsed ? "Mở rộng" : "Thu gọn"}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-5 h-5" />
+            ) : (
+              <ChevronLeft className="w-5 h-5" />
+            )}
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 p-4 overflow-y-auto">
+          <ul className="space-y-1">
+            {menuItems.map((item) => {
+              const isActive =
+                pathname === item.href || pathname.startsWith(item.href + "/");
+
+              return (
+                <MenuItem
+                  key={item.href}
+                  href={item.href}
+                  label={item.label}
+                  icon={item.icon}
+                  isActive={isActive}
+                  isPending={isPending}
+                  onClick={() => handleNavigation(item.href)}
+                  isCollapsed={isCollapsed}
+                />
+              );
+            })}
+          </ul>
+        </nav>
+
+        {/* Logout */}
+        <div className="p-4 border-t border-white/10">
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
+            title={isCollapsed ? MENU_LABELS.LOGOUT : undefined}
+          >
+            <LogOut className="w-5 h-5 shrink-0" />
+            {!isCollapsed && (
+              <span className="font-medium">{MENU_LABELS.LOGOUT}</span>
+            )}
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }

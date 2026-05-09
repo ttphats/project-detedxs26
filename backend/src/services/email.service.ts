@@ -86,12 +86,24 @@ export async function getTemplateById(templateId: string) {
  */
 export function replaceVariables(template: string, data: Record<string, any>): string {
   let result = template;
-  
+
+  // Debug: Log data being passed
+  if (data.ticketUrl) {
+    console.log('[TEMPLATE] ticketUrl value:', data.ticketUrl);
+  }
+
   for (const [key, value] of Object.entries(data)) {
     const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-    result = result.replace(regex, String(value ?? ''));
+    const stringValue = String(value ?? '');
+
+    // Debug: Log replacement for ticketUrl
+    if (key === 'ticketUrl') {
+      console.log('[TEMPLATE] Replacing {{ticketUrl}} with:', stringValue);
+    }
+
+    result = result.replace(regex, stringValue);
   }
-  
+
   return result;
 }
 

@@ -12,14 +12,17 @@ import {
   Row,
   Col,
   message,
+  Button,
 } from "antd";
 import {
   UserOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  DownloadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { AdminLayout } from "@/components/admin";
+import * as XLSX from "xlsx";
 
 const { Search } = Input;
 const { Option } = Select;
@@ -140,6 +143,70 @@ export default function CustomersPage() {
     }
   };
 
+  const handleExport = () => {
+    try {
+      // Prepare data for export
+      const exportData = customers.map((customer, index) => ({
+        STT: index + 1,
+        "Mã đơn hàng": customer.order_number,
+        "Tên khách hàng": customer.customer_name,
+        Email: customer.customer_email,
+        "Số điện thoại": customer.customer_phone,
+        "Sự kiện": customer.event_name,
+        "Số ghế": customer.seat_count,
+        "Danh sách ghế": customer.seat_numbers,
+        "Tổng tiền": customer.total_amount.toLocaleString("vi-VN") + " ₫",
+        "Trạng thái":
+          customer.status === "PAID" ? "Đã thanh toán" : customer.status,
+        "Check-in": customer.checked_in ? "Đã check-in" : "Chưa check-in",
+        "Thời gian check-in": customer.checked_in_at
+          ? dayjs(customer.checked_in_at).format("DD/MM/YYYY HH:mm")
+          : "",
+        "Người check-in": customer.checked_in_by_name || "",
+        "Ngày đặt": dayjs(customer.created_at).format("DD/MM/YYYY HH:mm"),
+        "Ngày thanh toán": dayjs(customer.paid_at).format("DD/MM/YYYY HH:mm"),
+      }));
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Set column widths
+      ws["!cols"] = [
+        { wch: 5 }, // STT
+        { wch: 15 }, // Mã đơn hàng
+        { wch: 20 }, // Tên khách hàng
+        { wch: 25 }, // Email
+        { wch: 15 }, // Số điện thoại
+        { wch: 30 }, // Sự kiện
+        { wch: 8 }, // Số ghế
+        { wch: 20 }, // Danh sách ghế
+        { wch: 15 }, // Tổng tiền
+        { wch: 15 }, // Trạng thái
+        { wch: 12 }, // Check-in
+        { wch: 18 }, // Thời gian check-in
+        { wch: 20 }, // Người check-in
+        { wch: 18 }, // Ngày đặt
+        { wch: 18 }, // Ngày thanh toán
+      ];
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Khách hàng");
+
+      // Generate filename with timestamp
+      const timestamp = dayjs().format("YYYY-MM-DD_HHmmss");
+      const filename = `Danh_sach_khach_hang_${timestamp}.xlsx`;
+
+      // Download file
+      XLSX.writeFile(wb, filename);
+
+      message.success(`Đã xuất ${customers.length} khách hàng ra file Excel!`);
+    } catch (error) {
+      console.error("Export error:", error);
+      message.error("Lỗi khi xuất file Excel");
+    }
+  };
+
   const columns = [
     {
       title: "Mã đơn",
@@ -249,6 +316,14 @@ export default function CustomersPage() {
           <h1 className="text-2xl font-bold">
             <UserOutlined /> Quản lý khách hàng
           </h1>
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleExport}
+            disabled={customers.length === 0}
+          >
+            Xuất Excel
+          </Button>
         </div>
 
         {/* Stats */}

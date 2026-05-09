@@ -373,6 +373,11 @@ export async function resendTicketEmail(
     minute: '2-digit',
   })
 
+  // Format seats for email template (string format)
+  const seatsList = order.orderItems
+    .map((item: any) => `${item.seat?.seatNumber || item.seatNumber} (${item.seat?.seatType || item.seatType})`)
+    .join(', ')
+
   // Send email with allowDuplicate to bypass anti-spam
   const emailResult = await sendEmailByPurpose({
     purpose: 'TICKET_CONFIRMED',
@@ -386,14 +391,9 @@ export async function resendTicketEmail(
       eventDate: formattedDate,
       eventTime: formattedTime,
       eventVenue: order.event.venue,
+      eventAddress: order.event.venue,
       orderNumber: order.orderNumber,
-      seats: order.orderItems.map((item: any) => ({
-        seatNumber: item.seat?.seatNumber || item.seatNumber,
-        seatType: item.seat?.seatType || item.seatType,
-        section: item.seat?.section || 'N/A',
-        row: item.seat?.row || 'N/A',
-        price: Number(item.price),
-      })),
+      seats: seatsList,  // ✅ String: "A1 (VIP), A2 (Standard)"
       totalAmount: Number(order.totalAmount),
       qrCodeUrl,
       ticketUrl,
