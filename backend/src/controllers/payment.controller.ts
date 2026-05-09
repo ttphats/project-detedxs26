@@ -151,11 +151,39 @@ async function processPaymentConfirmation(
       const qrCodeUrl = await qrcodeService.generateTicketQRCode(order.orderNumber, order.eventId)
 
       // Generate new access token for ticket URL
-      const {token: accessToken} = generateAccessToken()
+      const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
       const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
+
+      // Update order with access token hash for ticket verification
+      await tx.order.update({
+        where: {id: orderId},
+        data: {accessTokenHash},
+      })
 
       // Send email (fire and forget)
       const eventDate = new Date(order.event.eventDate)
+
+      // Format seats for email template
+      const seatsList = order.orderItems
+        .map((item: any) => `${item.seatNumber} (${item.seatType})`)
+        .join(', ')
+
+      // Format date and time
+      const formattedDate = eventDate.toLocaleDateString('vi-VN', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+      const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+
+      // Debug: Log ticketUrl to verify token is present
+      console.log('[EMAIL] Sending ticket email with URL:', ticketUrl)
+      console.log('[EMAIL] Access token length:', accessToken.length)
+
       sendEmailByPurpose({
         purpose: 'TICKET_CONFIRMED',
         businessEvent: 'PAYMENT_CONFIRMED',
@@ -165,14 +193,12 @@ async function processPaymentConfirmation(
         data: {
           customerName: order.customerName,
           eventName: order.event.name,
-          eventDate: eventDate.toLocaleDateString('vi-VN'),
+          eventDate: formattedDate,
+          eventTime: formattedTime,
           eventVenue: order.event.venue,
+          eventAddress: order.event.venue,
           orderNumber: order.orderNumber,
-          seats: order.orderItems.map((item: any) => ({
-            seatNumber: item.seatNumber,
-            seatType: item.seatType,
-            price: Number(item.price),
-          })),
+          seats: seatsList,  // String: "A1 (VIP), A2 (VIP)"
           totalAmount: Number(order.totalAmount),
           qrCodeUrl,
           ticketUrl,

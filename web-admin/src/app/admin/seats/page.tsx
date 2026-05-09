@@ -394,12 +394,12 @@ export default function SeatsPage() {
         {/* Stats Cards */}
         {stats && (
           <Row gutter={16}>
-            <Col span={4}>
+            <Col xs={24} sm={12} md={8} lg={4}>
               <Card>
                 <Statistic title="Tổng" value={stats.total} />
               </Card>
             </Col>
-            <Col span={5}>
+            <Col xs={24} sm={12} md={8} lg={5}>
               <Card>
                 <Statistic
                   title="Có sẵn"
@@ -408,7 +408,7 @@ export default function SeatsPage() {
                 />
               </Card>
             </Col>
-            <Col span={5}>
+            <Col xs={24} sm={12} md={8} lg={5}>
               <Card>
                 <Statistic
                   title="Đã đặt"
@@ -417,7 +417,7 @@ export default function SeatsPage() {
                 />
               </Card>
             </Col>
-            <Col span={5}>
+            <Col xs={24} sm={12} md={12} lg={5}>
               <Card>
                 <Statistic
                   title="Đã bán"
@@ -426,7 +426,7 @@ export default function SeatsPage() {
                 />
               </Card>
             </Col>
-            <Col span={5}>
+            <Col xs={24} sm={12} md={12} lg={5}>
               <Card>
                 <Statistic
                   title="Đã khóa"

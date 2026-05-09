@@ -36,10 +36,13 @@ export async function uploadImage(
   }
 
   try {
+    // No transformation for QR codes to preserve quality
+    const isQRCode = subfolder === 'qr-codes';
+
     const result = await cloudinary.uploader.upload(base64Data, {
       folder: `${FOLDER}/${subfolder}`,
       resource_type: 'image',
-      transformation: [
+      transformation: isQRCode ? [] : [
         { width: 800, height: 800, crop: 'limit' },
         { quality: 'auto:good' },
         { fetch_format: 'auto' },

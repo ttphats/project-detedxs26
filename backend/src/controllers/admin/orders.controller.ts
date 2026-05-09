@@ -89,6 +89,11 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       minute: '2-digit',
     })
 
+    // Format seats for email template (string format)
+    const seatsList = result.order.orderItems
+      .map((item: any) => `${item.seat.seatNumber} (${item.seat.seatType})`)
+      .join(', ')
+
     // Send confirmation email (await so we can surface status to admin UI)
     let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
     let emailError: string | null = null
@@ -104,14 +109,9 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
           eventDate: formattedDate,
           eventTime: formattedTime,
           eventVenue: result.order.event.venue,
+          eventAddress: result.order.event.venue,
           orderNumber: result.order.orderNumber,
-          seats: result.order.orderItems.map((item: any) => ({
-            seatNumber: item.seat.seatNumber,
-            seatType: item.seat.seatType,
-            section: item.seat.section,
-            row: item.seat.row,
-            price: Number(item.price),
-          })),
+          seats: seatsList,  // ✅ String: "A1 (VIP), A2 (Standard)"
           totalAmount: Number(result.order.totalAmount),
           qrCodeUrl,
           ticketUrl,

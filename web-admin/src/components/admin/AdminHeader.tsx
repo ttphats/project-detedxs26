@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Search, LogOut } from "lucide-react";
+import { Bell, Search, LogOut, Menu } from "lucide-react";
 
 interface User {
   fullName: string;
@@ -9,7 +9,11 @@ interface User {
   role: string;
 }
 
-export default function AdminHeader() {
+interface AdminHeaderProps {
+  onMenuToggle?: () => void;
+}
+
+export default function AdminHeader({ onMenuToggle }: AdminHeaderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -33,10 +37,20 @@ export default function AdminHeader() {
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4">
+    <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
       <div className="flex items-center justify-between">
+        {/* Mobile Menu Button */}
+        <button
+          onClick={onMenuToggle}
+          className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          data-mobile-menu-button
+          aria-label="Toggle menu"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+
         {/* Search */}
-        <div className="flex-1 max-w-md">
+        <div className="flex-1 max-w-md ml-4 md:ml-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input

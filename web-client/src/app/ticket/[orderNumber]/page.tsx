@@ -455,21 +455,22 @@ export default function TicketPage({
 
               {/* QR Code Section */}
               {ticket.canDownload && ticket.qrCodeUrl && (
-                <div className="mb-6">
+                <div className="mb-6 flex flex-col items-center">
                   <div className="flex items-center gap-2 mb-3">
                     <QrCode className="w-4 h-4 text-gray-500" />
                     <span className="text-xs text-gray-500 uppercase tracking-wide">
                       Mã check-in
                     </span>
                   </div>
-                  <div className="bg-white rounded-2xl p-4 inline-block">
+                  <div className="bg-white rounded-lg p-4 flex items-center justify-center">
                     <img
                       src={ticket.qrCodeUrl}
                       alt="QR Code"
-                      className="w-40 h-40"
+                      className="w-48 h-48 object-contain"
+                      style={{ imageRendering: "crisp-edges" }}
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
+                  <p className="text-xs text-gray-500 mt-2 text-center">
                     Quét mã này tại quầy check-in
                   </p>
                 </div>

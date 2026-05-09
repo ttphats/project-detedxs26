@@ -17,6 +17,7 @@ import * as seatLocksController from '../controllers/admin/seat-locks.controller
 import * as ticketTypesController from '../controllers/admin/ticket-types.controller.js'
 import * as timelinesController from '../controllers/admin/timelines.controller.js'
 import * as customersController from '../controllers/admin/customers.controller.js'
+import * as checkinController from '../controllers/admin/checkin.controller.js'
 
 export async function registerAdminRoutes(fastify: FastifyInstance) {
   // All admin routes require authentication
@@ -24,6 +25,12 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
 
   // Dashboard
   fastify.get('/admin/dashboard/stats', {preHandler}, dashboardController.getStats)
+
+  // Check-in
+  fastify.post('/admin/check-in', {preHandler}, checkinController.checkIn)
+  fastify.get('/admin/check-in/status/:orderNumber', {preHandler}, checkinController.getStatus)
+  fastify.get('/admin/check-in/stats/:eventId', {preHandler}, checkinController.getStats)
+  fastify.get('/admin/check-in/list/:eventId', {preHandler}, checkinController.getCheckedInList)
 
   // Orders
   fastify.get('/admin/orders', {preHandler}, ordersController.list)

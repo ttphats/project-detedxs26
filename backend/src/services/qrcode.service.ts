@@ -1,32 +1,40 @@
 import QRCode from 'qrcode';
 import { config } from '../config/env.js';
+import { uploadImage } from './upload.service.js';
 
 /**
- * Generate QR code for ticket
- * Returns base64 data URL
+ * Generate QR code for ticket and upload to Cloudinary
+ * Returns Cloudinary URL
  */
 export async function generateTicketQRCode(
   orderNumber: string,
   eventId: string
 ): Promise<string> {
-  const data = JSON.stringify({
-    orderNumber,
-    eventId,
-    timestamp: Date.now(),
-  });
+  // Simple URL format for easy scanning
+  const checkInUrl = `${config.clientUrl}/check-in/${orderNumber}`;
 
   try {
-    const qrCodeDataUrl = await QRCode.toDataURL(data, {
+    // Generate QR code as base64 data URL
+    const qrCodeDataUrl = await QRCode.toDataURL(checkInUrl, {
       errorCorrectionLevel: 'H',
-      margin: 2,
-      width: 300,
+      margin: 4,
+      width: 400,
       color: {
         dark: '#000000',
-        light: '#ffffff',
+        light: '#FFFFFF',
       },
     });
 
-    return qrCodeDataUrl;
+    // Upload to Cloudinary
+    const uploadResult = await uploadImage(qrCodeDataUrl, 'qr-codes');
+
+    if (!uploadResult.success || !uploadResult.data) {
+      console.error('Failed to upload QR code to Cloudinary:', uploadResult.error);
+      // Fallback to base64 if upload fails
+      return qrCodeDataUrl;
+    }
+
+    return uploadResult.data.url;
   } catch (error) {
     console.error('QR Code generation error:', error);
     throw new Error('Failed to generate QR code');
