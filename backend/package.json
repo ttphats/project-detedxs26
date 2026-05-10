@@ -1,6 +1,6 @@
 {
   "name": "tedx-backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "TEDx Ticketing Platform Backend API",
   "type": "module",
   "main": "dist/index.js",
