@@ -40,9 +40,10 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  role      Role       @relation(fields: [roleId], references: [id])
-  orders    Order[]
-  auditLogs AuditLog[]
+  role            Role       @relation(fields: [roleId], references: [id])
+  orders          Order[]
+  checkedInOrders Order[]    @relation("CheckedInBy")
+  auditLogs       AuditLog[]
 
   @@index([email])
   @@index([roleId])
@@ -167,18 +168,23 @@ model Order {
   cancellationReason String?   @map("cancellation_reason") @db.Text
   // Ticketless auth
   accessTokenHash    String?   @map("access_token_hash") @db.VarChar(64)
+  accessToken        String?   @map("access_token") @db.VarChar(64)
   // QR code for ticket
   qrCodeUrl          String?   @map("qr_code_url") @db.VarChar(500)
   // Email tracking
   emailSentAt        DateTime? @map("email_sent_at")
+  // Check-in tracking
+  checkedInAt        DateTime? @map("checked_in_at")
+  checkedInBy        String?   @map("checked_in_by") @db.VarChar(36)
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  event      Event       @relation(fields: [eventId], references: [id])
-  orderItems OrderItem[]
-  payment    Payment?
-  emailLogs  EmailLog[]
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event           Event       @relation(fields: [eventId], references: [id])
+  checkedInByUser User?       @relation("CheckedInBy", fields: [checkedInBy], references: [id], onDelete: SetNull)
+  orderItems      OrderItem[]
+  payment         Payment?
+  emailLogs       EmailLog[]
 
   @@index([userId])
   @@index([eventId])

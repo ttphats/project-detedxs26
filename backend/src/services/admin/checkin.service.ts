@@ -1,23 +1,23 @@
-import { prisma } from '../../db/prisma.js';
-import { NotFoundError, BadRequestError } from '../../utils/errors.js';
+import {prisma} from '../../db/prisma.js'
+import {NotFoundError, BadRequestError} from '../../utils/errors.js'
 
 export interface CheckInResult {
-  success: boolean;
+  success: boolean
   order: {
-    orderNumber: string;
-    customerName: string;
-    customerEmail: string;
-    customerPhone: string | null;
-    totalAmount: number;
-    seatNumbers: string[];
-    checkedInAt: Date;
+    orderNumber: string
+    customerName: string
+    customerEmail: string
+    customerPhone: string | null
+    totalAmount: number
+    seatNumbers: string[]
+    checkedInAt: Date
     event: {
-      name: string;
-      venue: string;
-      eventDate: Date;
-    };
-  };
-  message: string;
+      name: string
+      venue: string
+      eventDate: Date
+    }
+  }
+  message: string
 }
 
 /**
@@ -29,30 +29,34 @@ export async function checkInOrder(
 ): Promise<CheckInResult> {
   // Find order with event and items
   const order = await prisma.order.findUnique({
-    where: { orderNumber },
+    where: {orderNumber},
     include: {
       event: true,
       orderItems: true,
     },
-  });
+  })
 
   if (!order) {
-    throw new NotFoundError('Order not found');
+    throw new NotFoundError('Order not found')
   }
 
   // Validate order status
   if (order.status !== 'PAID') {
-    throw new BadRequestError(`Cannot check in order with status: ${order.status}. Only PAID orders can be checked in.`);
+    throw new BadRequestError(
+      `Cannot check in order with status: ${order.status}. Only PAID orders can be checked in.`
+    )
   }
 
   // Check if already checked in
   if (order.checkedInAt) {
-    throw new BadRequestError(`Order already checked in at ${order.checkedInAt.toLocaleString('vi-VN')}`);
+    throw new BadRequestError(
+      `Order already checked in at ${order.checkedInAt.toLocaleString('vi-VN')}`
+    )
   }
 
   // Perform check-in
   const updatedOrder = await prisma.order.update({
-    where: { id: order.id },
+    where: {id: order.id},
     data: {
       checkedInAt: new Date(),
       checkedInBy: adminUserId,
@@ -61,7 +65,7 @@ export async function checkInOrder(
       event: true,
       orderItems: true,
     },
-  });
+  })
 
   return {
     success: true,
@@ -71,7 +75,7 @@ export async function checkInOrder(
       customerEmail: updatedOrder.customerEmail,
       customerPhone: updatedOrder.customerPhone,
       totalAmount: parseFloat(updatedOrder.totalAmount.toString()),
-      seatNumbers: updatedOrder.orderItems.map((item) => item.seatNumber),
+      seatNumbers: updatedOrder.orderItems.map((item: any) => item.seatNumber),
       checkedInAt: updatedOrder.checkedInAt!,
       event: {
         name: updatedOrder.event.name,
@@ -80,7 +84,7 @@ export async function checkInOrder(
       },
     },
     message: 'Check-in successful',
-  };
+  }
 }
 
 /**
@@ -88,7 +92,7 @@ export async function checkInOrder(
  */
 export async function getCheckInStatus(orderNumber: string) {
   const order = await prisma.order.findUnique({
-    where: { orderNumber },
+    where: {orderNumber},
     include: {
       event: true,
       orderItems: true,
@@ -99,10 +103,10 @@ export async function getCheckInStatus(orderNumber: string) {
         },
       },
     },
-  });
+  })
 
   if (!order) {
-    throw new NotFoundError('Order not found');
+    throw new NotFoundError('Order not found')
   }
 
   return {
@@ -117,13 +121,13 @@ export async function getCheckInStatus(orderNumber: string) {
           username: order.checkedInByUser.username,
         }
       : null,
-    seatNumbers: order.orderItems.map((item) => item.seatNumber),
+    seatNumbers: order.orderItems.map((item: any) => item.seatNumber),
     event: {
       name: order.event.name,
       venue: order.event.venue,
       eventDate: order.event.eventDate,
     },
-  };
+  }
 }
 
 /**
@@ -141,15 +145,15 @@ export async function getCheckInStats(eventId: string) {
       where: {
         eventId,
         status: 'PAID',
-        checkedInAt: { not: null },
+        checkedInAt: {not: null},
       },
     }),
-  ]);
+  ])
 
   return {
     total,
     checkedIn,
     pending: total - checkedIn,
     percentage: total > 0 ? Math.round((checkedIn / total) * 100) : 0,
-  };
+  }
 }

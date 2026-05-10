@@ -148,10 +148,11 @@ export async function createPendingOrder(
     const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
 
     // Create order with PENDING status (no customer info yet)
+    // Save both hash (for verification) and plaintext (for email)
     await execute(
-      `INSERT INTO orders (id, order_number, event_id, total_amount, status, customer_name, customer_email, customer_phone, expires_at, access_token_hash, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'PENDING', '', '', '', DATE_ADD(NOW(), INTERVAL 15 MINUTE), ?, NOW(), NOW())`,
-      [orderId, orderNumber, eventId, totalAmount, accessTokenHash]
+      `INSERT INTO orders (id, order_number, event_id, total_amount, status, customer_name, customer_email, customer_phone, expires_at, access_token_hash, access_token, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'PENDING', '', '', '', DATE_ADD(NOW(), INTERVAL 15 MINUTE), ?, ?, NOW(), NOW())`,
+      [orderId, orderNumber, eventId, totalAmount, accessTokenHash, accessToken]
     )
 
     // Create order items

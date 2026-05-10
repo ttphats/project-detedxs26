@@ -165,8 +165,8 @@ model Order {
   paidAt             DateTime? @map("paid_at")
   cancelledAt        DateTime? @map("cancelled_at")
   cancellationReason String?   @map("cancellation_reason") @db.Text
-  accessToken        String?   @map("access_token") @db.VarChar(64)
   accessTokenHash    String?   @map("access_token_hash") @db.VarChar(64)
+  accessToken        String?   @map("access_token") @db.VarChar(64)
   qrCodeUrl          String?   @map("qr_code_url") @db.VarChar(500)
   emailSentAt        DateTime? @map("email_sent_at")
   checkedInAt        DateTime? @map("checked_in_at")
@@ -174,12 +174,12 @@ model Order {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  event         Event       @relation(fields: [eventId], references: [id])
-  checkedInByUser User?     @relation("CheckedInBy", fields: [checkedInBy], references: [id], onDelete: SetNull)
-  orderItems    OrderItem[]
-  payment       Payment?
-  emailLogs     EmailLog[]
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event           Event       @relation(fields: [eventId], references: [id])
+  checkedInByUser User?       @relation("CheckedInBy", fields: [checkedInBy], references: [id], onDelete: SetNull)
+  orderItems      OrderItem[]
+  payment         Payment?
+  emailLogs       EmailLog[]
 
   @@index([userId])
   @@index([eventId])

@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   --background: #ffffff;
@@ -36,13 +36,37 @@ body {
   overflow: hidden;
 }
 
-/* Completely disable vertical scrollbar in table */
+/* Completely disable vertical scrollbar in table - Override inline styles */
 .ant-table-body {
   overflow-y: hidden !important;
+  max-height: none !important;
 }
 
-/* Only horizontal scroll */
+/* Only horizontal scroll - Override Ant Design inline styles */
 .ant-table-content {
-  overflow-x: auto !important;
+  overflow: auto hidden !important; /* horizontal scroll only */
+}
+
+.ant-table-content[style*='overflow'] {
+  overflow: auto hidden !important; /* Force override inline style */
+}
+
+/* Force disable scroll in table container */
+.ant-table-container {
   overflow-y: visible !important;
+}
+
+/* Disable fixed height that causes scroll */
+.ant-table {
+  overflow-y: visible !important;
+}
+
+.ant-table-wrapper .ant-spin-nested-loading,
+.ant-table-wrapper .ant-spin-container {
+  overflow-y: visible !important;
+}
+
+/* Global override for any inline overflow styles */
+div.ant-table-content[style] {
+  overflow: auto hidden !important;
 }

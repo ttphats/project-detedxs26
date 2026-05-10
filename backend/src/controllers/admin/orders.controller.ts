@@ -120,8 +120,7 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       })
       if (emailResult.success) {
         emailStatus = 'SENT'
-        const tokenStatus = result.hasExistingToken ? '(link vé giữ nguyên)' : '(link vé mới)'
-        console.log(`📧 Confirmation email sent to ${result.order.customerEmail} ${tokenStatus}`)
+        console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`)
       } else {
         emailError = emailResult.error || 'Unknown error'
         console.error(
@@ -133,11 +132,10 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       console.error('Failed to send confirmation email:', err)
     }
 
-    const message = emailStatus === 'SENT'
-      ? result.hasExistingToken
-        ? 'Xác nhận thanh toán thành công. Email đã gửi (link vé giữ nguyên).'
-        : 'Xác nhận thanh toán thành công. Email đã gửi với link vé mới.'
-      : 'Xác nhận thanh toán thành công nhưng gửi email thất bại.';
+    const message =
+      emailStatus === 'SENT'
+        ? 'Xác nhận thanh toán thành công. Email đã gửi.'
+        : 'Xác nhận thanh toán thành công nhưng gửi email thất bại.'
 
     return reply.send({
       success: true,

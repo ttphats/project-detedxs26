@@ -141,38 +141,34 @@ export async function confirmPayment(
       if (order.status === 'CANCELLED') throw new Error('Order is cancelled')
       if (order.status === 'EXPIRED') throw new Error('Order has expired')
 
-      // Keep existing token OR generate new one
+      // ⚠️ Use existing plaintext token if available, otherwise generate new one
       let accessToken: string
       let accessTokenHash: string
-      let hasExistingToken = false
 
-      if (order.accessToken && order.accessTokenHash) {
-        // Token already exists (stored in DB) - REUSE IT!
-        // User already has the link, keep it valid
+      if (order.accessToken) {
+        // Reuse existing plaintext token
         accessToken = order.accessToken
-        accessTokenHash = order.accessTokenHash
-        hasExistingToken = true
-        console.log('[CONFIRM PAYMENT] Reusing existing token - keeping user link valid')
+        accessTokenHash = order.accessTokenHash!
+        console.log('[CONFIRM PAYMENT] Reusing existing plaintext token')
       } else {
-        // No token yet - generate new one and SAVE PLAINTEXT
+        // Generate new token (old orders or webhook payments)
         const generated = generateAccessToken()
         accessToken = generated.token
         accessTokenHash = generated.hash
-        hasExistingToken = false
-        console.log('[CONFIRM PAYMENT] Generated new token and saving plaintext')
+        console.log('[CONFIRM PAYMENT] Generated new access token')
       }
 
       // Generate QR code
       const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
 
-      // Update order to PAID and save plaintext token
+      // Update order to PAID
       const updatedOrder = await tx.order.update({
         where: {id: orderId},
         data: {
           status: 'PAID',
           paidAt: new Date(),
-          accessToken,        // ← Save plaintext token
-          accessTokenHash,    // ← Save hash for verification
+          accessTokenHash,
+          accessToken, // Save plaintext for future email sends
           qrCodeUrl,
         },
       })
@@ -234,7 +230,7 @@ export async function confirmPayment(
         },
       })
 
-      return {order, updatedOrder, accessToken, seatIds, hasExistingToken}
+      return {order, updatedOrder, accessToken, seatIds}
     },
     {timeout: 30000}
   )
@@ -352,17 +348,28 @@ export async function resendTicketEmail(
   if (!order) throw new Error('Order not found')
   if (order.status !== 'PAID') throw new Error('Can only resend email for PAID orders')
 
-  // Generate new access token (resend = invalidate old link)
-  const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
+  // ⚠️ Use existing plaintext token if available, otherwise generate new one
+  let accessToken: string
+  let accessTokenHash: string
 
-  // Update order with new plaintext token AND hash
-  await prisma.order.update({
-    where: {id: orderId},
-    data: {
-      accessToken,      // ← Save plaintext
-      accessTokenHash,  // ← Save hash
-    },
-  })
+  if (order.accessToken) {
+    // Reuse existing plaintext token - this keeps ticket URL valid!
+    accessToken = order.accessToken
+    accessTokenHash = order.accessTokenHash!
+    console.log(`[RESEND EMAIL] Reusing existing plaintext token for order ${order.orderNumber}`)
+  } else {
+    // Generate new token (for old orders that don't have plaintext saved)
+    const generated = generateAccessToken()
+    accessToken = generated.token
+    accessTokenHash = generated.hash
+    console.log(`[RESEND EMAIL] Generated new access token for order ${order.orderNumber}`)
+
+    // Update order with new access token
+    await prisma.order.update({
+      where: {id: orderId},
+      data: {accessTokenHash, accessToken},
+    })
+  }
 
   // Generate QR code and ticket URL
   const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
@@ -383,7 +390,10 @@ export async function resendTicketEmail(
 
   // Format seats for email template (string format)
   const seatsList = order.orderItems
-    .map((item: any) => `${item.seat?.seatNumber || item.seatNumber} (${item.seat?.seatType || item.seatType})`)
+    .map(
+      (item: any) =>
+        `${item.seat?.seatNumber || item.seatNumber} (${item.seat?.seatType || item.seatType})`
+    )
     .join(', ')
 
   // Send email with allowDuplicate to bypass anti-spam
@@ -401,7 +411,7 @@ export async function resendTicketEmail(
       eventVenue: order.event.venue,
       eventAddress: order.event.venue,
       orderNumber: order.orderNumber,
-      seats: seatsList,  // ✅ String: "A1 (VIP), A2 (Standard)"
+      seats: seatsList, // ✅ String: "A1 (VIP), A2 (Standard)"
       totalAmount: Number(order.totalAmount),
       qrCodeUrl,
       ticketUrl,
@@ -441,8 +451,8 @@ export async function deleteOrder(
   }
 
   const seatIds = order.orderItems
-    .map((item) => item.seatId)
-    .filter((id) => id !== null) as string[]
+    .map((item: any) => item.seatId)
+    .filter((id: any) => id !== null) as string[]
 
   // Release seats back to AVAILABLE
   if (seatIds.length > 0) {

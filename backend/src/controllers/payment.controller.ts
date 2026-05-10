@@ -117,6 +117,25 @@ async function processPaymentConfirmation(
         return
       }
 
+      // ⚠️ Use existing plaintext token if available, otherwise generate new one
+      let accessToken: string
+      let accessTokenHash: string
+
+      if (order.accessToken) {
+        // Reuse existing plaintext token
+        accessToken = order.accessToken
+        accessTokenHash = order.accessTokenHash!
+        console.log('[WEBHOOK] Reusing existing plaintext token')
+      } else {
+        // Generate new token (shouldn't happen if createPendingOrder works correctly)
+        const {token, hash} = await import('../utils/helpers.js').then((m) =>
+          m.generateAccessToken()
+        )
+        accessToken = token
+        accessTokenHash = hash
+        console.log('[WEBHOOK] Generated new access token')
+      }
+
       // Update payment
       await tx.payment.update({
         where: {orderId},
@@ -130,10 +149,15 @@ async function processPaymentConfirmation(
         },
       })
 
-      // Update order
+      // Update order with token
       await tx.order.update({
         where: {id: orderId},
-        data: {status: 'PAID', paidAt: new Date()},
+        data: {
+          status: 'PAID',
+          paidAt: new Date(),
+          accessTokenHash,
+          accessToken, // Save plaintext for future email sends
+        },
       })
 
       // Mark seats as SOLD
@@ -147,25 +171,9 @@ async function processPaymentConfirmation(
         })
       }
 
-      // Generate QR code
+      // Generate QR code and ticket URL
       const qrCodeUrl = await qrcodeService.generateTicketQRCode(order.orderNumber, order.eventId)
-
-      // Generate new access token for ticket URL
-      const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
-      console.log('[DEBUG] Generated accessToken:', accessToken)
-      console.log('[DEBUG] Token length:', accessToken?.length || 0)
-      console.log('[DEBUG] Token type:', typeof accessToken)
       const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
-      console.log('[DEBUG] Final ticketUrl:', ticketUrl)
-
-      // Update order with BOTH plaintext token and hash
-      await tx.order.update({
-        where: {id: orderId},
-        data: {
-          accessToken,      // ← Save plaintext for reuse
-          accessTokenHash,  // ← Save hash for verification
-        },
-      })
 
       // Send email (fire and forget)
       const eventDate = new Date(order.event.eventDate)
@@ -206,7 +214,7 @@ async function processPaymentConfirmation(
           eventVenue: order.event.venue,
           eventAddress: order.event.venue,
           orderNumber: order.orderNumber,
-          seats: seatsList,  // String: "A1 (VIP), A2 (VIP)"
+          seats: seatsList, // String: "A1 (VIP), A2 (VIP)"
           totalAmount: Number(order.totalAmount),
           qrCodeUrl,
           ticketUrl,
