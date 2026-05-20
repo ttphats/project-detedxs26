@@ -428,11 +428,13 @@ export default function TicketTypesPage() {
                     if (!value) return ''
                     return `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
                   }}
-                  parser={(value) => {
-                    if (!value) return 0
-                    const parsed = Number(value.replace(/,/g, ''))
-                    return isNaN(parsed) ? 0 : parsed
-                  }}
+                  parser={
+                    ((value: string | undefined) => {
+                      if (!value) return 0
+                      const parsed = Number(value.replace(/,/g, ''))
+                      return isNaN(parsed) ? 0 : parsed
+                    }) as any
+                  }
                 />
               </Form.Item>
               <Form.Item name='max_quantity' label='Số lượng tối đa'>
