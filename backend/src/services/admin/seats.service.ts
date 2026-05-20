@@ -79,6 +79,7 @@ export async function getSeatById(id: string) {
  */
 export async function createSeats(eventId: string, seats: CreateSeatInput[]) {
   const createdSeats = []
+  const now = new Date()
 
   for (const seat of seats) {
     const id = randomUUID()
@@ -95,6 +96,8 @@ export async function createSeats(eventId: string, seats: CreateSeatInput[]) {
         status: 'AVAILABLE',
         positionX: seat.position_x,
         positionY: seat.position_y,
+        createdAt: now,
+        updatedAt: now,
       },
     })
     createdSeats.push(created)

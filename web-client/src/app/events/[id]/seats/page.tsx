@@ -717,71 +717,73 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         {/* Ticket Types Description */}
         <div className='mb-6 sm:mb-8 animate-fade-in'>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-            {(event.ticketTypes || []).map((ticketType) => {
-              const isVIP = ticketType.name.toUpperCase().includes('VIP')
-              return (
-                <div
-                  key={ticketType.id}
-                  className={`glass-panel rounded-xl p-4 sm:p-5 border ${
-                    isVIP
-                      ? 'border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-yellow-500/5'
-                      : 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-green-500/5'
-                  }`}
-                >
-                  <div className='flex items-start justify-between mb-3'>
-                    <div className='flex items-center gap-3'>
-                      <div
-                        className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          isVIP
-                            ? 'bg-gradient-to-br from-yellow-400 to-orange-500'
-                            : 'bg-gradient-to-br from-emerald-400 to-emerald-600'
-                        }`}
-                      >
-                        {isVIP ? (
-                          <Star className='w-5 h-5 text-white' />
-                        ) : (
-                          <Ticket className='w-5 h-5 text-white' />
-                        )}
+            {(event.ticketTypes || [])
+              .sort((a, b) => a.level - b.level) // Sort by level: 1 (cheapest) -> 3 (most expensive)
+              .map((ticketType) => {
+                const isVIP = ticketType.name.toUpperCase().includes('VIP')
+                return (
+                  <div
+                    key={ticketType.id}
+                    className={`glass-panel rounded-xl p-4 sm:p-5 border ${
+                      isVIP
+                        ? 'border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-yellow-500/5'
+                        : 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-green-500/5'
+                    }`}
+                  >
+                    <div className='flex items-start justify-between mb-3'>
+                      <div className='flex items-center gap-3'>
+                        <div
+                          className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            isVIP
+                              ? 'bg-gradient-to-br from-yellow-400 to-orange-500'
+                              : 'bg-gradient-to-br from-emerald-400 to-emerald-600'
+                          }`}
+                        >
+                          {isVIP ? (
+                            <Star className='w-5 h-5 text-white' />
+                          ) : (
+                            <Ticket className='w-5 h-5 text-white' />
+                          )}
+                        </div>
+                        <div>
+                          <h3 className='font-bold text-white text-lg'>{ticketType.name}</h3>
+                          {ticketType.subtitle && (
+                            <p className='text-xs text-gray-400'>{ticketType.subtitle}</p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <h3 className='font-bold text-white text-lg'>{ticketType.name}</h3>
-                        {ticketType.subtitle && (
-                          <p className='text-xs text-gray-400'>{ticketType.subtitle}</p>
-                        )}
+                      <div className='text-right'>
+                        <p
+                          className={`font-black text-xl ${
+                            isVIP ? 'text-orange-400' : 'text-emerald-400'
+                          }`}
+                        >
+                          {Math.round(ticketType.price).toLocaleString('vi-VN')}đ
+                        </p>
                       </div>
                     </div>
-                    <div className='text-right'>
-                      <p
-                        className={`font-black text-xl ${
-                          isVIP ? 'text-orange-400' : 'text-emerald-400'
-                        }`}
-                      >
-                        {Math.round(ticketType.price).toLocaleString('vi-VN')}đ
-                      </p>
-                    </div>
+                    {ticketType.benefits && ticketType.benefits.length > 0 && (
+                      <ul className='space-y-1.5'>
+                        {(ticketType.benefits || []).slice(0, 4).map((benefit, idx) => (
+                          <li key={idx} className='flex items-center gap-2 text-sm text-gray-300'>
+                            <Check
+                              className={`w-4 h-4 flex-shrink-0 ${
+                                isVIP ? 'text-orange-400' : 'text-emerald-400'
+                              }`}
+                            />
+                            <span>{benefit}</span>
+                          </li>
+                        ))}
+                        {ticketType.benefits.length > 4 && (
+                          <li className='text-xs text-gray-500 pl-6'>
+                            +{ticketType.benefits.length - 4} quyền lợi khác
+                          </li>
+                        )}
+                      </ul>
+                    )}
                   </div>
-                  {ticketType.benefits && ticketType.benefits.length > 0 && (
-                    <ul className='space-y-1.5'>
-                      {(ticketType.benefits || []).slice(0, 4).map((benefit, idx) => (
-                        <li key={idx} className='flex items-center gap-2 text-sm text-gray-300'>
-                          <Check
-                            className={`w-4 h-4 flex-shrink-0 ${
-                              isVIP ? 'text-orange-400' : 'text-emerald-400'
-                            }`}
-                          />
-                          <span>{benefit}</span>
-                        </li>
-                      ))}
-                      {ticketType.benefits.length > 4 && (
-                        <li className='text-xs text-gray-500 pl-6'>
-                          +{ticketType.benefits.length - 4} quyền lợi khác
-                        </li>
-                      )}
-                    </ul>
-                  )}
-                </div>
-              )
-            })}
+                )
+              })}
           </div>
         </div>
 
