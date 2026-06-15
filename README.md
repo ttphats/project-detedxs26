@@ -160,7 +160,13 @@ project-detedxs26/
 │   ├── prisma/              # Database schema
 │   └── src/lib/             # Utilities
 │
-└── docs/                    # Documentation
+├── backend/                 # Backend API server (Fastify)
+│   ├── src/                 # Source code
+│   ├── prisma/              # Database schema
+│   └── scripts/             # Utility scripts
+│
+├── docs/                    # Documentation
+└── tests/                   # Test plans and specs
 ```
 
 ## Documentation
@@ -184,17 +190,28 @@ All rights reserved. Private project for TEDxFPTUniversityHCMC 2026.
 
 **Event:** TEDxFPTUniversityHCMC 2026 - Theme: "Finding Flow"
 
-## Acknowledgments
+## Contributors
 
-Special thanks to all contributors who helped build this platform:
+Thanks to all contributors who helped build this platform:
 
-- Project lead and architecture
-- Frontend development team
-- Backend API development
-- Testing and QA team
-- TEDxFPTUniversityHCMC organizing committee
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ttphats"><img src="https://avatars.githubusercontent.com/ttphats?v=4?s=100" width="100px;" alt="ttphats"/><br /><sub><b>ttphats</b></sub></a><br /><a href="#code-ttphats" title="Code">💻</a> <a href="#ideas-ttphats" title="Ideas">🤔</a> <a href="#projectManagement-ttphats" title="Project Management">📆</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/phatmap114"><img src="https://avatars.githubusercontent.com/phatmap114?v=4?s=100" width="100px;" alt="phatmap114"/><br /><sub><b>phatmap114</b></sub></a><br /><a href="#code-phatmap114" title="Code">💻</a> <a href="#design-phatmap114" title="Design">🎨</a></td>
+    </tr>
+  </tbody>
+</table>
 
-For a full list of contributors, see the [Contributors page](https://github.com/ttphats/project-detedxs26/graphs/contributors).
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification.
 
 ## Acknowledgments
 
