@@ -12,10 +12,17 @@ import {
   ArrowRight,
   X,
   Loader2,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components";
-import { events as mockEvents, Speaker, TimelineItem } from "@/lib/mock-data";
+import { events as mockEvents, Speaker, TimelineItem as OriginalTimelineItem } from "@/lib/mock-data";
 import { formatVNDate } from "@/lib/date-utils";
+
+interface TimelineItem extends OriginalTimelineItem {
+  status?: string;
+}
 
 interface FeaturedEvent {
   id: string;
@@ -72,6 +79,269 @@ const getTimelineTypeStyle = (type: string) => {
   );
 };
 
+// Helper function to render vector SVG logos for partners
+const getPartnerLogo = (id: string, tier: 'diamond' | 'gold' | 'silver', logoUrl?: string | null, name?: string) => {
+  const sizeClass =
+    tier === 'diamond' ? 'h-14 sm:h-16 max-w-full object-contain' :
+      tier === 'gold' ? 'h-10 sm:h-12 max-w-full object-contain' :
+        'h-7 sm:h-8 max-w-full object-contain';
+
+  if (logoUrl) {
+    return <img src={logoUrl} alt={name || id} className={sizeClass} style={{ objectFit: 'contain' }} />;
+  }
+
+  switch (id) {
+    case 'p-fpt':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg">
+          {/* FPT styled swooshes */}
+          <path className="fill-orange-500" d="M12 8c0-3.3 2.7-6 6-6h24v12H18c-3.3 0-6-2.7-6-6z" />
+          <path className="fill-green-600" d="M18 20c0-3.3 2.7-6 6-6h24v12H24c-3.3 0-6-2.7-6-6z" />
+          <path className="fill-blue-500" d="M24 32c0-3.3 2.7-6 6-6h24v12H30c-3.3 0-6-2.7-6-6z" />
+          <text x="65" y="35" className="font-black text-3xl tracking-tighter fill-white">FPT</text>
+        </svg>
+      );
+    case 'p-vinfast':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
+          {/* VinFast V logo */}
+          <path className="fill-white" d="M20 10 L52 38 L60 45 L68 38 L100 10 L88 10 L60 34 L32 10 Z" />
+          <path className="fill-red-600" d="M38 10 L54 24 L60 29 L66 24 L82 10 L74 10 L60 21 L46 10 Z" />
+        </svg>
+      );
+    case 'p-techcom':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg">
+          {/* Techcombank logo */}
+          <rect x="5" y="10" width="30" height="30" className="fill-red-600" />
+          <rect x="13" y="18" width="14" height="14" className="fill-white" />
+          <text x="44" y="32" className="font-black text-xl fill-white tracking-tighter">Techcombank</text>
+        </svg>
+      );
+    case 'p-vng':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
+          {/* VNG logo */}
+          <text x="10" y="35" className="font-black text-3xl fill-cyan-400 tracking-wider">VNG</text>
+          <circle cx="85" cy="25" r="12" className="stroke-cyan-400 stroke-2 fill-none" />
+          <circle cx="85" cy="25" r="7" className="fill-cyan-400" />
+        </svg>
+      );
+    case 'p-shopee':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 140 50" xmlns="http://www.w3.org/2000/svg">
+          {/* Shopee logo */}
+          <path className="fill-orange-500" d="M15 15v25h26V15H15zm13-10c-3.5 0-6.5 3-6.5 6.5H34c0-3.5-3-6.5-6.5-6.5z" />
+          <text x="25" y="34" className="font-black text-white text-base">S</text>
+          <text x="49" y="33" className="font-black text-2xl fill-orange-500">Shopee</text>
+        </svg>
+      );
+    case 'p-intel':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
+          {/* Intel logo */}
+          <ellipse cx="60" cy="25" rx="55" ry="22" className="stroke-blue-500 stroke-2 fill-none" />
+          <text x="32" y="33" className="font-black text-3xl fill-white italic tracking-tighter">intel</text>
+        </svg>
+      );
+    case 'p-asus':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
+          {/* ASUS logo */}
+          <text x="15" y="34" className="font-black text-3xl fill-white italic tracking-widest">ASUS</text>
+        </svg>
+      );
+    case 'p-highlands':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg">
+          {/* Highlands logo */}
+          <circle cx="25" cy="25" r="20" className="fill-red-800" />
+          <circle cx="25" cy="25" r="16" className="stroke-amber-600 stroke-2 fill-none" />
+          <text x="54" y="32" className="font-black text-lg fill-amber-600 tracking-wider">HIGHLANDS</text>
+        </svg>
+      );
+    case 'p-pepsi':
+      return (
+        <svg className={`${sizeClass}`} viewBox="0 0 140 50" xmlns="http://www.w3.org/2000/svg">
+          {/* Pepsi logo */}
+          <circle cx="25" cy="25" r="20" className="fill-blue-600" />
+          <path d="M5 25 A20 20 0 0 1 45 25 C30 30 20 20 5 25 Z" className="fill-white" />
+          <path d="M5 25 A20 20 0 0 1 25 5 C30 13 20 18 5 25 Z" className="fill-red-600" />
+          <text x="54" y="34" className="font-black text-2xl fill-white tracking-widest uppercase">pepsi</text>
+        </svg>
+      );
+    default:
+      return <span className="text-white/60 font-black text-lg">{id}</span>;
+  }
+};
+
+const fallbackPartners = [
+  { id: 'p-fpt', name: 'FPT', tier: 'diamond' as const, logo_url: null, banner_url: null, website: 'https://fpt.com.vn' },
+  { id: 'p-vinfast', name: 'VinFast', tier: 'diamond' as const, logo_url: null, banner_url: null, website: 'https://vinfastauto.com' },
+  { id: 'p-techcom', name: 'Techcombank', tier: 'diamond' as const, logo_url: null, banner_url: null, website: 'https://techcombank.com' },
+  { id: 'p-vng', name: 'VNG', tier: 'gold' as const, logo_url: null, banner_url: null, website: 'https://vng.com.vn' },
+  { id: 'p-shopee', name: 'Shopee', tier: 'gold' as const, logo_url: null, banner_url: null, website: 'https://shopee.vn' },
+  { id: 'p-intel', name: 'Intel', tier: 'gold' as const, logo_url: null, banner_url: null, website: 'https://intel.vn' },
+  { id: 'p-asus', name: 'ASUS', tier: 'silver' as const, logo_url: null, banner_url: null, website: 'https://asus.com' },
+  { id: 'p-highlands', name: 'Highlands Coffee', tier: 'silver' as const, logo_url: null, banner_url: null, website: 'https://highlandscoffee.com.vn' },
+  { id: 'p-pepsi', name: 'Pepsi', tier: 'silver' as const, logo_url: null, banner_url: null, website: 'https://pepsi.com' },
+];
+
+// ====================================================================
+// PartnerSlideshow — full-width spotlight, one partner at a time
+// ====================================================================
+function PartnerSlideshow({ partners }: { partners: any[] }) {
+  const [current, setCurrent] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const DURATION = 5000; // ms per slide
+
+  const goTo = (index: number) => {
+    setAnimating(true);
+    setProgress(0);
+    setTimeout(() => {
+      setCurrent(index);
+      setAnimating(false);
+    }, 400);
+  };
+
+  const prev = () => goTo((current - 1 + partners.length) % partners.length);
+  const next = () => goTo((current + 1) % partners.length);
+
+  // Reset current index when partners list changes (prevents out-of-bounds crash)
+  useEffect(() => {
+    setCurrent((prev) => (prev >= partners.length ? 0 : prev));
+  }, [partners.length]);
+
+  // Auto-advance every DURATION ms with a real-time progress bar
+  useEffect(() => {
+    if (partners.length <= 1) return;
+    const start = Date.now();
+    let raf: number;
+
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const pct = Math.min((elapsed / DURATION) * 100, 100);
+      setProgress(pct);
+      if (elapsed < DURATION) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        setCurrent((prev) => (prev + 1) % partners.length);
+      }
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [current, partners.length]);
+
+
+  if (!partners.length) return null;
+  const partner = partners[current];
+
+  return (
+    <section className="py-10 sm:py-16 bg-black relative overflow-hidden border-t border-b border-white/5">
+      {/* Ambient glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70%] h-48 bg-red-600/5 rounded-full blur-3xl" />
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        {/* Section label */}
+        <p className="text-center text-red-600 font-bold uppercase tracking-widest text-xs sm:text-sm mb-6">
+          Our Partners & Sponsors
+        </p>
+
+        {/* Main slide frame */}
+        <div className="relative">
+          {/* Card */}
+          <div
+            className="relative glass-panel rounded-2xl border border-white/10 overflow-hidden shadow-[0_0_60px_rgba(230,43,30,0.08)] h-48 sm:h-64 md:h-80"
+          >
+            {/* Progress bar — top edge */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-white/5 z-20">
+              <div
+                className="h-full bg-red-500 transition-none"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+
+            {/* Slide content — image fills the full card */}
+            <div
+              className="transition-opacity duration-400"
+              style={{ opacity: animating ? 0 : 1 }}
+            >
+              {partner.banner_url ? (
+                <img
+                  src={partner.banner_url}
+                  alt={partner.name}
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              ) : partner.logo_url ? (
+                <img
+                  src={partner.logo_url}
+                  alt={partner.name}
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {getPartnerLogo(partner.id, partner.tier, partner.logo_url, partner.name)}
+                </div>
+              )}
+            </div>
+
+            {/* Corner accent lines */}
+            <div className="absolute top-0 left-0 w-8 h-8 border-l-2 border-t-2 border-red-500/30 rounded-tl-2xl pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-r-2 border-b-2 border-red-500/30 rounded-br-2xl pointer-events-none" />
+
+            {/* Slide index badge */}
+            <div className="absolute top-4 right-5 text-xs text-gray-600 font-mono">
+              {String(current + 1).padStart(2, '0')} / {String(partners.length).padStart(2, '0')}
+            </div>
+          </div>
+
+          {/* Prev / Next Arrows */}
+          {partners.length > 1 && (
+            <>
+              <button
+                onClick={prev}
+                aria-label="Previous partner"
+                className="absolute -left-4 sm:-left-6 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-black border border-white/10 flex items-center justify-center text-white hover:border-red-500 hover:text-red-500 transition-all shadow-lg mobile-tap-feedback"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={next}
+                aria-label="Next partner"
+                className="absolute -right-4 sm:-right-6 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-black border border-white/10 flex items-center justify-center text-white hover:border-red-500 hover:text-red-500 transition-all shadow-lg mobile-tap-feedback"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Dot Indicators */}
+        {partners.length > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-6">
+            {partners.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(i)}
+                aria-label={`Go to partner ${i + 1}`}
+                className={`rounded-full transition-all duration-300 ${
+                  i === current
+                    ? 'w-6 h-2 bg-red-500'
+                    : 'w-2 h-2 bg-white/20 hover:bg-white/40'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const [featuredEvent, setFeaturedEvent] = useState<FeaturedEvent | null>(
     null,
@@ -80,6 +350,7 @@ export default function Home() {
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [partners, setPartners] = useState<any[]>([]);
 
   // Fetch featured event from API
   useEffect(() => {
@@ -177,11 +448,12 @@ export default function Home() {
           // Transform API format - use type directly from database (lowercase)
           const transformed: TimelineItem[] = data.data.map((item: any) => ({
             id: item.id,
-            time: item.startTime,
+            time: item.time,
             title: item.title,
             description: item.description || "",
             type: item.type.toLowerCase(),
-            speakerId: item.speakerName ? item.id : undefined,
+            speakerId: item.speaker ? item.id : undefined,
+            status: item.status,
           }));
           setTimeline(transformed);
         } else {
@@ -197,6 +469,23 @@ export default function Home() {
     fetchTimeline();
   }, [featuredEvent?.id, featuredEvent?.timeline]);
 
+  // Fetch partners/sponsors from API
+  useEffect(() => {
+    const fetchPartners = async () => {
+      try {
+        const res = await fetch("/api/partners");
+        const data = await res.json();
+        if (data.success && data.data && data.data.length > 0) {
+          setPartners(data.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch partners:", error);
+      }
+    };
+    fetchPartners();
+  }, []);
+
+
   // Loading state
   if (loading || !featuredEvent) {
     return (
@@ -208,6 +497,9 @@ export default function Home() {
       </div>
     );
   }
+
+  // Only show partners explicitly enabled for spotlight — no fallback
+  const slidePartners = partners.filter((p) => p.show_in_marquee === true);
 
   return (
     <div className="bg-black overflow-hidden">
@@ -315,16 +607,22 @@ export default function Home() {
                     })}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 group cursor-default">
-                  <MapPin className="w-4 h-4 text-red-500" />
-                  <span className="text-red-500 font-medium text-sm sm:text-base underline underline-offset-4 decoration-red-500/50">
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(featuredEvent.venue + ", " + featuredEvent.location)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 group cursor-pointer w-fit"
+                >
+                  <MapPin className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
+                  <span className="text-red-500 font-medium text-sm sm:text-base underline underline-offset-4 decoration-red-500/50 group-hover:text-red-400 transition-colors">
                     {featuredEvent.venue}
                   </span>
-                </div>
+                </a>
+
               </div>
 
               {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 animate-fade-in-up delay-500">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 animate-fade-in-up delay-500">
                 <Link
                   href={`/events/${featuredEvent.id}/seats`}
                   className="w-full sm:w-auto"
@@ -343,6 +641,14 @@ export default function Home() {
                   <Play className="w-5 h-5" />
                   Watch Trailer
                 </button>
+                <Link
+                  href="/speakers/register"
+                  className="w-full sm:w-auto"
+                >
+                  <button className="w-full sm:w-auto group px-6 sm:px-8 py-3 sm:py-4 bg-zinc-950 border border-white/20 text-white font-bold uppercase tracking-wider rounded-full hover:border-red-500 hover:bg-red-500/10 transition-all flex items-center justify-center gap-2 mobile-tap-feedback">
+                    Become a Speaker
+                  </button>
+                </Link>
               </div>
             </div>
 
@@ -487,112 +793,72 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Speaker Cards - Mobile: Card style, Desktop: Row style */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-4 px-4 py-8">
-          {speakers.map((speaker, index) => (
-            <div
-              key={speaker.id}
-              className="group relative rounded-2xl overflow-hidden bg-black border border-red-500/20 shadow-lg shadow-red-500/10 hover:shadow-red-500/20 transition-all duration-300"
-            >
-              {/* Glow effect */}
-              <div className="absolute -inset-1 bg-gradient-to-r from-red-600/20 via-transparent to-red-600/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        {/* Speaker Grid - Space-saving Horizontal Layout */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {speakers.map((speaker, index) => (
+              <div
+                key={speaker.id}
+                className="group relative h-[450px] rounded-2xl overflow-hidden bg-zinc-950 border border-white/10 hover:border-red-500/50 shadow-2xl transition-all duration-500"
+              >
+                {/* Glow effect on hover */}
+                <div className="absolute -inset-0.5 bg-red-600/10 rounded-2xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-              {/* Speaker Image */}
-              <div className="relative aspect-[4/5] overflow-hidden">
+                {/* Speaker Image */}
                 <img
                   src={speaker.image}
                   alt={speaker.name}
-                  className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 group-hover:scale-105"
+                  className="absolute inset-0 w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105"
                 />
-                {/* Dark overlay with gradient */}
-                <div className="absolute inset-0 bg-linear-to-t from-black via-black/70 to-transparent" />
 
-                {/* Red accent line */}
-                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-600 via-red-500 to-transparent" />
+                {/* Image Gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-85 group-hover:opacity-45 transition-opacity duration-500" />
 
                 {/* Number badge */}
-                <div className="absolute top-3 right-3 px-3 py-1 bg-red-600 rounded-full shadow-lg shadow-red-500/50">
-                  <span className="text-white text-xs font-black">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
+                <div className="absolute top-4 left-4 z-10 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-lg shadow-red-600/30">
+                  {String(index + 1).padStart(2, "0")}
                 </div>
 
-                {/* Info overlay at bottom */}
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  <h3 className="text-white text-lg sm:text-xl font-black uppercase mb-1 drop-shadow-lg">
-                    {speaker.name}
-                  </h3>
-                  <p className="text-red-500 font-bold uppercase tracking-wider text-[10px] sm:text-xs mb-2">
-                    {speaker.topic}
-                  </p>
-                  <p className="text-gray-300 text-xs leading-relaxed">
-                    {speaker.title}
-                  </p>
-                </div>
-              </div>
+                {/* Slide-up Content Panel */}
+                <div className="absolute bottom-0 left-0 right-0 p-5 bg-zinc-950/95 backdrop-blur-md border-t border-white/10 translate-y-[calc(100%-80px)] group-hover:translate-y-0 transition-transform duration-500 ease-out flex flex-col h-full justify-between">
 
-              {/* Bottom accent */}
-              <div className="h-1 bg-gradient-to-r from-red-600 via-red-500 to-transparent" />
-            </div>
-          ))}
-        </div>
-
-        {/* Speaker Rows - Desktop only */}
-        <div className="hidden lg:block">
-          {speakers.map((speaker, index) => (
-            <div
-              key={speaker.id}
-              className="speaker-row group relative min-h-[70vh] flex items-center border-t border-white/5 overflow-hidden"
-            >
-              {/* Kinetic Text Background */}
-              <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-                <div className="kinetic-text select-none transition-all duration-700">
-                  {speaker.topic.toUpperCase()} • {speaker.topic.toUpperCase()}{" "}
-                  •
-                </div>
-              </div>
-
-              {/* Content Container */}
-              <div
-                className={`container mx-auto px-10 flex flex-row items-center justify-between relative z-20 ${index % 2 === 1 ? "flex-row-reverse" : ""}`}
-              >
-                {/* Info Card */}
-                <div className="w-1/2">
-                  <div className="info-card glass-panel p-8 max-w-md rounded-lg shadow-2xl">
-                    <div className="text-red-600 font-bold text-sm mb-2">
-                      {String(index + 1).padStart(2, "0")}
+                  {/* Header info (always visible at the bottom of the card) */}
+                  <div>
+                    <div className="flex flex-col gap-1 mb-4">
+                      <p className="text-red-500 font-bold uppercase tracking-wider text-[11px]">
+                        {speaker.topic}
+                      </p>
+                      <h3 className="text-white text-lg sm:text-xl font-black uppercase tracking-tight group-hover:text-red-500 transition-colors leading-tight">
+                        {speaker.name}
+                      </h3>
                     </div>
-                    <h3 className="text-white text-4xl font-black uppercase mb-1 ted-logo-text">
-                      {speaker.name}
-                    </h3>
-                    <p className="text-red-600 font-bold uppercase tracking-widest text-sm mb-4">
-                      {speaker.topic}
-                    </p>
-                    <p className="text-gray-300 font-light text-sm leading-relaxed mb-4">
-                      {speaker.title}
-                    </p>
-                    <p className="text-gray-400 text-sm leading-relaxed">
-                      {speaker.bio}
-                    </p>
-                  </div>
-                </div>
 
-                {/* Speaker Image */}
-                <div
-                  className={`w-1/2 flex ${index % 2 === 1 ? "justify-start" : "justify-end"}`}
-                >
-                  <div className="relative w-100 transition-transform duration-700 group-hover:-translate-x-5">
-                    <img
-                      src={speaker.image}
-                      alt={speaker.name}
-                      className="speaker-cutout w-full h-auto grayscale group-hover:grayscale-0 transition-all duration-700"
-                    />
-                    <div className="absolute inset-0 bg-linear-to-t from-red-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+                    {/* Expanded info (visible when panel slides up) */}
+                    <div className="space-y-3 opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100 overflow-y-auto max-h-[250px] pr-1 scrollbar-thin">
+                      <p className="text-white/90 text-xs font-semibold italic border-l-2 border-red-500 pl-2 leading-relaxed">
+                        {speaker.bio}
+                      </p>
+                      <p className="text-gray-400 text-xs leading-relaxed">
+                        {speaker.title}
+                      </p>
+                    </div>
                   </div>
+
+                  {/* Footer action / badge inside panel (visible when hovered) */}
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-200 pt-2 border-t border-white/5 flex items-center justify-between">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-widest">
+                      {speaker.company || "TEDx Speaker"}
+                    </span>
+                    <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                      Keynote Talk
+                    </span>
+                  </div>
+
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 
@@ -601,10 +867,9 @@ export default function Home() {
         id="program"
         className="py-12 sm:py-24 bg-black relative overflow-hidden"
       >
-        {/* Background decoration - hidden on mobile */}
-        <div className="hidden sm:block absolute top-0 left-1/2 -translate-x-1/2 w-px h-full vertical-timeline-line opacity-30" />
+        {/* Background decoration - removed for horizontal layout */}
 
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           {/* Section Header */}
           <div className="text-center mb-10 sm:mb-20 animate-fade-in-up">
             <p className="text-red-600 font-bold uppercase tracking-widest mb-2 sm:mb-4 text-xs sm:text-base">
@@ -615,109 +880,183 @@ export default function Home() {
             </h2>
           </div>
 
-          {/* Mobile Timeline - Single column with creative design */}
-          <div className="sm:hidden relative">
-            {/* Glowing timeline line */}
-            <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gradient-to-b from-red-600 via-red-500/50 to-transparent" />
-
-            <div className="space-y-6">
-              {timeline.map((item, index) => (
-                <div key={item.id} className="relative pl-10 group">
-                  {/* Animated dot with glow */}
-                  <div className="absolute left-2.5 top-4 w-3 h-3 rounded-full bg-red-600 shadow-lg shadow-red-500/50 group-hover:scale-125 transition-transform duration-300">
-                    <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-30" />
-                  </div>
-
-                  {/* Connector line */}
-                  <div className="absolute left-[18px] top-5 w-4 h-0.5 bg-gradient-to-r from-red-600/50 to-transparent" />
-
+          {/* Responsive Horizontal Wrapping Timeline */}
+          <div className="relative z-10 w-full flex flex-row flex-wrap justify-center items-stretch gap-y-8 gap-x-6 sm:gap-x-8">
+            {timeline.map((item, index) => {
+              const isCompleted = item.status === "COMPLETED";
+              return (
+                <div
+                  key={item.id}
+                  className="relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.5rem)] animate-fade-in-up group"
+                  style={{ animationDelay: `${index * 0.1}s` }}
+                >
                   {/* Content Card */}
-                  <div className="relative bg-linear-to-br from-white/10 to-white/5 backdrop-blur-sm border border-red-500/20 p-4 rounded-2xl overflow-hidden group-hover:border-red-500/40 transition-all duration-300">
+                  <div className={`h-full relative glass-panel p-6 rounded-2xl overflow-hidden border transition-all duration-300 ${isCompleted ? 'border-green-500/20 hover:border-green-500/40 hover:shadow-[0_0_20px_rgba(34,197,94,0.1)]' : 'border-red-500/10 hover:border-red-500/30'}`}>
                     {/* Glow effect on hover */}
-                    <div className="absolute -inset-1 bg-red-600/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className={`absolute -inset-1 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${isCompleted ? 'bg-green-600/10' : 'bg-red-600/10'}`} />
 
-                    {/* Top accent line */}
-                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-red-600 via-red-500 to-transparent" />
+                    {/* Top glowing line to simulate timeline path */}
+                    <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r opacity-70 group-hover:opacity-100 transition-opacity ${isCompleted ? 'from-green-600/20 via-green-500 to-green-600/20' : 'from-red-600/20 via-red-500 to-red-600/20'}`} />
 
-                    {/* Time badge */}
-                    <div className="relative flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="px-3 py-1 bg-red-600 rounded-lg shadow-lg shadow-red-500/30">
-                          <span className="text-white font-black text-sm">
-                            {item.time}
-                          </span>
-                        </div>
+                    {/* Dot indicator */}
+                    <div className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full dot-glow timeline-dot ${isCompleted ? 'bg-green-500 shadow-[0_0_10px_2px_rgba(34,197,94,0.6)] animate-pulse' : 'bg-red-600 shadow-[0_0_10px_2px_rgba(230,43,30,0.6)]'}`} />
+
+                    <div className="relative z-10 flex flex-col h-full pt-2">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className={`font-black text-xl tracking-wider drop-shadow-md flex items-center gap-1.5 ${isCompleted ? 'text-green-400' : 'text-red-500'}`}>
+                          {isCompleted && <CheckCircle2 className="w-5 h-5 text-green-400" />}
+                          {item.time}
+                        </span>
                         <span
-                          className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg ${getTimelineTypeStyle(item.type).mobile}`}
+                          className={`inline-block px-3 py-1 text-[10px] sm:text-xs uppercase font-bold tracking-wider rounded-lg ${isCompleted ? 'bg-green-500/20 text-green-400 border border-green-500/30' : getTimelineTypeStyle(item.type).desktop}`}
                         >
-                          {item.type}
+                          {isCompleted ? 'Completed' : item.type}
                         </span>
                       </div>
+
+                      <h4 className={`font-black text-lg sm:text-xl uppercase mb-3 ted-logo-text leading-tight transition-colors ${isCompleted ? 'text-green-300 group-hover:text-green-200' : 'text-white group-hover:text-red-100'}`}>
+                        {item.title}
+                      </h4>
+
+                      <p className="text-gray-400 text-sm leading-relaxed flex-grow">
+                        {item.description}
+                      </p>
                     </div>
+                  </div>
 
-                    {/* Title & Description */}
-                    <h4 className="relative text-white font-bold text-base uppercase mb-2 leading-tight">
-                      {item.title}
-                    </h4>
-                    <p className="relative text-gray-400 text-xs leading-relaxed">
-                      {item.description}
-                    </p>
-
-                    {/* Corner accent */}
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-r-2 border-b-2 border-red-600/30 rounded-br-2xl" />
+                  {/* Arrow pointing to next item */}
+                  <div className={`hidden sm:block absolute top-1/2 -right-5 -translate-y-1/2 z-20 transition-colors pointer-events-none ${isCompleted ? 'text-green-500/20 group-hover:text-green-500/60' : 'text-red-500/20 group-hover:text-red-500/60'}`}>
+                    <ArrowRight className="w-6 h-6" />
                   </div>
                 </div>
-              ))}
-            </div>
+              )
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Partner Spotlight Slideshow */}
+      <PartnerSlideshow partners={slidePartners} />
+
+      {/* Partners/Sponsors Section */}
+      <section
+        id="partners"
+        className="py-16 sm:py-28 bg-black relative overflow-hidden border-t border-white/5"
+      >
+        {/* Subtle background glow elements */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-red-600/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-1/4 left-1/3 w-72 h-72 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          {/* Section Header */}
+          <div className="text-center mb-16 sm:mb-24 animate-fade-in-up">
+            <p className="text-red-600 font-bold uppercase tracking-widest mb-3 text-xs sm:text-sm">
+              Our Supporters
+            </p>
+            <h2 className="text-3xl sm:text-5xl md:text-6xl font-black text-white uppercase tracking-tight leading-none mb-6">
+              PARTNERS & <span className="text-red-600">SPONSORS</span>
+            </h2>
+            <div className="w-20 h-1 bg-red-600 mx-auto rounded-full mb-6" />
+            <p className="text-gray-400 max-w-xl mx-auto text-sm sm:text-base leading-relaxed">
+              Accompanying TEDxFPTUniversityHCMC on the journey of spreading valuable ideas.
+            </p>
           </div>
 
-          {/* Desktop Timeline - Two columns */}
-          <div className="hidden sm:block relative">
-            {/* Vertical line */}
-            <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-px vertical-timeline-line" />
-
-            {timeline.map((item, index) => (
-              <div
-                key={item.id}
-                className={`relative flex items-center mb-16 animate-fade-in-up ${
-                  index % 2 === 0 ? "flex-row" : "flex-row-reverse"
-                }`}
-                style={{ animationDelay: `${index * 0.1}s` }}
-              >
-                {/* Content */}
-                <div
-                  className={`w-5/12 ${index % 2 === 0 ? "text-right pr-12" : "text-left pl-12"}`}
-                >
-                  <div
-                    className={`glass-panel p-6 rounded-lg inline-block ${index % 2 === 0 ? "ml-auto" : "mr-auto"}`}
-                  >
-                    <span className="text-red-600 font-bold text-lg block mb-2">
-                      {item.time}
-                    </span>
-                    <h4 className="text-white font-black text-xl uppercase mb-2 ted-logo-text">
-                      {item.title}
-                    </h4>
-                    <p className="text-gray-400 text-sm">{item.description}</p>
-                    <span
-                      className={`inline-block mt-3 px-3 py-1 text-xs uppercase tracking-wide rounded-full ${getTimelineTypeStyle(item.type).desktop}`}
-                    >
-                      {item.type}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Center dot */}
-                <div className="absolute left-1/2 -translate-x-1/2 w-4 h-4 bg-red-600 rounded-full dot-glow timeline-dot z-10" />
-
-                {/* Empty space for other side */}
-                <div className="w-5/12" />
+          <div className="flex flex-col gap-16 sm:gap-24">
+            {/* Diamond Tier */}
+            <div>
+              <div className="flex items-center gap-4 justify-center mb-6">
+                <div className="h-[1px] bg-cyan-500/20 flex-grow max-w-[120px] hidden sm:block" />
+                <h3 className="text-center font-black text-cyan-400 text-base sm:text-lg uppercase tracking-widest flex items-center gap-2">
+                  <span className="text-cyan-500">✦</span> Diamond Sponsors <span className="text-cyan-500">✦</span>
+                </h3>
+                <div className="h-[1px] bg-cyan-500/20 flex-grow max-w-[120px] hidden sm:block" />
               </div>
-            ))}
+              <div className="flex flex-wrap justify-center gap-4 sm:gap-6 max-w-4xl mx-auto">
+                {partners
+                  .filter((p) => p.tier === "diamond")
+                  .map((partner) => (
+                    <a
+                      key={partner.id}
+                      href={partner.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative flex items-center justify-center p-3 sm:p-4 w-[140px] sm:w-[180px] md:w-[200px] h-24 sm:h-28 rounded-xl border border-cyan-500/20 bg-white/5 backdrop-blur-md partner-card partner-card-diamond shine-effect mobile-tap-feedback"
+                    >
+                      {/* Glow backing */}
+                      <div className="absolute inset-0 rounded-xl bg-cyan-500/0 group-hover:bg-cyan-500/5 transition-colors duration-500 -z-10" />
+                      {/* Logo container */}
+                      <div className="filter grayscale contrast-125 opacity-55 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center w-full h-full">
+                        {getPartnerLogo(partner.id, partner.tier, partner.logo_url, partner.name)}
+                      </div>
+                    </a>
+                  ))}
+              </div>
+            </div>
+
+            {/* Gold Tier */}
+            <div>
+              <div className="flex items-center gap-4 justify-center mb-6">
+                <div className="h-[1px] bg-amber-500/20 flex-grow max-w-[120px] hidden sm:block" />
+                <h3 className="text-center font-black text-amber-400 text-base sm:text-lg uppercase tracking-widest flex items-center gap-2">
+                  <span className="text-amber-500">✦</span> Gold Sponsors <span className="text-amber-500">✦</span>
+                </h3>
+                <div className="h-[1px] bg-amber-500/20 flex-grow max-w-[120px] hidden sm:block" />
+              </div>
+              <div className="flex flex-wrap justify-center gap-3 sm:gap-4 max-w-4xl mx-auto">
+                {partners
+                  .filter((p) => p.tier === "gold")
+                  .map((partner) => (
+                    <a
+                      key={partner.id}
+                      href={partner.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative flex items-center justify-center p-2 sm:p-3 w-[110px] sm:w-[140px] md:w-[160px] h-20 sm:h-24 rounded-xl border border-amber-500/10 bg-white/5 backdrop-blur-md partner-card partner-card-gold shine-effect mobile-tap-feedback"
+                    >
+                      <div className="absolute inset-0 rounded-xl bg-amber-500/0 group-hover:bg-amber-500/5 transition-colors duration-500 -z-10" />
+                      <div className="filter grayscale contrast-125 opacity-50 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center w-full h-full">
+                        {getPartnerLogo(partner.id, partner.tier, partner.logo_url, partner.name)}
+                      </div>
+                    </a>
+                  ))}
+              </div>
+            </div>
+
+            {/* Silver Tier */}
+            <div>
+              <div className="flex items-center gap-4 justify-center mb-6">
+                <div className="h-[1px] bg-slate-400/20 flex-grow max-w-[120px] hidden sm:block" />
+                <h3 className="text-center font-black text-slate-300 text-base sm:text-lg uppercase tracking-widest flex items-center gap-2">
+                  <span className="text-slate-400">✦</span> Silver Sponsors <span className="text-slate-400">✦</span>
+                </h3>
+                <div className="h-[1px] bg-slate-400/20 flex-grow max-w-[120px] hidden sm:block" />
+              </div>
+              <div className="flex flex-wrap justify-center gap-2 sm:gap-3 max-w-5xl mx-auto">
+                {partners
+                  .filter((p) => p.tier === "silver")
+                  .map((partner) => (
+                    <a
+                      key={partner.id}
+                      href={partner.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative flex items-center justify-center p-1.5 sm:p-2 w-[80px] sm:w-[100px] md:w-[120px] lg:w-[130px] h-16 sm:h-20 rounded-lg border border-white/5 bg-white/5 backdrop-blur-md partner-card partner-card-silver shine-effect mobile-tap-feedback"
+                    >
+                      <div className="absolute inset-0 rounded-lg bg-white/0 group-hover:bg-white/5 transition-colors duration-500 -z-10" />
+                      <div className="filter grayscale contrast-125 opacity-40 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center w-full h-full">
+                        {getPartnerLogo(partner.id, partner.tier, partner.logo_url, partner.name)}
+                      </div>
+                    </a>
+                  ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Why Attend TEDx Section */}
+
       <section className="py-12 sm:py-20 bg-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8 sm:mb-12 animate-fade-in-up">
@@ -785,7 +1124,8 @@ export default function Home() {
           <Link href={`/events/${featuredEvent.id}/seats`}>
             <Button
               size="lg"
-              className="bg-black text-white hover:bg-gray-900 px-12 rounded-full animate-fade-in-up delay-200"
+              className="bg-white text-black hover:bg-zinc-100 hover:text-black px-12 rounded-full font-bold uppercase tracking-wider shadow-2xl transition-all duration-300 hover:scale-105 animate-fade-in-up delay-200"
+              style={{ backgroundColor: 'white', color: 'black' }}
             >
               GET YOUR TICKET NOW
             </Button>

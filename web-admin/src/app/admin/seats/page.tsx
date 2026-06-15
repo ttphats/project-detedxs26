@@ -32,16 +32,20 @@ import { exportSeatsToExcel } from "@/lib/excel-export";
 import type { ColumnsType } from "antd/es/table";
 
 interface Seat {
-  id: string;
-  event_id: string;
-  event_name: string;
-  seat_number: string;
-  row: string;
-  col: number;
-  section: string;
-  seat_type: "VIP" | "STANDARD" | "ECONOMY";
-  price: number;
-  status: "AVAILABLE" | "RESERVED" | "SOLD" | "LOCKED";
+  id: string
+  event_id: string
+  event_name: string
+  seat_number: string
+  row: string
+  col: number
+  section: string
+  seat_type: 'VIP' | 'STANDARD' | 'ECONOMY' | 'DISABLED' | string
+  price: number
+  status: 'AVAILABLE' | 'RESERVED' | 'SOLD' | 'LOCKED'
+  event?: {
+    id: string
+    name: string
+  }
 }
 
 interface Event {
@@ -93,9 +97,11 @@ export default function SeatsPage() {
       const data = await res.json();
 
       if (data.success) {
-        setSeats(data.data.seats);
-        setEvents(data.data.events);
-        setStats(data.data.stats);
+        // Filter out DISABLED seats from the table view since they are just layout placeholders
+        const visibleSeats = data.data.seats.filter((s: Seat) => s.seat_type !== 'DISABLED')
+        setSeats(visibleSeats)
+        setEvents(data.data.events)
+        setStats(data.data.stats)
       }
     } catch (error) {
       console.error("Failed to fetch seats:", error);
@@ -281,6 +287,11 @@ export default function SeatsPage() {
       ),
     },
     {
+      title: 'Sự kiện', 
+      key: 'event_name',
+      render: (_, record) => record.event?.name || record.event_name || 'N/A'
+    },
+    {
       title: "Section",
       dataIndex: "section",
       key: "section",
@@ -368,10 +379,10 @@ export default function SeatsPage() {
                   seatType: seat.seat_type,
                   price: seat.price,
                   status: seat.status,
-                  eventName: seat.event_name,
-                }));
-                exportSeatsToExcel(exportData);
-                message.success("Đã xuất file Excel thành công!");
+                  eventName: seat.event?.name || seat.event_name || 'N/A',
+                }))
+                exportSeatsToExcel(exportData)
+                message.success('Đã xuất file Excel thành công!')
               }}
               disabled={seats.length === 0}
             >

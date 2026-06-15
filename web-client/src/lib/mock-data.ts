@@ -248,3 +248,13 @@ export const orders: Order[] = [
 export const getEventById = (id: string): Event | undefined => events.find(e => e.id === id);
 export const getOrderById = (id: string): Order | undefined => orders.find(o => o.id === id);
 
+export interface Partner {
+  id: string;
+  name: string;
+  tier: 'diamond' | 'gold' | 'silver';
+  website: string;
+}
+
+export const tedxPartners: Partner[] = [];
+
+

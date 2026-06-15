@@ -715,42 +715,32 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         </div>
 
         {/* Ticket Types Description */}
-        <div className='mb-6 sm:mb-8 animate-fade-in'>
-          <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-            {(event.ticketTypes || [])
-              .sort((a, b) => a.level - b.level) // Sort by level: 1 (cheapest) -> 3 (most expensive)
-              .map((ticketType) => {
-                const isVIP = ticketType.name.toUpperCase().includes('VIP')
-                return (
-                  <div
-                    key={ticketType.id}
-                    className={`glass-panel rounded-xl p-4 sm:p-5 border ${
-                      isVIP
-                        ? 'border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-yellow-500/5'
-                        : 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-green-500/5'
-                    }`}
-                  >
-                    <div className='flex items-start justify-between mb-3'>
-                      <div className='flex items-center gap-3'>
-                        <div
-                          className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            isVIP
-                              ? 'bg-gradient-to-br from-yellow-400 to-orange-500'
-                              : 'bg-gradient-to-br from-emerald-400 to-emerald-600'
-                          }`}
-                        >
-                          {isVIP ? (
-                            <Star className='w-5 h-5 text-white' />
-                          ) : (
-                            <Ticket className='w-5 h-5 text-white' />
-                          )}
-                        </div>
-                        <div>
-                          <h3 className='font-bold text-white text-lg'>{ticketType.name}</h3>
-                          {ticketType.subtitle && (
-                            <p className='text-xs text-gray-400'>{ticketType.subtitle}</p>
-                          )}
-                        </div>
+        <div className="mb-6 sm:mb-8 animate-fade-in">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {(event.ticketTypes || []).map((ticketType) => {
+              const isVIP = ticketType.name.toUpperCase().includes("VIP");
+              return (
+                <div
+                  key={ticketType.id}
+                  className="glass-panel rounded-xl p-4 sm:p-5 border"
+                  style={{
+                    borderColor: `${ticketType.color}40`,
+                    background: `linear-gradient(to bottom right, ${ticketType.color}10, ${ticketType.color}05)`,
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center"
+                        style={{
+                          background: `linear-gradient(to bottom right, ${ticketType.color}, ${ticketType.color}dd)`,
+                        }}
+                      >
+                        {isVIP ? (
+                          <Star className="w-5 h-5 text-white" />
+                        ) : (
+                          <Ticket className="w-5 h-5 text-white" />
+                        )}
                       </div>
                       <div className='text-right'>
                         <p
@@ -762,14 +752,27 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                         </p>
                       </div>
                     </div>
-                    {ticketType.benefits && ticketType.benefits.length > 0 && (
-                      <ul className='space-y-1.5'>
-                        {(ticketType.benefits || []).slice(0, 4).map((benefit, idx) => (
-                          <li key={idx} className='flex items-center gap-2 text-sm text-gray-300'>
+                    <div className="text-right">
+                      <p
+                        className="font-black text-xl"
+                        style={{ color: ticketType.color }}
+                      >
+                        {Math.round(ticketType.price).toLocaleString("vi-VN")}đ
+                      </p>
+                    </div>
+                  </div>
+                  {ticketType.benefits && ticketType.benefits.length > 0 && (
+                    <ul className="space-y-1.5">
+                      {(ticketType.benefits || [])
+                        .slice(0, 4)
+                        .map((benefit, idx) => (
+                          <li
+                            key={idx}
+                            className="flex items-center gap-2 text-sm text-gray-300"
+                          >
                             <Check
-                              className={`w-4 h-4 flex-shrink-0 ${
-                                isVIP ? 'text-orange-400' : 'text-emerald-400'
-                              }`}
+                              className="w-4 h-4 flex-shrink-0"
+                              style={{ color: ticketType.color }}
                             />
                             <span>{benefit}</span>
                           </li>
@@ -1085,15 +1088,20 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                                 Ghế {seat.row}
                                 {seat.number}
                               </span>
-                              <span
-                                className={`text-xs ml-2 px-2 py-0.5 rounded-full ${
-                                  seat.seatType === 'VIP'
-                                    ? 'bg-orange-500/20 text-orange-400'
-                                    : 'bg-emerald-500/20 text-emerald-400'
-                                }`}
-                              >
-                                {seat.seatType || 'STANDARD'}
-                              </span>
+                              {(() => {
+                                const tColor = getColorByLevel(seat.level) || '#10b981';
+                                return (
+                                  <span
+                                    className="text-xs ml-2 px-2 py-0.5 rounded-full"
+                                    style={{
+                                      backgroundColor: `${tColor}33`,
+                                      color: tColor,
+                                    }}
+                                  >
+                                    {seat.seatType || "STANDARD"}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <span className='font-semibold text-red-500'>
                               {Number(seat.price).toLocaleString('vi-VN')}đ
@@ -1173,19 +1181,8 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                 <div>
                   <p className='text-xs text-gray-400'>
                     {selectedSeats.length > 0
-                      ? `${
-                          selectedSeats.filter((s) => s.seatType === 'VIP').length > 0 ? 'VIP' : ''
-                        }${
-                          selectedSeats.filter((s) => s.seatType === 'VIP').length > 0 &&
-                          selectedSeats.filter((s) => s.seatType !== 'VIP').length > 0
-                            ? ' + '
-                            : ''
-                        }${
-                          selectedSeats.filter((s) => s.seatType !== 'VIP').length > 0
-                            ? 'STANDARD'
-                            : ''
-                        }`
-                      : 'Chọn ghế để đặt vé'}
+                      ? Array.from(new Set(selectedSeats.map(s => s.seatType || "STANDARD"))).join(" + ")
+                      : "Chọn ghế để đặt vé"}
                   </p>
                   <p className='text-white font-bold'>
                     {selectedSeats.length > 0 ? (

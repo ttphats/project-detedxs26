@@ -164,3 +164,32 @@ export async function remove(request: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+/**
+ * POST /api/admin/timelines/:id/publish
+ */
+export async function publish(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    const user = request.user!;
+    requireAdmin(user);
+
+    const { id } = request.params as { id: string };
+    const { publish } = request.body as { publish: boolean };
+
+    const data = await timelinesService.updateTimeline(id, {
+      status: publish ? 'PUBLISHED' : 'DRAFT'
+    });
+
+    return reply.send({
+      success: true,
+      data,
+    });
+  } catch (error: any) {
+    console.error('Publish timeline error:', error);
+    return reply.status(500).send({
+      success: false,
+      error: error.message || 'Failed to publish timeline',
+    });
+  }
+}
+
+
