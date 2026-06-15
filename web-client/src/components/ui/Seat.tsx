@@ -48,10 +48,12 @@ export default function Seat({
 
   // Use custom color if provided, otherwise fallback to type-based colors
   const isVIP = seatType === "VIP" || (level && level >= 3);
+  const isSeatDisabled = seatType === "DISABLED";
 
   // Get colors from shared config based on seat type
-  const availableColors =
-    SEAT_COLORS[seatType as keyof typeof SEAT_COLORS] || SEAT_COLORS.STANDARD;
+  const availableColors = isSeatDisabled
+    ? { back: "from-gray-700 to-gray-800", cushion: "from-gray-600 to-gray-700", text: "text-gray-500" }
+    : SEAT_COLORS[seatType as keyof typeof SEAT_COLORS] || SEAT_COLORS.STANDARD;
   const selectedColors = SELECTED_SEAT_COLORS;
   const soldColors = SOLD_SEAT_COLORS;
   const lockedColors = LOCKED_SEAT_COLORS;
@@ -87,10 +89,11 @@ export default function Seat({
   };
 
   // Is seat disabled (can't be clicked)?
-  const isDisabled = status === "sold" || status === "locked";
+  const isDisabled = status === "sold" || status === "locked" || isSeatDisabled;
 
   // Title text
   const getTitleText = () => {
+    if (isSeatDisabled) return "Ghế vô hiệu";
     const displaySeat = seatNumber || `${row}${number}`;
     const priceText = `${displaySeat} - ${price.toLocaleString("vi-VN")}đ`;
     if (status === "sold") return `${priceText} (Đã bán)`;
@@ -128,7 +131,7 @@ export default function Seat({
         <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-md" />
         {/* Seat number */}
         <span
-          className={`relative text-[10px] sm:text-[8px] font-bold ${isDisabled ? "text-gray-400" : "text-white"}`}
+          className={`relative text-[10px] sm:text-[8px] font-bold ${isDisabled ? "text-gray-200" : "text-white"}`}
         >
           {seatNumber || `${row}${number}`}
         </span>
@@ -148,8 +151,8 @@ export default function Seat({
         }
       />
 
-      {/* Sold X indicator */}
-      {status === "sold" && (
+      {/* Sold or Disabled X indicator */}
+      {(status === "sold" || isSeatDisabled) && (
         <div className="absolute inset-0 top-0 flex items-start justify-center pt-0.5 pointer-events-none">
           <svg
             className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-white drop-shadow"

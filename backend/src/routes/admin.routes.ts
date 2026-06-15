@@ -17,11 +17,30 @@ import * as seatLocksController from '../controllers/admin/seat-locks.controller
 import * as ticketTypesController from '../controllers/admin/ticket-types.controller.js'
 import * as timelinesController from '../controllers/admin/timelines.controller.js'
 import * as customersController from '../controllers/admin/customers.controller.js'
+import * as partnersController from '../controllers/admin/partners.controller.js'
+import * as speakerRegisterController from '../controllers/admin/speaker-register.controller.js'
 import * as checkinController from '../controllers/admin/checkin.controller.js'
 
 export async function registerAdminRoutes(fastify: FastifyInstance) {
   // All admin routes require authentication
   const preHandler = requireAuth
+
+  // Partners
+  fastify.get('/admin/partners', {preHandler}, partnersController.list)
+  fastify.get('/admin/partners/:id', {preHandler}, partnersController.getById)
+  fastify.post('/admin/partners', {preHandler}, partnersController.create)
+  fastify.put('/admin/partners/:id', {preHandler}, partnersController.update)
+  fastify.delete('/admin/partners/:id', {preHandler}, partnersController.remove)
+
+  // Speaker Registration (Config, Fields, Submissions)
+  fastify.get('/admin/speakers/register/config', {preHandler}, speakerRegisterController.getConfig)
+  fastify.put('/admin/speakers/register/config', {preHandler}, speakerRegisterController.updateConfig)
+  fastify.get('/admin/speakers/register/fields', {preHandler}, speakerRegisterController.listFields)
+  fastify.post('/admin/speakers/register/fields', {preHandler}, speakerRegisterController.createField)
+  fastify.put('/admin/speakers/register/fields/:id', {preHandler}, speakerRegisterController.updateField)
+  fastify.delete('/admin/speakers/register/fields/:id', {preHandler}, speakerRegisterController.removeField)
+  fastify.get('/admin/speakers/submissions', {preHandler}, speakerRegisterController.listSubmissions)
+  fastify.put('/admin/speakers/submissions/:id/status', {preHandler}, speakerRegisterController.updateSubmissionStatus)
 
   // Dashboard
   fastify.get('/admin/dashboard/stats', {preHandler}, dashboardController.getStats)
@@ -126,6 +145,7 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
   fastify.post('/admin/timelines', {preHandler}, timelinesController.create)
   fastify.post('/admin/timelines/reorder', {preHandler}, timelinesController.reorder)
   fastify.put('/admin/timelines/:id', {preHandler}, timelinesController.update)
+  fastify.post('/admin/timelines/:id/publish', {preHandler}, timelinesController.publish)
   fastify.delete('/admin/timelines/:id', {preHandler}, timelinesController.remove)
 
   // Customers

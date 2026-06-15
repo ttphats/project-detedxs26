@@ -53,11 +53,11 @@ export default function Header() {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-2">
             {[
-              { href: "#program", label: "Timeline" },
-              { href: "#speakers", label: "Speakers" },
-              { href: "#partners", label: "Partners" },
+              { href: "/#program", label: "Timeline" },
+              { href: "/#speakers", label: "Speakers" },
+              { href: "/#partners", label: "Partners" },
             ].map((item) => (
-              <Link
+              <a
                 key={item.href}
                 href={item.href}
                 className="group relative px-5 py-2 text-gray-300 hover:text-white font-medium transition-all uppercase text-sm tracking-wider"
@@ -67,7 +67,7 @@ export default function Header() {
                 <div className="absolute inset-0 bg-white/5 rounded-full scale-0 group-hover:scale-100 transition-transform duration-300" />
                 {/* Underline animation */}
                 <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-[2px] bg-red-600 group-hover:w-3/4 transition-all duration-300" />
-              </Link>
+              </a>
             ))}
 
             {/* CTA Button with glow */}
@@ -111,11 +111,11 @@ export default function Header() {
           <div className="py-4 border-t border-white/10">
             <nav className="flex flex-col gap-1">
               {[
-                { href: "#program", label: "Timeline" },
-                { href: "#speakers", label: "Speakers" },
-                { href: "#partners", label: "Partners" },
+                { href: "/#program", label: "Timeline" },
+                { href: "/#speakers", label: "Speakers" },
+                { href: "/#partners", label: "Partners" },
               ].map((item, index) => (
-                <Link
+                <a
                   key={item.href}
                   href={item.href}
                   className="group relative px-4 py-3 text-gray-300 hover:text-white font-medium uppercase text-sm tracking-wider overflow-hidden"
@@ -124,7 +124,7 @@ export default function Header() {
                 >
                   <span className="relative z-10">{item.label}</span>
                   <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-300" />
-                </Link>
+                </a>
               ))}
               <Link
                 href="/events/evt-tedx-2026/seats"

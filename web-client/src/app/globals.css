@@ -32,6 +32,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -623,10 +627,7 @@ body {
   box-shadow: 0 0 20px 4px rgba(235, 0, 40, 0.6);
 }
 
-/* Vertical Timeline Line */
-.vertical-timeline-line {
-  background: linear-gradient(to bottom, transparent, #eb0028 10%, #eb0028 90%, transparent);
-}
+/* Vertical Timeline Line (Removed for horizontal layout) */
 
 /* Speaker Row Hover Effects */
 .speaker-row:hover .kinetic-text {
@@ -902,3 +903,54 @@ body {
     transform: scale(1.02);
   }
 }
+
+/* Partners & Sponsors Section Styles */
+.shine-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.shine-effect::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+  transform: skewX(-25deg);
+  transition: none;
+}
+
+.shine-effect:hover::after {
+  left: 150%;
+  transition: left 0.75s ease-in-out;
+}
+
+.partner-card {
+  transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.partner-card-diamond:hover {
+  border-color: rgba(6, 182, 212, 0.5) !important;
+  box-shadow: 0 0 25px rgba(6, 182, 212, 0.25);
+  transform: translateY(-6px) scale(1.03);
+}
+
+.partner-card-gold:hover {
+  border-color: rgba(245, 158, 11, 0.5) !important;
+  box-shadow: 0 0 25px rgba(245, 158, 11, 0.25);
+  transform: translateY(-6px) scale(1.03);
+}
+
+.partner-card-silver:hover {
+  border-color: rgba(209, 213, 219, 0.4) !important;
+  box-shadow: 0 0 20px rgba(209, 213, 219, 0.15);
+  transform: translateY(-4px) scale(1.02);
+}
+

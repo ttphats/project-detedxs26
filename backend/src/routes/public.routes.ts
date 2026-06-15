@@ -1,13 +1,27 @@
-import {FastifyInstance} from 'fastify'
-import * as eventController from '../controllers/event.controller.js'
-import * as seatController from '../controllers/seat.controller.js'
-import * as orderController from '../controllers/order.controller.js'
-import * as cronController from '../controllers/cron.controller.js'
-import * as seatLockController from '../controllers/seat-lock.controller.js'
-import * as ticketController from '../controllers/ticket.controller.js'
-import * as paymentController from '../controllers/payment.controller.js'
+import { FastifyInstance } from 'fastify';
+import * as eventController from '../controllers/event.controller.js';
+import * as seatController from '../controllers/seat.controller.js';
+import * as orderController from '../controllers/order.controller.js';
+import * as cronController from '../controllers/cron.controller.js';
+import * as seatLockController from '../controllers/seat-lock.controller.js';
+import * as ticketController from '../controllers/ticket.controller.js';
+import * as paymentController from '../controllers/payment.controller.js';
+import * as partnersController from '../controllers/admin/partners.controller.js';
+import * as speakerRegisterController from '../controllers/admin/speaker-register.controller.js';
 
 export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
+  // =====================================
+  // PARTNER ROUTES
+  // =====================================
+  fastify.get('/partners', partnersController.listPublic);
+
+  // =====================================
+  // SPEAKER REGISTRATION ROUTES (PUBLIC)
+  // =====================================
+  fastify.get('/speakers/register/config', speakerRegisterController.getPublicConfig);
+  fastify.get('/speakers/register/fields', speakerRegisterController.getPublicFields);
+  fastify.post('/speakers/register', speakerRegisterController.submitRegistration);
+
   // =====================================
   // EVENT ROUTES
   // =====================================
