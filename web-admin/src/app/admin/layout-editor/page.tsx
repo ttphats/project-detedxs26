@@ -713,14 +713,14 @@ export default function LayoutEditorPage() {
             <div
               className='absolute top-0 left-0 w-full h-1/2 rounded-t-md'
               style={{
-                background: 'linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)',
+                background: 'linear-gradient(to bottom, rgba(255,255,255,0.4), transparent)',
               }}
             />
-            <span className='relative text-[9px] font-bold text-white'>{displayNumber}</span>
+            <span className='relative text-[9px] font-bold text-gray-900'>{displayNumber}</span>
           </div>
           {/* Seat cushion */}
           <div
-            className='w-8 h-3 rounded-b-sm border-b border-l border-r border-white/10'
+            className='w-8 h-3 rounded-b-sm border-b border-l border-r border-gray-300'
             style={{
               background: `linear-gradient(to bottom, ${seatColor}, ${seatColor})`,
             }}
@@ -1030,10 +1030,10 @@ export default function LayoutEditorPage() {
 
         {/* Seat Layout */}
         <Card title='Sơ đồ ghế (Click để thay đổi loại)' className='overflow-auto'>
-          <div className='min-h-[500px] bg-gradient-to-b from-gray-900 to-black rounded-xl p-6 relative overflow-hidden'>
+          <div className='min-h-[500px] bg-gray-50 rounded-xl p-6 relative overflow-hidden border border-gray-200'>
             {/* Background effects */}
             <div className='absolute inset-0 pointer-events-none overflow-hidden'>
-              <div className='absolute top-10 right-10 w-[200px] h-[200px] bg-red-600/10 rounded-full blur-3xl' />
+              <div className='absolute top-10 right-10 w-[200px] h-[200px] bg-red-600/5 rounded-full blur-3xl' />
               <div className='absolute bottom-10 left-10 w-[150px] h-[150px] bg-red-600/5 rounded-full blur-3xl' />
             </div>
 
@@ -1047,12 +1047,12 @@ export default function LayoutEditorPage() {
             {/* Seats Grid */}
             <div className='space-y-2'>
               {uniqueRows.length === 0 ? (
-                <div className='text-center text-gray-300 py-20'>
+                <div className='text-center text-gray-500 py-20'>
                   <div className='text-6xl mb-4'>🪑</div>
-                  <p className='text-lg font-medium mb-2'>Chưa có ghế nào</p>
+                  <p className='text-lg font-medium text-gray-700 mb-2'>Chưa có ghế nào</p>
                   <p className='text-sm text-gray-500'>
                     Nhập cấu hình layout ở trên và click nút{' '}
-                    <strong className='text-blue-400'>"Tạo ghế"</strong> để bắt đầu
+                    <strong className='text-blue-600'>"Tạo ghế"</strong> để bắt đầu
                   </p>
                 </div>
               ) : (
@@ -1065,8 +1065,8 @@ export default function LayoutEditorPage() {
                       <button
                         onClick={() => isMultiSelect && selectRow(rowLabel)}
                         className={`w-8 text-center font-bold text-sm ${
-                          left.some((s) => s.type === 'VIP') ? 'text-orange-400' : 'text-gray-500'
-                        } ${isMultiSelect ? 'hover:text-white cursor-pointer' : ''}`}
+                          left.some((s) => s.type === 'VIP') ? 'text-orange-600' : 'text-gray-600'
+                        } ${isMultiSelect ? 'hover:text-gray-900 cursor-pointer' : ''}`}
                       >
                         {rowLabel}
                       </button>
@@ -1093,8 +1093,8 @@ export default function LayoutEditorPage() {
                       <button
                         onClick={() => isMultiSelect && selectRow(rowLabel)}
                         className={`w-8 text-center font-bold text-sm ${
-                          right.some((s) => s.type === 'VIP') ? 'text-orange-400' : 'text-gray-500'
-                        } ${isMultiSelect ? 'hover:text-white cursor-pointer' : ''}`}
+                          right.some((s) => s.type === 'VIP') ? 'text-orange-600' : 'text-gray-600'
+                        } ${isMultiSelect ? 'hover:text-gray-900 cursor-pointer' : ''}`}
                       >
                         {rowLabel}
                       </button>
@@ -1105,7 +1105,7 @@ export default function LayoutEditorPage() {
             </div>
 
             {/* Legend */}
-            <div className='flex flex-wrap justify-center gap-6 mt-8 pt-6 border-t border-white/10'>
+            <div className='flex flex-wrap justify-center gap-6 mt-8 pt-6 border-t border-gray-200'>
               {Array.from(
                 new Map(
                   ticketTypes
@@ -1116,7 +1116,7 @@ export default function LayoutEditorPage() {
                 return (
                   <div
                     key={tt.id}
-                    className='flex items-center gap-2 px-3 py-1 rounded-lg bg-white/5'
+                    className='flex items-center gap-2 px-3 py-1 rounded-lg bg-white border border-gray-200 shadow-sm'
                     style={{borderLeft: `4px solid ${tt.color}`}}
                   >
                     <div
@@ -1125,15 +1125,15 @@ export default function LayoutEditorPage() {
                         background: `linear-gradient(to bottom, ${tt.color}, ${tt.color})`,
                       }}
                     />
-                    <span className='text-white/80 text-sm'>
+                    <span className='text-gray-700 font-medium text-sm'>
                       {tt.name} (Level {tt.level})
                     </span>
                   </div>
                 )
               })}
-              <div className='flex items-center gap-2 px-3 py-1 rounded-lg bg-white/5'>
-                <div className='w-6 h-6 rounded bg-gradient-to-b from-gray-600 to-gray-700' />
-                <span className='text-white/80 text-sm'>Vô hiệu</span>
+              <div className='flex items-center gap-2 px-3 py-1 rounded-lg bg-white border border-gray-200 shadow-sm'>
+                <div className='w-6 h-6 rounded bg-gradient-to-b from-gray-400 to-gray-500' />
+                <span className='text-gray-700 font-medium text-sm'>Vô hiệu</span>
               </div>
             </div>
           </div>
@@ -1258,16 +1258,16 @@ export default function LayoutEditorPage() {
                   >
                     Load
                   </Button>
-                  {record.status === 'DRAFT' && (
+                  {!record.is_active && (
                     <Popconfirm
-                      title='Publish version này?'
+                      title={record.status === 'DRAFT' ? 'Publish version này?' : 'Active version này?'}
                       description='Sẽ cập nhật bảng Seats theo layout này'
                       onConfirm={() => handlePublish(record.id)}
-                      okText='Publish'
+                      okText={record.status === 'DRAFT' ? 'Publish' : 'Active'}
                       cancelText='Hủy'
                     >
-                      <Button size='small' type='primary' icon={<CloudUploadOutlined />}>
-                        Publish
+                      <Button size='small' type='primary' icon={record.status === 'DRAFT' ? <CloudUploadOutlined /> : <CheckCircleOutlined />}>
+                        {record.status === 'DRAFT' ? 'Publish' : 'Active'}
                       </Button>
                     </Popconfirm>
                   )}

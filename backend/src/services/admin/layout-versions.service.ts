@@ -183,8 +183,8 @@ export async function publishLayoutVersion(id: string, userId?: string) {
     throw new Error('Version not found')
   }
 
-  if (version.status === 'PUBLISHED') {
-    throw new Error('Version already published')
+  if (version.is_active) {
+    throw new Error('Version is already active')
   }
 
   // Start transaction
@@ -251,8 +251,8 @@ export async function publishLayoutVersion(id: string, userId?: string) {
 
       await connection.query(
         `INSERT INTO seats
-         (id, event_id, seat_number, row, col, section, seat_type, price, status, position_x, position_y)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?)`,
+         (id, event_id, seat_number, row, col, section, seat_type, price, status, position_x, position_y, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?, NOW(), NOW())`,
         [
           seatId,
           version.event_id,

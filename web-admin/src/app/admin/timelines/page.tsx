@@ -37,19 +37,19 @@ import dayjs from "dayjs";
 import type { UploadProps } from "antd";
 
 interface Timeline {
-  id: string;
-  event_id: string;
-  start_time: string;
-  end_time: string;
-  title: string;
-  description: string | null;
-  speaker_name: string | null;
-  speaker_avatar_url: string | null;
-  type: "TALK" | "BREAK" | "CHECKIN" | "OTHER";
-  order_index: number;
-  status: "DRAFT" | "PUBLISHED";
-  created_at: string;
-  updated_at: string;
+  id: string
+  event_id: string
+  start_time: string
+  end_time: string
+  title: string
+  description: string | null
+  speaker_name: string | null
+  speaker_avatar_url: string | null
+  type: 'TALK' | 'BREAK' | 'CHECKIN' | 'OTHER'
+  order_index: number
+  status: 'DRAFT' | 'PUBLISHED' | 'COMPLETED'
+  created_at: string
+  updated_at: string
 }
 
 interface Event {
@@ -235,6 +235,33 @@ export default function TimelinesPage() {
     }
   };
 
+  // Toggle done/completed status
+  const handleToggleDone = async (id: string, currentStatus: string) => {
+    const token = localStorage.getItem('token')
+    const newStatus = currentStatus === 'COMPLETED' ? 'PUBLISHED' : 'COMPLETED'
+    
+    try {
+      const res = await fetch(`/api/admin/timelines/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        message.success(newStatus === 'COMPLETED' ? 'Đã hoàn thành phần này!' : 'Đã chuyển thành chưa hoàn thành')
+        fetchTimelines()
+      } else {
+        message.error(data.error || 'Có lỗi xảy ra')
+      }
+    } catch (err) {
+      console.error('Toggle done error:', err)
+      message.error('Có lỗi xảy ra')
+    }
+  }
+
   // Move item (reorder)
   const handleMove = async (id: string, direction: "up" | "down") => {
     const index = timelines.findIndex((t) => t.id === id);
@@ -315,7 +342,8 @@ export default function TimelinesPage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Tag color={typeInfo.color}>{typeInfo.label}</Tag>
-              <span className="font-semibold">{record.title}</span>
+              {record.status === 'COMPLETED' && <Tag color='success'>Đã xong</Tag>}
+              <span className='font-semibold'>{record.title}</span>
             </div>
             {record.description && (
               <p className="text-gray-500 text-sm mb-1 line-clamp-2">
@@ -343,21 +371,32 @@ export default function TimelinesPage() {
       align: "center" as const,
       render: (_: any, record: Timeline) => (
         <Switch
-          checked={record.status === "PUBLISHED"}
-          checkedChildren="Công khai"
-          unCheckedChildren="Nháp"
+          checked={record.status === 'PUBLISHED' || record.status === 'COMPLETED'}
+          checkedChildren='Công khai'
+          unCheckedChildren='Nháp'
           onChange={(checked) => handlePublishToggle(record.id, checked)}
         />
       ),
     },
     {
-      title: "Thao tác",
-      key: "actions",
-      width: 100,
-      fixed: "right" as const,
+      title: 'Thao tác',
+      key: 'actions',
+      width: 140,
       render: (_: any, record: Timeline) => (
         <Space>
-          <Tooltip title="Sửa">
+          <Tooltip title={record.status === 'COMPLETED' ? 'Đánh dấu chưa xong' : 'Đánh dấu hoàn thành'}>
+            <Button
+              size='small'
+              type={record.status === 'COMPLETED' ? 'primary' : 'default'}
+              icon={<CheckCircleOutlined />}
+              onClick={() => handleToggleDone(record.id, record.status)}
+              style={record.status === 'COMPLETED' ? { backgroundColor: '#52c41a', borderColor: '#52c41a' } : undefined}
+            />
+          </Tooltip>
+          <Tooltip title='Sửa'>
+            <Button size='small' icon={<EditOutlined />} onClick={() => openModal(record)} />
+          </Tooltip>
+          <Tooltip title='Xóa'>
             <Button
               size="small"
               icon={<EditOutlined />}

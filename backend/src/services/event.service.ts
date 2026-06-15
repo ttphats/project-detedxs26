@@ -258,10 +258,11 @@ export async function getEventTimeline(eventId: string) {
     speaker_avatar_url: string | null
     type: string
     order_index: number
+    status: string
   }>(
-    `SELECT id, start_time, end_time, title, description, speaker_name, speaker_avatar_url, type, order_index
+    `SELECT id, start_time, end_time, title, description, speaker_name, speaker_avatar_url, type, order_index, status
      FROM event_timelines
-     WHERE event_id = ? AND status = 'PUBLISHED'
+     WHERE event_id = ? AND status IN ('PUBLISHED', 'COMPLETED')
      ORDER BY order_index, start_time`,
     [realEventId]
   )
@@ -275,5 +276,6 @@ export async function getEventTimeline(eventId: string) {
     speaker: t.speaker_name || undefined,
     speakerImage: t.speaker_avatar_url || undefined,
     type: t.type.toLowerCase(),
+    status: t.status,
   }))
 }

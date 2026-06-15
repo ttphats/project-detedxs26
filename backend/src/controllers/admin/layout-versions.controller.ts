@@ -164,7 +164,7 @@ export async function publish(request: FastifyRequest, reply: FastifyReply) {
       })
     }
 
-    if (error.message.includes('already published')) {
+    if (error.message.includes('already active')) {
       return reply.status(400).send({
         success: false,
         error: error.message,

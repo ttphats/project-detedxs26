@@ -314,7 +314,7 @@ export default function EditEmailTemplatePage() {
                     category: e.target.value as TemplateCategory,
                   })
                 }
-                className='w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e62b1e]'
+                className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#e62b1e]"
               >
                 {Object.entries(CATEGORY_INFO).map(([key, info]) => (
                   <option key={key} value={key}>
@@ -360,9 +360,11 @@ export default function EditEmailTemplatePage() {
               <input
                 type='text'
                 value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                className='w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e62b1e] text-gray-900 bg-white'
-                placeholder='VD: Xác nhận thanh toán - TEDx 2026'
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#e62b1e]"
+                placeholder="VD: Xác nhận thanh toán - TEDx 2026"
                 required
               />
             </div>
@@ -373,9 +375,11 @@ export default function EditEmailTemplatePage() {
               <input
                 type='text'
                 value={formData.description}
-                onChange={(e) => setFormData({...formData, description: e.target.value})}
-                className='w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e62b1e] text-gray-900 bg-white'
-                placeholder='Mô tả ngắn về template này (không bắt buộc)'
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
+                className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#e62b1e]"
+                placeholder="Mô tả ngắn về template này (không bắt buộc)"
               />
             </div>
 
@@ -387,9 +391,11 @@ export default function EditEmailTemplatePage() {
               <input
                 type='text'
                 value={formData.subject}
-                onChange={(e) => setFormData({...formData, subject: e.target.value})}
-                className='w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e62b1e] text-gray-900 bg-white'
-                placeholder='VD: [TEDx] Xác nhận thanh toán đơn hàng {{orderNumber}}'
+                onChange={(e) =>
+                  setFormData({ ...formData, subject: e.target.value })
+                }
+                className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#e62b1e]"
+                placeholder="VD: [TEDx] Xác nhận thanh toán đơn hàng {{orderNumber}}"
                 required
               />
             </div>
@@ -401,8 +407,10 @@ export default function EditEmailTemplatePage() {
               </label>
               <textarea
                 value={formData.htmlContent}
-                onChange={(e) => setFormData({...formData, htmlContent: e.target.value})}
-                className='w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e62b1e] font-mono text-sm text-gray-900 bg-white'
+                onChange={(e) =>
+                  setFormData({ ...formData, htmlContent: e.target.value })
+                }
+                className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#e62b1e] font-mono text-sm"
                 rows={15}
                 placeholder='Nhập HTML template...'
                 required

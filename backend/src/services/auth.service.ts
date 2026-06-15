@@ -19,8 +19,8 @@ interface LoginResult {
     id: string
     email: string | null
     fullName: string
+    roleName: string
     role: string
-    roleName?: string
   }
   token: string
 }
