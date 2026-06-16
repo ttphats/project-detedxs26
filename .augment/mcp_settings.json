@@ -1,0 +1,44 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "d:\\Projects\\project-detedxs26"
+      ],
+      "description": "File system access for project directory"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      },
+      "description": "GitHub integration for repository management"
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "description": "Persistent memory across sessions"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@executeautomation/playwright-mcp-server"],
+      "env": {
+        "PLAYWRIGHT_BROWSERS_PATH": "${USERPROFILE}\\.playwright"
+      },
+      "description": "Browser automation for testing and debugging"
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "description": "Fetch web content and APIs"
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "description": "Extended thinking for complex reasoning"
+    }
+  }
+}
