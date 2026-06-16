@@ -20,6 +20,8 @@ import {
   UserCheck,
   QrCode,
   LucideIcon,
+  Handshake,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
