@@ -30,10 +30,15 @@ import { MENU_LABELS } from "@/constants/menu";
 
 const menuItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/check-in", label: "QR Check-In", icon: QrCode },
   { href: "/admin/events", label: "Events", icon: Calendar },
   { href: "/admin/ticket-types", label: "Ticket Types", icon: Ticket },
   { href: "/admin/speakers", label: "Speakers", icon: Mic2 },
-  { href: "/admin/speaker-submissions", label: "Manage Applications", icon: ClipboardList },
+  {
+    href: "/admin/speaker-submissions",
+    label: "Manage Applications",
+    icon: ClipboardList,
+  },
   { href: "/admin/partners", label: "Partners", icon: Handshake },
   { href: "/admin/timelines", label: "Timeline", icon: Clock },
   { href: "/admin/layout-editor", label: "Seats & Layout", icon: Grid3X3 },
@@ -45,7 +50,6 @@ const menuItems = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
-
 
 interface MenuItemProps {
   href: string;
