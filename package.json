@@ -1,0 +1,40 @@
+{
+  "name": "tedx-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TEDx Event Management System - Monorepo",
+  "workspaces": [
+    "backend",
+    "web-admin",
+    "web-client"
+  ],
+  "scripts": {
+    "install:all": "npm install && cd backend && npm install && cd ../web-admin && npm install && cd ../web-client && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:admin": "cd web-admin && npm run dev",
+    "dev:client": "cd web-client && npm run dev",
+    "build:backend": "cd backend && npm run build",
+    "build:admin": "cd web-admin && npm run build",
+    "build:client": "cd web-client && npm run build",
+    "start:backend": "cd backend && npm start",
+    "start:admin": "cd web-admin && npm start",
+    "start:client": "cd web-client && npm start"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ttphats/project-detedxs26"
+  },
+  "keywords": [
+    "tedx",
+    "event-management",
+    "ticketing",
+    "nextjs",
+    "fastify"
+  ],
+  "author": "TEDx Team",
+  "license": "MIT"
+}
