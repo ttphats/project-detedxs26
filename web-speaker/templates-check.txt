@@ -1,0 +1,55 @@
+Email Templates Check:
+============================================================
+
+✅ No duplicates found
+
+============================================================
+All Templates:
+
+ADMIN_NOTIFICATION (v1) ✅
+  ID: c18cd9b8-99a8-47d7-bf22-adf9930f539c
+  Name: Thông báo Admin - TEDx 2026
+  Created: Fri Jan 30 2026 14:49:29 GMT+0700 (Indochina Time)
+
+CHECKIN_CONFIRMATION (v1) ✅
+  ID: c02c7c51-c96f-449f-a3ea-f0abaef502d6
+  Name: Check-in thành công - TEDx 2026
+  Created: Fri Jan 30 2026 14:49:28 GMT+0700 (Indochina Time)
+
+EVENT_REMINDER (v1) ✅
+  ID: b408b1b1-8c36-42eb-b056-8d908e2085dc
+  Name: Nhắc lịch sự kiện - TEDx 2026
+  Created: Fri Jan 30 2026 14:49:28 GMT+0700 (Indochina Time)
+
+PAYMENT_CONFIRMED (v1) ✅
+  ID: f46677a9-4c6d-4601-9b51-537a0d43888e
+  Name: Thanh toán thành công - TEDx 2026
+  Created: Fri Jan 30 2026 14:49:28 GMT+0700 (Indochina Time)
+
+PAYMENT_PENDING (v1) ✅
+  ID: 8e67d615-4037-4e21-926b-f8013dadf920
+  Name: Chờ thanh toán - TEDx 2026
+  Created: Fri Jan 30 2026 14:49:28 GMT+0700 (Indochina Time)
+
+PAYMENT_RECEIVED (v1) ✅
+  ID: 3b8efeb4-b22f-47e6-943e-383e0d4141d5
+  Name: Đã nhận thông tin thanh toán - TEDx 2026
+  Created: Fri Jan 30 2026 14:49:28 GMT+0700 (Indochina Time)
+
+PAYMENT_REJECTED (v1) ✅
+  ID: c6cefc52-a43c-4c9b-874a-17ec25a384c9
+  Name: Từ chối thanh toán - TEDx 2026
+  Created: Fri Jan 30 2026 14:49:28 GMT+0700 (Indochina Time)
+
+TICKET_CANCELLED (v1) ✅
+  ID: 4ce05fdb-82f1-42eb-b208-c8da00f7e554
+  Name: Vé bị hủy - TEDx 2026
+  Created: Fri Jan 30 2026 14:49:28 GMT+0700 (Indochina Time)
+
+TICKET_CONFIRMED (v1) ✅
+  ID: 763928b9-a79b-40c1-88bb-9ccfde733def
+  Name: Vé hợp lệ - TEDx 2026
+  Created: Fri Jan 30 2026 15:32:38 GMT+0700 (Indochina Time)
+
+============================================================
+Total: 9
