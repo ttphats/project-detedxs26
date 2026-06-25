@@ -33,7 +33,6 @@ const menuItems = [
   { href: "/admin/events", label: "Events", icon: Calendar },
   { href: "/admin/ticket-types", label: "Ticket Types", icon: Ticket },
   { href: "/admin/speakers", label: "Speakers", icon: Mic2 },
-  { href: "/admin/speaker-submissions", label: "Manage Applications", icon: ClipboardList },
   { href: "/admin/partners", label: "Partners", icon: Handshake },
   { href: "/admin/timelines", label: "Timeline", icon: Clock },
   { href: "/admin/layout-editor", label: "Seats & Layout", icon: Grid3X3 },
