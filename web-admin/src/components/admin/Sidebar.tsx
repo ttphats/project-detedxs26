@@ -21,7 +21,6 @@ import {
   QrCode,
   LucideIcon,
   Handshake,
-  FileText,
   ClipboardList,
   ChevronLeft,
   ChevronRight,
@@ -29,22 +28,43 @@ import {
 import { MENU_LABELS } from "@/constants/menu";
 
 const menuItems = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/events", label: "Events", icon: Calendar },
-  { href: "/admin/ticket-types", label: "Ticket Types", icon: Ticket },
-  { href: "/admin/speakers", label: "Speakers", icon: Mic2 },
+  {
+    href: "/admin/dashboard",
+    label: MENU_LABELS.DASHBOARD,
+    icon: LayoutDashboard,
+  },
+  { href: "/admin/check-in", label: "QR Check-In", icon: QrCode },
+  { href: "/admin/events", label: MENU_LABELS.EVENTS, icon: Calendar },
+  {
+    href: "/admin/ticket-types",
+    label: MENU_LABELS.TICKET_TYPES,
+    icon: Ticket,
+  },
+  { href: "/admin/speakers", label: MENU_LABELS.SPEAKERS, icon: Mic2 },
+  {
+    href: "/admin/speaker-submissions",
+    label: "Manage Applications",
+    icon: ClipboardList,
+  },
   { href: "/admin/partners", label: "Partners", icon: Handshake },
-  { href: "/admin/timelines", label: "Timeline", icon: Clock },
-  { href: "/admin/layout-editor", label: "Seats & Layout", icon: Grid3X3 },
-  { href: "/admin/seat-locks", label: "Seat Locks", icon: Lock },
-  { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
-  { href: "/admin/customers", label: "Customers", icon: UserCheck },
-  { href: "/admin/email-templates", label: "Email Templates", icon: Mail },
-  { href: "/admin/audit-logs", label: "Audit Logs", icon: History },
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/settings", label: "Settings", icon: Settings },
+  { href: "/admin/timelines", label: MENU_LABELS.TIMELINE, icon: Clock },
+  {
+    href: "/admin/layout-editor",
+    label: MENU_LABELS.SEATS_LAYOUT,
+    icon: Grid3X3,
+  },
+  { href: "/admin/seat-locks", label: MENU_LABELS.SEAT_LOCKS, icon: Lock },
+  { href: "/admin/orders", label: MENU_LABELS.ORDERS, icon: ShoppingCart },
+  { href: "/admin/customers", label: MENU_LABELS.CUSTOMERS, icon: UserCheck },
+  {
+    href: "/admin/email-templates",
+    label: MENU_LABELS.EMAIL_TEMPLATES,
+    icon: Mail,
+  },
+  { href: "/admin/audit-logs", label: MENU_LABELS.AUDIT_LOGS, icon: History },
+  { href: "/admin/users", label: MENU_LABELS.USERS, icon: Users },
+  { href: "/admin/settings", label: MENU_LABELS.SETTINGS, icon: Settings },
 ];
-
 
 interface MenuItemProps {
   href: string;
@@ -70,11 +90,10 @@ function MenuItem({
         href={href}
         onClick={onClick}
         prefetch={true}
-        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-          isActive
+        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${isActive
             ? "bg-[#e62b1e] text-white shadow-lg shadow-red-500/20"
             : "text-gray-400 hover:bg-white/5 hover:text-white"
-        }`}
+          }`}
         title={isCollapsed ? label : undefined}
       >
         <Icon className="w-5 h-5 shrink-0" />
