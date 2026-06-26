@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3003 -H 0.0.0.0",
-    "build": "next build",
-    "build:prisma": "prisma generate && next build",
+    "build": "prisma generate && next build",
     "start": "next start --port 3003",
     "lint": "eslint",
     "prisma:generate": "prisma generate",
