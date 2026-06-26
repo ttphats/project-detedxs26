@@ -366,31 +366,33 @@ export default function SpeakerConfigPage() {
                       {(rules, { add, remove }) => (
                         <div className="space-y-4">
                           <label className="block text-sm font-semibold text-gray-700">Application Rules</label>
-                          {rules.map((rule, index) => (
-                            <Form.Item
-                              required={false}
-                              key={rule.key}
-                              className="mb-2"
-                            >
-                              <div className="flex items-center gap-3">
-                                <span className="text-gray-500 font-bold w-6">{index + 1}.</span>
-                                <Form.Item
-                                  {...rule}
-                                  validateTrigger={['onChange', 'onBlur']}
-                                  rules={[{ required: true, whitespace: true, message: "Please fill in the rule or delete this row" }]}
-                                  noStyle
-                                >
-                                  <Input placeholder="Enter a new rule..." style={{ width: '90%' }} />
-                                </Form.Item>
-                                {rules.length > 1 ? (
-                                  <MinusCircleOutlined
-                                    className="dynamic-delete-button text-red-500 hover:text-red-400 text-lg cursor-pointer"
-                                    onClick={() => remove(rule.name)}
-                                  />
-                                ) : null}
-                              </div>
-                            </Form.Item>
-                          ))}
+                          {rules.map((rule, index) => {
+                            const { key, ...restRule } = rule;
+                            return (
+                              <Form.Item
+                                required={false}
+                                key={key}
+                                className="mb-2"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className="text-gray-500 font-bold w-6">{index + 1}.</span>
+                                  <Form.Item
+                                    {...restRule}
+                                    validateTrigger={['onChange', 'onBlur']}
+                                    rules={[{ required: true, whitespace: true, message: "Please fill in the rule or delete this row" }]}
+                                    noStyle
+                                  >
+                                    <Input placeholder="Enter a new rule..." style={{ width: '90%' }} />
+                                  </Form.Item>
+                                  {rules.length > 1 ? (
+                                    <MinusCircleOutlined
+                                      className="dynamic-delete-button text-red-500 hover:text-red-400 text-lg cursor-pointer"
+                                      onClick={() => remove(rule.name)}
+                                    />
+                                  ) : null}
+                                </div>
+                              </Form.Item>
+                            )})}
                           <Form.Item>
                             <Button
                               type="dashed"
@@ -469,6 +471,7 @@ export default function SpeakerConfigPage() {
           }}
           footer={null}
           width={550}
+          forceRender
         >
           <Form
             form={fieldForm}

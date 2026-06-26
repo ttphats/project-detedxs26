@@ -308,7 +308,7 @@ export default function SpeakerSubmissionsPage() {
         <Drawer
           title="Speaker Application Details"
           placement="right"
-          width={600}
+          size="large"
           onClose={() => {
             setIsDrawerOpen(false)
             setSelectedSubmission(null)
