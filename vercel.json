@@ -1,0 +1,44 @@
+{
+  "buildCommand": "npm run build:admin && npm run build:client",
+  "devCommand": "npm run dev:admin",
+  "installCommand": "npm install",
+  "framework": null,
+  "outputDirectory": null,
+  "builds": [
+    {
+      "src": "web-admin/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "runtime": "nodejs20.x"
+      }
+    },
+    {
+      "src": "web-client/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "runtime": "nodejs20.x"
+      }
+    },
+    {
+      "src": "web-speaker/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "runtime": "nodejs20.x"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/admin/(.*)",
+      "dest": "web-admin/$1"
+    },
+    {
+      "src": "/speaker/(.*)",
+      "dest": "web-speaker/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "web-client/$1"
+    }
+  ]
+}
