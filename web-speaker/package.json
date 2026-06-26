@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3003 -H 0.0.0.0",
-    "build": "prisma generate && next build",
+    "build": "next build",
+    "build:prisma": "prisma generate && next build",
     "start": "next start --port 3003",
     "lint": "eslint",
     "prisma:generate": "prisma generate",
@@ -49,5 +50,8 @@
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18.17.0 <24.0.0"
   }
 }
