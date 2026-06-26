@@ -6,11 +6,22 @@ export async function GET() {
     // Test database connection
     await prisma.$connect();
     const userCount = await prisma.user.count();
-    
-    return NextResponse.json({ 
+
+    // Test speaker submissions table
+    let submissionsCount = 0;
+    let submissionsError = null;
+    try {
+      submissionsCount = await prisma.speakerSubmission.count();
+    } catch (err: any) {
+      submissionsError = err.message;
+    }
+
+    return NextResponse.json({
       success: true,
       database: 'connected',
       userCount,
+      submissionsCount,
+      submissionsError,
       env: {
         hasDbUrl: !!process.env.DATABASE_URL,
         hasJwtSecret: !!process.env.JWT_SECRET,
@@ -19,7 +30,7 @@ export async function GET() {
       }
     });
   } catch (error: any) {
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: false,
       error: error.message,
       stack: error.stack
