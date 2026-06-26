@@ -1,0 +1,57 @@
+{
+  "name": "HeadOfSkillcetera",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3003 -H 0.0.0.0",
+    "build": "next build",
+    "build:prisma": "prisma generate && next build",
+    "start": "next start --port 3003",
+    "lint": "eslint",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "db:seed": "node scripts/seed.mjs"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.1.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@prisma/client": "^6.2.0",
+    "@upstash/redis": "^1.34.3",
+    "antd": "^6.2.2",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.9.0",
+    "html5-qrcode": "^2.3.8",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.563.0",
+    "mysql2": "^3.16.2",
+    "next": "^16.2.9",
+    "qrcode": "^1.5.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "recharts": "^3.7.0",
+    "resend": "^4.0.1",
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^20",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "prisma": "^6.2.0",
+    "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18.17.0 <24.0.0"
+  }
+}
