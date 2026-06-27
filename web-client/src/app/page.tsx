@@ -15,10 +15,11 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components";
 import { events as mockEvents, Speaker, TimelineItem as OriginalTimelineItem } from "@/lib/mock-data";
-import { formatVNDate } from "@/lib/date-utils";
+import { formatVNDate, generateGoogleCalendarUrl } from "@/lib/date-utils";
 
 interface TimelineItem extends OriginalTimelineItem {
   status?: string;
@@ -357,7 +358,7 @@ export default function Home() {
   useEffect(() => {
     const fetchFeaturedEvent = async () => {
       try {
-        const res = await fetch("/api/events?featured=true");
+        const res = await fetch("/api/events?featured=true", { cache: "no-store" });
         const data = await res.json();
         if (data.success && data.data) {
           // Merge with mock timeline since API doesn't have it yet
@@ -608,16 +609,21 @@ export default function Home() {
 
               {/* Event Info - Underlined style like the image */}
               <div className="flex flex-col gap-2 sm:gap-3 mb-6 sm:mb-8 animate-fade-in-up delay-400">
-                <div className="flex items-center gap-2 group cursor-default">
-                  <Calendar className="w-4 h-4 text-red-500" />
-                  <span className="text-red-500 font-medium text-sm sm:text-base underline underline-offset-4 decoration-red-500/50">
+                <a
+                  href={generateGoogleCalendarUrl(featuredEvent)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 group cursor-pointer w-fit"
+                >
+                  <Calendar className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
+                  <span className="text-red-500 font-medium text-sm sm:text-base underline underline-offset-4 decoration-red-500/50 group-hover:text-red-400 transition-colors">
                     {formatVNDate(featuredEvent.date, {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
                     })}
                   </span>
-                </div>
+                </a>
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(featuredEvent.venue + ", " + featuredEvent.location)}`}
                   target="_blank"
