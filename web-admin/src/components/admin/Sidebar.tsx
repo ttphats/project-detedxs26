@@ -42,7 +42,7 @@ const menuItems = [
   },
   { href: "/admin/speakers", label: MENU_LABELS.SPEAKERS, icon: Mic2 },
   {
-    href: "https://speaker.tedxfptuniversityhcmc.com/admin/speaker-submissions",
+    href: "/admin/speaker-submissions",
     label: "Manage Applications",
     icon: ClipboardList,
   },
