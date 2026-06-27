@@ -396,13 +396,6 @@ export default function TimelinesPage() {
           <Tooltip title='Sửa'>
             <Button size='small' icon={<EditOutlined />} onClick={() => openModal(record)} />
           </Tooltip>
-          <Tooltip title='Xóa'>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => openModal(record)}
-            />
-          </Tooltip>
           <Tooltip title="Xóa">
             <Button
               size="small"
