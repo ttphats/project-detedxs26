@@ -47,6 +47,10 @@ const envSchema = z.object({
 });
 
 function getEnv() {
+  // Skip validation during build time (static generation)
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return process.env as any;
+  }
   const parsed = envSchema.safeParse(process.env);
 
   if (!parsed.success) {
