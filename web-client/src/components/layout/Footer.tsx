@@ -84,8 +84,8 @@ export default function Footer() {
                   tedxfptuniversityhcmc@gmail.com
                 </a>
               </li>
-              <li className="flex items-center gap-2.5">
-                <Phone className="w-4 h-4 text-red-600 flex-shrink-0" />
+              <li className="flex items-start gap-2.5">
+                <Phone className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                 <a href="tel:+84702998614" className="hover:text-white transition-colors">
                   +84 70 299 8614
                 </a>

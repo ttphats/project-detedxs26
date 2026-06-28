@@ -1168,24 +1168,22 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         </div>
       </div>
 
-      {/* Mobile Sticky Checkout Bar */}
-      <div className='lg:hidden fixed bottom-16 left-0 right-0 z-40 animate-fade-in-up'>
-        <div className='mx-4 mb-2'>
-          <div className='glass-panel rounded-2xl p-4 shadow-2xl shadow-black/50 border border-white/10'>
-            {/* Selected seats summary */}
-            <div className='flex items-center justify-between mb-3'>
-              <div className='flex items-center gap-3'>
-                <div className='w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center'>
-                  <Ticket className='w-5 h-5 text-red-500' />
-                </div>
-                <div>
-                  <p className='text-xs text-gray-400'>
-                    {selectedSeats.length > 0
-                      ? Array.from(new Set(selectedSeats.map(s => s.seatType || "STANDARD"))).join(" + ")
-                      : "Chọn ghế để đặt vé"}
-                  </p>
-                  <p className='text-white font-bold'>
-                    {selectedSeats.length > 0 ? (
+      {/* Mobile Sticky Checkout Bar - Only shown when seats are selected */}
+      {selectedSeats.length > 0 && (
+        <div className='lg:hidden fixed bottom-16 left-0 right-0 z-40 animate-fade-in-up'>
+          <div className='mx-4 mb-2'>
+            <div className='glass-panel rounded-2xl p-4 shadow-2xl shadow-black/50 border border-white/10'>
+              {/* Selected seats summary */}
+              <div className='flex items-center justify-between mb-3'>
+                <div className='flex items-center gap-3'>
+                  <div className='w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center'>
+                    <Ticket className='w-5 h-5 text-red-500' />
+                  </div>
+                  <div>
+                    <p className='text-xs text-gray-400'>
+                      {Array.from(new Set(selectedSeats.map(s => s.seatType || "STANDARD"))).join(" + ")}
+                    </p>
+                    <p className='text-white font-bold'>
                       <span className='flex items-center gap-2'>
                         <span className='bg-red-600 text-white text-xs px-2 py-0.5 rounded-full'>
                           {selectedSeats.length} ghế
@@ -1198,49 +1196,47 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                           {selectedSeats.length > 3 && '...'}
                         </span>
                       </span>
-                    ) : (
-                      <span className='text-gray-500 text-sm'>Chưa chọn ghế</span>
-                    )}
+                    </p>
+                  </div>
+                </div>
+                <div className='text-right'>
+                  <p className='text-xs text-gray-400'>Tổng cộng</p>
+                  <p className='text-xl font-black text-red-500'>
+                    {totalPrice.toLocaleString('vi-VN')}đ
                   </p>
                 </div>
               </div>
-              <div className='text-right'>
-                <p className='text-xs text-gray-400'>Tổng cộng</p>
-                <p className='text-xl font-black text-red-500'>
-                  {totalPrice.toLocaleString('vi-VN')}đ
-                </p>
-              </div>
-            </div>
 
-            {/* Checkout button */}
-            <button
-              onClick={handleCheckout}
-              className={`relative w-full py-3.5 px-6 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all duration-300 overflow-hidden group ${
-                selectedSeats.length === 0 || isCheckingOut
-                  ? 'bg-gray-700 cursor-not-allowed opacity-50'
-                  : 'bg-gradient-to-r from-red-600 to-red-500 shadow-lg shadow-red-500/40 active:scale-[0.98]'
-              }`}
-              disabled={selectedSeats.length === 0 || isCheckingOut}
-            >
-              {/* Shine effect */}
-              {selectedSeats.length > 0 && !isCheckingOut && (
-                <div className='absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700' />
-              )}
-              {isCheckingOut ? (
-                <>
-                  <Loader2 className='w-4 h-4 animate-spin' />
-                  <span className='relative'>Đang xử lý...</span>
-                </>
-              ) : (
-                <>
-                  <span className='relative'>Thanh toán ngay</span>
-                  <ArrowRight className='relative w-5 h-5' />
-                </>
-              )}
-            </button>
+              {/* Checkout button */}
+              <button
+                onClick={handleCheckout}
+                className={`relative w-full py-3.5 px-6 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all duration-300 overflow-hidden group ${
+                  isCheckingOut
+                    ? 'bg-gray-700 cursor-not-allowed opacity-50'
+                    : 'bg-gradient-to-r from-red-600 to-red-500 shadow-lg shadow-red-500/40 active:scale-[0.98]'
+                }`}
+                disabled={isCheckingOut}
+              >
+                {/* Shine effect */}
+                {!isCheckingOut && (
+                  <div className='absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700' />
+                )}
+                {isCheckingOut ? (
+                  <>
+                    <Loader2 className='w-4 h-4 animate-spin' />
+                    <span className='relative'>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className='relative'>Thanh toán ngay</span>
+                    <ArrowRight className='relative w-5 h-5' />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

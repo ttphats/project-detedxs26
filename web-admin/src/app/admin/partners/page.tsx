@@ -430,7 +430,7 @@ export default function PartnersPage() {
           type="info"
           showIcon
           icon={<InfoCircleOutlined />}
-          message="Image Upload Guide"
+          title="Image Upload Guide"
           description={
             <ul className="list-disc pl-4 mt-1 text-sm space-y-1">
               <li><strong>Partner Logo</strong>: Used for "Partners & Sponsors" section at the bottom. Recommended: transparent PNG/SVG, square or any comfortable ratio.</li>
@@ -553,7 +553,7 @@ export default function PartnersPage() {
               type="warning"
               showIcon
               style={{ marginBottom: 12 }}
-              message={
+              title={
                 <span>
                   Standard size: <strong>400 × 160px</strong> (2.5:1 ratio) · Transparent PNG/WebP · If not uploaded, Slideshow will use logo instead
                 </span>

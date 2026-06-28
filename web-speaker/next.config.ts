@@ -1,7 +1,6 @@
 import type {NextConfig} from 'next'
 
-// API URL already includes /api suffix
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
 
 const nextConfig: NextConfig = {
   /* config options here */

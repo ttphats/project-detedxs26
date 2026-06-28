@@ -16,14 +16,10 @@ export function formatVNDate(
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return "-";
 
-  // Database stores Vietnam time, but JS parses as UTC and browser adds local offset
-  // So we subtract 7 hours to get correct Vietnam time display
-  const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
-
   if (options) {
-    return vnDate.toLocaleDateString("vi-VN", options);
+    return date.toLocaleDateString("vi-VN", { ...options, timeZone: "Asia/Ho_Chi_Minh" });
   }
-  return vnDate.toLocaleString("vi-VN");
+  return date.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 }
 
 /**
@@ -56,10 +52,56 @@ export function formatVNTime(dateStr: string | Date | null | undefined): string 
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return "-";
 
-  const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
-  return vnDate.toLocaleTimeString("vi-VN", {
+  return date.toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Ho_Chi_Minh"
   });
+}
+
+/**
+ * Generate Google Calendar URL for an event
+ */
+export function generateGoogleCalendarUrl(event: { name: string, date: string, time?: string, venue: string, location?: string }): string {
+  if (!event.date) return "#";
+  
+  const dateObj = new Date(event.date);
+  if (isNaN(dateObj.getTime())) return "#";
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(dateObj);
+  
+  const y = parts.find(p => p.type === 'year')?.value;
+  const m = parts.find(p => p.type === 'month')?.value;
+  const d = parts.find(p => p.type === 'day')?.value;
+  const dateStr = `${y}${m}${d}`;
+
+  let startTimeStr = "080000";
+  let endTimeStr = "120000";
+
+  if (event.time) {
+    const match = event.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?\s*(?:-|to)\s*(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (match) {
+      const [_, h1, m1, ap1, h2, m2, ap2] = match;
+      
+      let hour1 = parseInt(h1, 10);
+      if (ap1?.toUpperCase() === 'PM' && hour1 < 12) hour1 += 12;
+      if (ap1?.toUpperCase() === 'AM' && hour1 === 12) hour1 = 0;
+      
+      let hour2 = parseInt(h2, 10);
+      if (ap2?.toUpperCase() === 'PM' && hour2 < 12) hour2 += 12;
+      if (ap2?.toUpperCase() === 'AM' && hour2 === 12) hour2 = 0;
+
+      startTimeStr = `${hour1.toString().padStart(2, '0')}${m1}00`;
+      endTimeStr = `${hour2.toString().padStart(2, '0')}${m2}00`;
+    }
+  }
+
+  const dates = `${dateStr}T${startTimeStr}/${dateStr}T${endTimeStr}`;
+  const location = `${event.venue}${event.location ? ', ' + event.location : ''}`;
+  
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.name)}&dates=${dates}&ctz=Asia/Ho_Chi_Minh&location=${encodeURIComponent(location)}`;
 }
 
