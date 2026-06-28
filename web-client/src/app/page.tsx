@@ -15,10 +15,11 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components";
 import { events as mockEvents, Speaker, TimelineItem as OriginalTimelineItem } from "@/lib/mock-data";
-import { formatVNDate } from "@/lib/date-utils";
+import { formatVNDate, generateGoogleCalendarUrl } from "@/lib/date-utils";
 
 interface TimelineItem extends OriginalTimelineItem {
   status?: string;
@@ -349,6 +350,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
 
@@ -356,7 +358,7 @@ export default function Home() {
   useEffect(() => {
     const fetchFeaturedEvent = async () => {
       try {
-        const res = await fetch("/api/events?featured=true");
+        const res = await fetch("/api/events?featured=true", { cache: "no-store" });
         const data = await res.json();
         if (data.success && data.data) {
           // Merge with mock timeline since API doesn't have it yet
@@ -457,13 +459,13 @@ export default function Home() {
           }));
           setTimeline(transformed);
         } else {
-          // Fallback to mock timeline
-          setTimeline(featuredEvent.timeline);
+          // API returned empty (all hidden by admin) - show nothing
+          setTimeline([]);
         }
       } catch (error) {
         console.error("Failed to fetch timeline:", error);
-        // Fallback to mock timeline
-        setTimeline(featuredEvent.timeline);
+        // On error, show nothing rather than mock data
+        setTimeline([]);
       }
     };
     fetchTimeline();
@@ -568,18 +570,28 @@ export default function Home() {
                   FPTUNIVERSITYHCMC
                 </h2>
                 <h2 className="text-lg sm:text-2xl md:text-3xl lg:text-4xl font-black text-white leading-[1] tracking-tight uppercase mt-1">
-                  2026:
+                  {featuredEvent.name ? (featuredEvent.name.includes(':') ? featuredEvent.name.split(':')[0].split(' ').pop() : '2026') : '2026'}:
                 </h2>
               </div>
 
               {/* Finding Flow - Large Italic */}
               <div className="mb-6 sm:mb-8 animate-fade-in-up delay-100">
-                <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-red-600 leading-[0.9] tracking-tight italic animate-glow-text">
-                  FINDING
-                </h1>
-                <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-red-600 leading-[0.9] tracking-tight italic animate-glow-text">
-                  FLOW
-                </h1>
+                {featuredEvent.tagline ? (
+                  featuredEvent.tagline.split(' ').map((word, idx) => (
+                    <h1 key={idx} className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-red-600 leading-[0.9] tracking-tight italic animate-glow-text uppercase">
+                      {word}
+                    </h1>
+                  ))
+                ) : (
+                  <>
+                    <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-red-600 leading-[0.9] tracking-tight italic animate-glow-text">
+                      FINDING
+                    </h1>
+                    <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-red-600 leading-[0.9] tracking-tight italic animate-glow-text">
+                      FLOW
+                    </h1>
+                  </>
+                )}
               </div>
 
               <p className="text-gray-400 text-sm sm:text-base md:text-lg mb-6 sm:mb-8 max-w-md animate-fade-in-up delay-300 leading-relaxed">
@@ -597,16 +609,21 @@ export default function Home() {
 
               {/* Event Info - Underlined style like the image */}
               <div className="flex flex-col gap-2 sm:gap-3 mb-6 sm:mb-8 animate-fade-in-up delay-400">
-                <div className="flex items-center gap-2 group cursor-default">
-                  <Calendar className="w-4 h-4 text-red-500" />
-                  <span className="text-red-500 font-medium text-sm sm:text-base underline underline-offset-4 decoration-red-500/50">
+                <a
+                  href={generateGoogleCalendarUrl(featuredEvent)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 group cursor-pointer w-fit"
+                >
+                  <Calendar className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
+                  <span className="text-red-500 font-medium text-sm sm:text-base underline underline-offset-4 decoration-red-500/50 group-hover:text-red-400 transition-colors">
                     {formatVNDate(featuredEvent.date, {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
                     })}
                   </span>
-                </div>
+                </a>
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(featuredEvent.venue + ", " + featuredEvent.location)}`}
                   target="_blank"
@@ -799,20 +816,25 @@ export default function Home() {
             {speakers.map((speaker, index) => (
               <div
                 key={speaker.id}
-                className="group relative h-[450px] rounded-2xl overflow-hidden bg-zinc-950 border border-white/10 hover:border-red-500/50 shadow-2xl transition-all duration-500"
+                onClick={() => setActiveSpeakerId(activeSpeakerId === speaker.id ? null : speaker.id)}
+                className={`group relative h-[450px] rounded-2xl overflow-hidden bg-zinc-950 border shadow-2xl transition-all duration-500 cursor-pointer lg:cursor-default ${
+                  activeSpeakerId === speaker.id
+                    ? "border-red-500/50"
+                    : "border-white/10 hover:border-red-500/50"
+                }`}
               >
                 {/* Glow effect on hover */}
-                <div className="absolute -inset-0.5 bg-red-600/10 rounded-2xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className={`absolute -inset-0.5 bg-red-600/10 rounded-2xl blur-lg transition-opacity duration-500 ${activeSpeakerId === speaker.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
 
                 {/* Speaker Image */}
                 <img
                   src={speaker.image}
                   alt={speaker.name}
-                  className="absolute inset-0 w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105"
+                  className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${activeSpeakerId === speaker.id ? 'grayscale-0 scale-105' : 'grayscale group-hover:grayscale-0 group-hover:scale-105'}`}
                 />
 
                 {/* Image Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-85 group-hover:opacity-45 transition-opacity duration-500" />
+                <div className={`absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent transition-opacity duration-500 ${activeSpeakerId === speaker.id ? 'opacity-45' : 'opacity-85 group-hover:opacity-45'}`} />
 
                 {/* Number badge */}
                 <div className="absolute top-4 left-4 z-10 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-lg shadow-red-600/30">
@@ -820,7 +842,7 @@ export default function Home() {
                 </div>
 
                 {/* Slide-up Content Panel */}
-                <div className="absolute bottom-0 left-0 right-0 p-5 bg-zinc-950/95 backdrop-blur-md border-t border-white/10 translate-y-[calc(100%-80px)] group-hover:translate-y-0 transition-transform duration-500 ease-out flex flex-col h-full justify-between">
+                <div className={`absolute bottom-0 left-0 right-0 p-5 bg-zinc-950/95 backdrop-blur-md border-t border-white/10 transition-transform duration-500 ease-out flex flex-col h-full justify-between ${activeSpeakerId === speaker.id ? 'translate-y-0' : 'translate-y-[calc(100%-80px)] group-hover:translate-y-0'}`}>
 
                   {/* Header info (always visible at the bottom of the card) */}
                   <div>
@@ -828,13 +850,13 @@ export default function Home() {
                       <p className="text-red-500 font-bold uppercase tracking-wider text-[11px]">
                         {speaker.topic}
                       </p>
-                      <h3 className="text-white text-lg sm:text-xl font-black uppercase tracking-tight group-hover:text-red-500 transition-colors leading-tight">
+                      <h3 className={`text-lg sm:text-xl font-black uppercase tracking-tight transition-colors leading-tight ${activeSpeakerId === speaker.id ? 'text-red-500' : 'text-white group-hover:text-red-500'}`}>
                         {speaker.name}
                       </h3>
                     </div>
 
                     {/* Expanded info (visible when panel slides up) */}
-                    <div className="space-y-3 opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100 overflow-y-auto max-h-[250px] pr-1 scrollbar-thin">
+                    <div className={`space-y-3 transition-opacity duration-500 delay-100 overflow-y-auto max-h-[250px] pr-1 scrollbar-thin ${activeSpeakerId === speaker.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                       <p className="text-white/90 text-xs font-semibold italic border-l-2 border-red-500 pl-2 leading-relaxed">
                         {speaker.bio}
                       </p>
@@ -845,7 +867,7 @@ export default function Home() {
                   </div>
 
                   {/* Footer action / badge inside panel (visible when hovered) */}
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-200 pt-2 border-t border-white/5 flex items-center justify-between">
+                  <div className={`transition-opacity duration-500 delay-200 pt-2 border-t border-white/5 flex items-center justify-between ${activeSpeakerId === speaker.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                     <span className="text-[10px] text-gray-500 uppercase tracking-widest">
                       {speaker.company || "TEDx Speaker"}
                     </span>
@@ -862,8 +884,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Program/Timeline Section - Vertical Timeline */}
-      <section
+      {/* Program/Timeline Section - Only show when there are published timeline items */}
+      {timeline.length > 0 && <section
         id="program"
         className="py-12 sm:py-24 bg-black relative overflow-hidden"
       >
@@ -933,7 +955,7 @@ export default function Home() {
             })}
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* Partner Spotlight Slideshow */}
       <PartnerSlideshow partners={slidePartners} />
