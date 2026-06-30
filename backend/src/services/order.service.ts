@@ -6,13 +6,15 @@ import {
   generateAccessToken,
   verifyAccessToken,
 } from '../utils/helpers.js'
-import {Order, Seat} from '../types/index.js'
-import {redis} from '../db/redis.js'
+import { Order, Seat } from '../types/index.js'
+import { redis } from '../db/redis.js'
+import * as promotionsService from './promotions.service.js'
 
 interface CreatePendingOrderParams {
   eventId: string
   seatIds: string[]
   sessionId: string
+  promoCode?: string
 }
 
 interface CreatePendingOrderResult {
@@ -28,7 +30,7 @@ interface CreatePendingOrderResult {
 export async function createPendingOrder(
   params: CreatePendingOrderParams
 ): Promise<CreatePendingOrderResult> {
-  const {eventId, seatIds, sessionId} = params
+  const {eventId, seatIds, sessionId, promoCode} = params
 
   // 🔒 DISTRIBUTED LOCK: Prevent duplicate orders from same session
   // Use Redis lock to ensure only ONE order creation happens per session at a time
@@ -140,7 +142,38 @@ export async function createPendingOrder(
     }
 
     // Calculate total amount
-    const totalAmount = seats.reduce((sum, seat) => sum + Number(seat.price), 0)
+    const rawTotalAmount = seats.reduce((sum, seat) => sum + Number(seat.price), 0)
+    
+    // Check for promotions
+    const tickets = seats.map(s => ({
+      id: s.id,
+      price: Number(s.price),
+      ticketTypeId: (s as any).ticket_type_id || undefined
+    }))
+    
+    const discount = await promotionsService.calculateBestDiscount({ 
+      eventId, 
+      tickets, 
+      promoCode 
+    })
+    
+    let totalAmount = rawTotalAmount
+    let discountAmount = null
+    let promotionId = null
+    let appliedPromoCode = null
+    
+    if (discount) {
+      discountAmount = discount.discountAmount
+      promotionId = discount.promotionId
+      totalAmount = Math.max(0, rawTotalAmount - discountAmount)
+      
+      if (promoCode) {
+        // We only save promoCode if it was actually provided, but checking if the code matched the promotion requires us to know if this promotion is a promo code. 
+        // For simplicity, we just save the promoCode they entered.
+        appliedPromoCode = promoCode
+      }
+    }
+
     const orderNumber = generateOrderNumber()
     const orderId = generateUUID()
 
@@ -150,9 +183,9 @@ export async function createPendingOrder(
     // Create order with PENDING status (no customer info yet)
     // Save both hash (for verification) and plaintext (for email)
     await execute(
-      `INSERT INTO orders (id, order_number, event_id, total_amount, status, customer_name, customer_email, customer_phone, expires_at, access_token_hash, access_token, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'PENDING', '', '', '', DATE_ADD(NOW(), INTERVAL 15 MINUTE), ?, ?, NOW(), NOW())`,
-      [orderId, orderNumber, eventId, totalAmount, accessTokenHash, accessToken]
+      `INSERT INTO orders (id, order_number, event_id, total_amount, status, customer_name, customer_email, customer_phone, expires_at, access_token_hash, access_token, discount_amount, promotion_id, promo_code, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'PENDING', '', '', '', DATE_ADD(NOW(), INTERVAL 15 MINUTE), ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [orderId, orderNumber, eventId, totalAmount, accessTokenHash, accessToken, discountAmount, promotionId, appliedPromoCode]
     )
 
     // Create order items
@@ -163,6 +196,14 @@ export async function createPendingOrder(
        VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [orderItemId, orderId, seat.id, seat.price, seat.seat_number, seat.seat_type]
       )
+    }
+    
+    // Increment promotion used count
+    if (promotionId) {
+       await execute(
+         'UPDATE promotions SET used_count = used_count + 1 WHERE id = ?',
+         [promotionId]
+       )
     }
 
     // Get the expires_at from database to return to client

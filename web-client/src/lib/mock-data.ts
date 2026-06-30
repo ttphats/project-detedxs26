@@ -173,7 +173,7 @@ export const events: Event[] = [
     highlights: [
       { icon: 'mic', text: '12 Inspiring Speakers' },
       { icon: 'lightbulb', text: 'Ideas Worth Spreading' },
-      { icon: 'users', text: '500+ Attendees' },
+      { icon: 'users', text: '100+ Attendees' },
       { icon: 'coffee', text: 'Networking Sessions' },
     ],
     speakers: tedxSpeakers,
