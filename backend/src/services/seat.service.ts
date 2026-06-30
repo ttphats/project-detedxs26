@@ -71,7 +71,7 @@ export async function lockSeats(
   }
 
   // Clean up expired locks first
-  await execute('DELETE FROM seat_locks WHERE expires_at < NOW()')
+  await execute('DELETE FROM seat_locks WHERE expires_at < ?', [new Date()])
 
   // Check if seats exist and are available
   const placeholders = seatIds.map(() => '?').join(',')
@@ -198,10 +198,10 @@ export async function getEventSeats(eventId: string, sessionId?: string): Promis
   const seats = await query<Seat & {locked_by?: string; lock_expires_at?: Date}>(
     `SELECT s.*, sl.session_id as locked_by, sl.expires_at as lock_expires_at
      FROM seats s
-     LEFT JOIN seat_locks sl ON s.id = sl.seat_id AND sl.expires_at > NOW()
+     LEFT JOIN seat_locks sl ON s.id = sl.seat_id AND sl.expires_at > ?
      WHERE s.event_id = ?
      ORDER BY s.row, s.col`,
-    [eventId]
+    [new Date(), eventId]
   )
 
   // Helper: Extract level from seat_type (LEVEL_1 -> 1)
@@ -238,6 +238,7 @@ export async function getEventSeats(eventId: string, sessionId?: string): Promis
       section: seat.section,
       status,
       seatType: seat.seat_type, // Keep original LEVEL_X format
+      ticketTypeId: (seat as any).ticket_type_id || null,
       level: getSeatLevel(seat.seat_type), // Add level for client-side mapping
       price: Number(seat.price),
       lockExpiresAt: seat.lock_expires_at || null,

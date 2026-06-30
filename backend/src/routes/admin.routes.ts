@@ -20,10 +20,19 @@ import * as customersController from '../controllers/admin/customers.controller.
 import * as partnersController from '../controllers/admin/partners.controller.js'
 import * as speakerRegisterController from '../controllers/admin/speaker-register.controller.js'
 import * as checkinController from '../controllers/admin/checkin.controller.js'
+import * as promotionsController from '../controllers/admin/promotions.controller.js'
 
 export async function registerAdminRoutes(fastify: FastifyInstance) {
   // All admin routes require authentication
   const preHandler = requireAuth
+
+  // Promotions
+  fastify.get('/admin/promotions', {preHandler}, promotionsController.listPromotions)
+  fastify.get('/admin/promotions/:id', {preHandler}, promotionsController.getPromotion)
+  fastify.post('/admin/promotions', {preHandler}, promotionsController.createPromotion)
+  fastify.put('/admin/promotions/:id', {preHandler}, promotionsController.updatePromotion)
+  fastify.delete('/admin/promotions/:id', {preHandler}, promotionsController.deletePromotion)
+  fastify.patch('/admin/promotions/:id/toggle', {preHandler}, promotionsController.togglePromotion)
 
   // Partners
   fastify.get('/admin/partners', {preHandler}, partnersController.list)

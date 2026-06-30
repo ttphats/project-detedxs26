@@ -729,7 +729,7 @@ export default function Home() {
                       </p>
                     </div>
                     <div className="flex-1 glass-dark rounded-xl p-4 animate-fade-in-up delay-700 hover:bg-white/10 transition-colors">
-                      <p className="text-3xl font-black text-red-500">500+</p>
+                      <p className="text-3xl font-black text-red-500">100+</p>
                       <p className="text-gray-400 text-sm uppercase tracking-wide">
                         Attendees
                       </p>
@@ -1141,7 +1141,7 @@ export default function Home() {
           </h2>
           <p className="text-xl text-white/80 mb-8 animate-fade-in-up delay-100">
             Join {featuredEvent.speakerCount || speakers.length}+ speakers and
-            500+ attendees for a day of ideas worth spreading.
+            100+ attendees for a day of ideas worth spreading.
           </p>
           <Link href={`/events/${featuredEvent.id}/seats`}>
             <Button

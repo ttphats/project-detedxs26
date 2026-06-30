@@ -93,13 +93,13 @@ export default function Seat({
 
   // Title text
   const getTitleText = () => {
-    if (isSeatDisabled) return "Ghế vô hiệu";
+    if (isSeatDisabled) return "Disabled Seat";
     const displaySeat = seatNumber || `${row}${number}`;
     const priceText = `${displaySeat} - ${price.toLocaleString("vi-VN")}đ`;
-    if (status === "sold") return `${priceText} (Đã bán)`;
-    if (status === "locked") return `${priceText} (Đang được giữ)`;
+    if (status === "sold") return `${priceText} (Sold)`;
+    if (status === "locked") return `${priceText} (Reserved)`;
     if (status === "locked_by_me" || status === "selected")
-      return `${priceText} (Đã chọn)`;
+      return `${priceText} (Selected)`;
     return priceText;
   };
 
@@ -234,14 +234,14 @@ export function SeatLegend({ ticketTypes = [] }: SeatLegendProps) {
         <div
           className={`w-6 h-6 rounded-md bg-gradient-to-b ${selectedColors.back} ring-2 ring-red-400 shadow-lg ${selectedColors.glow}`}
         />
-        <span className="text-sm text-gray-300">Đã chọn</span>
+        <span className="text-sm text-gray-300">Selected</span>
       </div>
       {/* Locked by others */}
       <div className="flex items-center gap-2">
         <div
           className={`w-6 h-6 rounded-md bg-gradient-to-b ${lockedColors.back}`}
         />
-        <span className="text-sm text-gray-300">Đang giữ</span>
+        <span className="text-sm text-gray-300">Reserved</span>
       </div>
       {/* Sold */}
       <div className="flex items-center gap-2">
@@ -253,7 +253,7 @@ export function SeatLegend({ ticketTypes = [] }: SeatLegendProps) {
             <div className="w-4 h-0.5 bg-gray-400/80 -rotate-45 absolute" />
           </div>
         </div>
-        <span className="text-sm text-gray-300">Đã bán</span>
+        <span className="text-sm text-gray-300">Sold</span>
       </div>
     </div>
   );

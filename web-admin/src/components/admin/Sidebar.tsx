@@ -24,6 +24,7 @@ import {
   ClipboardList,
   ChevronLeft,
   ChevronRight,
+  Tag,
 } from "lucide-react";
 import { MENU_LABELS } from "@/constants/menu";
 
@@ -54,6 +55,7 @@ const menuItems = [
     icon: Grid3X3,
   },
   { href: "/admin/seat-locks", label: MENU_LABELS.SEAT_LOCKS, icon: Lock },
+  { href: "/admin/promotions", label: MENU_LABELS.PROMOTIONS, icon: Tag },
   { href: "/admin/orders", label: MENU_LABELS.ORDERS, icon: ShoppingCart },
   { href: "/admin/customers", label: MENU_LABELS.CUSTOMERS, icon: UserCheck },
   {
@@ -91,8 +93,8 @@ function MenuItem({
         onClick={onClick}
         prefetch={true}
         className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${isActive
-            ? "bg-[#e62b1e] text-white shadow-lg shadow-red-500/20"
-            : "text-gray-400 hover:bg-white/5 hover:text-white"
+          ? "bg-[#e62b1e] text-white shadow-lg shadow-red-500/20"
+          : "text-gray-400 hover:bg-white/5 hover:text-white"
           }`}
         title={isCollapsed ? label : undefined}
       >

@@ -114,18 +114,34 @@ export default function Header() {
                 { href: "/#program", label: "Timeline" },
                 { href: "/#speakers", label: "Speakers" },
                 { href: "/#partners", label: "Partners" },
-              ].map((item, index) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className="group relative px-4 py-3 text-gray-300 hover:text-white font-medium uppercase text-sm tracking-wider overflow-hidden"
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  <span className="relative z-10">{item.label}</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-300" />
-                </a>
-              ))}
+                { href: "/privacy", label: "Privacy Policy" },
+                { href: "/terms", label: "Terms & Conditions" },
+              ].map((item, index) => {
+                const isExternal = item.href.startsWith("/#");
+                return isExternal ? (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    className="group relative px-4 py-3 text-gray-300 hover:text-white font-medium uppercase text-sm tracking-wider overflow-hidden"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <span className="relative z-10">{item.label}</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-300" />
+                  </a>
+                ) : (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="group relative px-4 py-3 text-gray-300 hover:text-white font-medium uppercase text-sm tracking-wider overflow-hidden"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <span className="relative z-10">{item.label}</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-300" />
+                  </Link>
+                );
+              })}
               <Link
                 href="/events/evt-tedx-2026/seats"
                 className="mx-4 mt-3 px-4 py-3 bg-red-600 text-white font-bold text-center uppercase text-sm tracking-wider rounded-full hover:bg-red-500 transition-colors"

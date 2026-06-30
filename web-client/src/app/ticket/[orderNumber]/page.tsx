@@ -2,6 +2,7 @@
 
 import {useEffect, useState, use} from 'react'
 import {useSearchParams} from 'next/navigation'
+import {useTranslations} from 'next-intl'
 import {toast} from 'sonner'
 import {
   Calendar,
@@ -48,15 +49,15 @@ interface TicketData {
   }[]
 }
 
-const STATUS_CONFIG = {
+const getStatusConfig = (t: any) => ({
   PENDING: {
     color: 'yellow',
     bgClass: 'bg-yellow-500/20',
     textClass: 'text-yellow-400',
     borderClass: 'border-yellow-500/30',
     icon: AlertTriangle,
-    text: 'Chờ thanh toán',
-    description: 'Vé đang chờ xác nhận thanh toán từ hệ thống',
+    text: t('status.pending.text'),
+    description: t('status.pending.desc'),
   },
   PENDING_CONFIRMATION: {
     color: 'blue',
@@ -64,8 +65,8 @@ const STATUS_CONFIG = {
     textClass: 'text-blue-400',
     borderClass: 'border-blue-500/30',
     icon: Clock,
-    text: 'Chờ xác nhận',
-    description: 'Đã nhận thông tin thanh toán. Đang chờ admin xác nhận và gửi vé điện tử.',
+    text: t('status.pendingConf.text'),
+    description: t('status.pendingConf.desc'),
   },
   PAID: {
     color: 'green',
@@ -73,8 +74,8 @@ const STATUS_CONFIG = {
     textClass: 'text-emerald-400',
     borderClass: 'border-emerald-500/30',
     icon: CheckCircle,
-    text: 'Đã xác nhận',
-    description: 'Vé đã được xác nhận. Vui lòng mang mã QR đến sự kiện',
+    text: t('status.paid.text'),
+    description: t('status.paid.desc'),
   },
   CANCELLED: {
     color: 'red',
@@ -82,8 +83,8 @@ const STATUS_CONFIG = {
     textClass: 'text-red-400',
     borderClass: 'border-red-500/30',
     icon: XCircle,
-    text: 'Đã hủy',
-    description: 'Vé đã bị hủy và không còn hiệu lực',
+    text: t('status.cancelled.text'),
+    description: t('status.cancelled.desc'),
   },
   EXPIRED: {
     color: 'gray',
@@ -91,8 +92,8 @@ const STATUS_CONFIG = {
     textClass: 'text-gray-400',
     borderClass: 'border-gray-500/30',
     icon: Clock,
-    text: 'Hết hạn',
-    description: 'Vé đã hết hạn thanh toán',
+    text: t('status.expired.text'),
+    description: t('status.expired.desc'),
   },
 }
 
@@ -109,7 +110,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
 
   useEffect(() => {
     if (!token) {
-      setError('Thiếu mã truy cập vé')
+      setError(t('error.missingToken'))
       setLoading(false)
       return
     }
@@ -121,12 +122,12 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
         const data = await res.json()
 
         if (!res.ok || !data.success) {
-          throw new Error(data.error || 'Không thể tải thông tin vé')
+          throw new Error(data.error || t('error.fetchFailed'))
         }
 
         setTicket(data.data)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Có lỗi xảy ra')
+        setError(err instanceof Error ? err.message : t('error.generic'))
       } finally {
         setLoading(false)
       }
@@ -191,10 +192,10 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
 
-      toast.success('Đã tải vé thành công!')
+      toast.success(t('success.download'))
     } catch (err) {
       console.error('Failed to download:', err)
-      toast.error('Không thể tải vé. Vui lòng thử lại.')
+      toast.error(t('error.downloadFailed'))
     } finally {
       setDownloading(false)
     }
@@ -206,7 +207,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
       <div className='min-h-screen bg-black flex items-center justify-center'>
         <div className='text-center'>
           <Loader2 className='w-12 h-12 text-red-500 animate-spin mx-auto mb-4' />
-          <p className='text-gray-400'>Đang tải thông tin vé...</p>
+          <p className='text-gray-400'>{t('loading')}</p>
         </div>
       </div>
     )
@@ -220,13 +221,13 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
           <div className='w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6'>
             <Shield className='w-10 h-10 text-red-500' />
           </div>
-          <h1 className='text-2xl font-bold text-white mb-3'>Không thể truy cập vé</h1>
-          <p className='text-gray-400 mb-6'>{error || 'Vé không tồn tại hoặc đã hết hạn'}</p>
+          <h1 className='text-2xl font-bold text-white mb-3'>{t('error.accessDenied')}</h1>
+          <p className='text-gray-400 mb-6'>{error || t('error.notFound')}</p>
           <a
             href='/'
             className='inline-flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors'
           >
-            Về trang chủ
+            {t('backHome')}
           </a>
         </div>
       </div>
@@ -251,7 +252,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
         <div className='text-center mb-8'>
           <div className='inline-flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-sm rounded-full border border-white/10 mb-4'>
             <Ticket className='w-4 h-4 text-red-500' />
-            <span className='text-sm text-gray-400'>Vé điện tử</span>
+            <span className='text-sm text-gray-400'>{t('eTicket')}</span>
           </div>
           <h1 className='text-3xl md:text-4xl font-black text-white mb-2'>
             <span className='text-white'>TED</span>
@@ -269,7 +270,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
             <div className='flex-1'>
               <h3 className='text-amber-400 font-bold mb-1 flex items-center gap-2'>
                 <AlertTriangle className='w-4 h-4' />
-                Lưu ý quan trọng
+                {t('importantNote')}
               </h3>
               <p className='text-sm text-amber-100/90 leading-relaxed'>
                 Vui lòng <strong>lưu đường link này</strong> (bookmark hoặc copy URL) để xem trạng
@@ -328,7 +329,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                       <Calendar className='w-5 h-5 text-red-500' />
                     </div>
                     <div>
-                      <p className='text-xs text-gray-500 uppercase tracking-wide'>Ngày</p>
+                      <p className='text-xs text-gray-500 uppercase tracking-wide'>{t('date')}</p>
                       <p className='text-sm text-white font-medium'>
                         {ticket.event ? formatDate(ticket.event.eventDate) : '-'}
                       </p>
@@ -340,7 +341,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                       <Clock className='w-5 h-5 text-red-500' />
                     </div>
                     <div>
-                      <p className='text-xs text-gray-500 uppercase tracking-wide'>Giờ</p>
+                      <p className='text-xs text-gray-500 uppercase tracking-wide'>{t('time')}</p>
                       <p className='text-sm text-white font-medium'>
                         {ticket.event ? formatTimeLocal(ticket.event.startTime) : '-'}
                       </p>
@@ -352,7 +353,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                       <MapPin className='w-5 h-5 text-red-500' />
                     </div>
                     <div>
-                      <p className='text-xs text-gray-500 uppercase tracking-wide'>Địa điểm</p>
+                      <p className='text-xs text-gray-500 uppercase tracking-wide'>{t('venue')}</p>
                       <p className='text-sm text-white font-medium'>{ticket.event?.venue || '-'}</p>
                     </div>
                   </div>
@@ -374,7 +375,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                 <div className='flex items-center gap-2 mb-3'>
                   <Users className='w-4 h-4 text-gray-500' />
                   <span className='text-xs text-gray-500 uppercase tracking-wide'>
-                    Thông tin người tham dự
+                    {t('attendeeInfo')}
                   </span>
                 </div>
                 <p className='text-xl font-bold text-white mb-1'>{ticket.customerName}</p>
@@ -382,7 +383,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                   <span className='font-mono bg-white/5 px-2 py-1 rounded'>
                     #{ticket.orderNumber}
                   </span>
-                  <span>{ticket.seats.length} vé</span>
+                  <span>{ticket.seats.length} {t('tickets')}</span>
                 </div>
               </div>
 
@@ -390,7 +391,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
               <div className='mb-6'>
                 <div className='flex items-center gap-2 mb-3'>
                   <Ticket className='w-4 h-4 text-gray-500' />
-                  <span className='text-xs text-gray-500 uppercase tracking-wide'>Ghế ngồi</span>
+                  <span className='text-xs text-gray-500 uppercase tracking-wide'>{t('seat')}</span>
                 </div>
                 <div className='flex flex-wrap gap-2'>
                   {ticket.seats.map((seat, index) => (
@@ -420,7 +421,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                   <div className='flex items-center gap-2 mb-3'>
                     <QrCode className='w-4 h-4 text-gray-500' />
                     <span className='text-xs text-gray-500 uppercase tracking-wide'>
-                      Mã check-in
+                      {t('checkinCode')}
                     </span>
                   </div>
                   <div className='bg-white rounded-lg p-4 flex items-center justify-center'>
@@ -432,7 +433,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                     />
                   </div>
                   <p className='text-xs text-gray-500 mt-2 text-center'>
-                    Quét mã này tại quầy check-in
+                    {t('scanInstruction')}
                   </p>
                 </div>
               )}
@@ -444,7 +445,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                     <CheckCircle className='w-6 h-6 text-emerald-400' />
                   </div>
                   <div>
-                    <p className='text-emerald-400 font-semibold'>Đã check-in thành công!</p>
+                    <p className='text-emerald-400 font-semibold'>{t('checkinSuccess')}</p>
                     <p className='text-sm text-gray-400'>
                       {ticket.checkedInAt && new Date(ticket.checkedInAt).toLocaleString('vi-VN')}
                     </p>
@@ -454,7 +455,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
 
               {/* Total Amount */}
               <div className='flex items-center justify-between py-4 border-t border-white/10'>
-                <span className='text-gray-400'>Tổng tiền</span>
+                <span className='text-gray-400'>{t('totalAmount')}</span>
                 <span className='text-2xl font-bold text-white'>
                   {formatCurrency(ticket.totalAmount)}
                 </span>
@@ -473,7 +474,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                     ) : (
                       <Download className='w-5 h-5' />
                     )}
-                    {downloading ? 'Đang tải...' : 'Tải vé'}
+                    {downloading ? t('downloading') : t('downloadTicket')}
                   </button>
                   <button
                     onClick={handleCopyLink}
@@ -500,7 +501,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
 
         {/* Footer Note */}
         <div className='text-center mt-8 text-xs text-gray-600'>
-          <p>Vui lòng lưu lại đường link này để truy cập vé của bạn</p>
+          <p>{t('footerNote')}</p>
           <p className='mt-1'>© 2026 TEDxFPTUniversityHCMC</p>
         </div>
       </div>
