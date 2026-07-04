@@ -21,6 +21,7 @@ import * as partnersController from '../controllers/admin/partners.controller.js
 import * as speakerRegisterController from '../controllers/admin/speaker-register.controller.js'
 import * as checkinController from '../controllers/admin/checkin.controller.js'
 import * as promotionsController from '../controllers/admin/promotions.controller.js'
+import * as settingsController from '../controllers/admin/settings.controller.js'
 
 export async function registerAdminRoutes(fastify: FastifyInstance) {
   // All admin routes require authentication
@@ -167,4 +168,10 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
   // Upload (requires multipart support)
   fastify.post('/admin/upload', {preHandler}, uploadController.uploadImage)
   fastify.delete('/admin/upload', {preHandler}, uploadController.deleteImage)
+
+  // System Settings
+  fastify.get('/admin/settings', {preHandler}, settingsController.getSettings)
+  fastify.put('/admin/settings', {preHandler}, settingsController.updateSettings)
+  fastify.get('/admin/settings/notification-emails', {preHandler}, settingsController.getNotificationEmails)
+  fastify.put('/admin/settings/notification-emails', {preHandler}, settingsController.updateNotificationEmails)
 }

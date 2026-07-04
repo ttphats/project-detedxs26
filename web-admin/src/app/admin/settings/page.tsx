@@ -1,18 +1,111 @@
 'use client'
 
-import {useState} from 'react'
+import {useState, useEffect} from 'react'
 import {AdminLayout} from '@/components/admin'
-import {Card, Button, Modal, message, Alert, Space, Divider} from 'antd'
+import {Card, Button, Modal, message, Alert, Space, Divider, Input, Tag, Typography} from 'antd'
 import {
   ExclamationCircleOutlined,
   ReloadOutlined,
   DatabaseOutlined,
   WarningOutlined,
+  MailOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+  SaveOutlined,
 } from '@ant-design/icons'
+
+const {Text, Title} = Typography
 
 export default function SettingsPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const [confirmModal, setConfirmModal] = useState(false)
+
+  // Notification emails state
+  const [notificationEmails, setNotificationEmails] = useState<string[]>([])
+  const [newEmail, setNewEmail] = useState('')
+  const [emailsLoading, setEmailsLoading] = useState(true)
+  const [emailsSaving, setEmailsSaving] = useState(false)
+  const [emailsChanged, setEmailsChanged] = useState(false)
+
+  // Load notification emails on mount
+  useEffect(() => {
+    loadNotificationEmails()
+  }, [])
+
+  const loadNotificationEmails = async () => {
+    setEmailsLoading(true)
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
+      const res = await fetch(`${apiUrl}/admin/settings/notification-emails`, {
+        headers: {Authorization: `Bearer ${token}`},
+      })
+      const data = await res.json()
+      if (data.success) {
+        setNotificationEmails(data.data.emails || [])
+      }
+    } catch (err) {
+      console.error('Failed to load notification emails:', err)
+    } finally {
+      setEmailsLoading(false)
+    }
+  }
+
+  const handleAddEmail = () => {
+    const email = newEmail.trim()
+    if (!email) return
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      message.error('Email không hợp lệ / Invalid email format')
+      return
+    }
+
+    // Check duplicate
+    if (notificationEmails.includes(email)) {
+      message.warning('Email đã tồn tại / Email already exists')
+      return
+    }
+
+    setNotificationEmails([...notificationEmails, email])
+    setNewEmail('')
+    setEmailsChanged(true)
+  }
+
+  const handleRemoveEmail = (emailToRemove: string) => {
+    setNotificationEmails(notificationEmails.filter((e) => e !== emailToRemove))
+    setEmailsChanged(true)
+  }
+
+  const handleSaveEmails = async () => {
+    setEmailsSaving(true)
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
+      const res = await fetch(`${apiUrl}/admin/settings/notification-emails`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({emails: notificationEmails}),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save')
+      }
+
+      setNotificationEmails(data.data.emails)
+      setEmailsChanged(false)
+      message.success('Đã lưu danh sách email thông báo! / Notification emails saved!')
+    } catch (err: any) {
+      message.error(err.message || 'Lỗi khi lưu / Error saving')
+    } finally {
+      setEmailsSaving(false)
+    }
+  }
 
   const handleResetData = async () => {
     setResetLoading(true)
@@ -49,6 +142,82 @@ export default function SettingsPage() {
     <AdminLayout>
       <div className='p-6'>
         <h1 className='text-2xl font-bold mb-6'>Cài đặt hệ thống</h1>
+
+        {/* Notification Emails */}
+        <Card
+          title={
+            <Space>
+              <MailOutlined style={{color: '#1677ff'}} />
+              <span>Email nhận thông báo đơn hàng / Order Notification Emails</span>
+            </Space>
+          }
+          className='mb-6'
+        >
+          <Alert
+            description='Khi có đơn hàng mới (PENDING), hệ thống sẽ tự động gửi thông báo đến các email bên dưới. / When a new order is created, the system will automatically send notifications to the emails below.'
+            type='info'
+            showIcon
+            className='mb-4'
+          />
+
+          {/* Email list */}
+          <div className='mb-4'>
+            <Text strong className='block mb-2'>
+              Danh sách email / Email list:
+            </Text>
+            {emailsLoading ? (
+              <Text type='secondary'>Đang tải... / Loading...</Text>
+            ) : notificationEmails.length === 0 ? (
+              <Text type='secondary' italic>
+                Chưa có email nào. Thêm email để nhận thông báo đơn hàng mới. / No emails configured.
+                Add emails to receive new order notifications.
+              </Text>
+            ) : (
+              <div className='flex flex-wrap gap-2'>
+                {notificationEmails.map((email) => (
+                  <Tag
+                    key={email}
+                    closable
+                    onClose={() => handleRemoveEmail(email)}
+                    color='blue'
+                    style={{fontSize: 14, padding: '4px 12px'}}
+                  >
+                    <MailOutlined style={{marginRight: 4}} />
+                    {email}
+                  </Tag>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Add new email */}
+          <div className='flex gap-2 mb-4'>
+            <Input
+              placeholder='Nhập email... / Enter email...'
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              onPressEnter={handleAddEmail}
+              prefix={<MailOutlined style={{color: '#bfbfbf'}} />}
+              style={{maxWidth: 400}}
+            />
+            <Button type='dashed' icon={<PlusOutlined />} onClick={handleAddEmail}>
+              Thêm / Add
+            </Button>
+          </div>
+
+          {/* Save button */}
+          {emailsChanged && (
+            <Button
+              type='primary'
+              icon={<SaveOutlined />}
+              loading={emailsSaving}
+              onClick={handleSaveEmails}
+              size='large'
+            >
+              Lưu thay đổi / Save Changes
+            </Button>
+          )}
+        </Card>
 
         {/* Database Management */}
         <Card title='Quản lý Database' className='mb-6'>

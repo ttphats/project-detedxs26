@@ -9,6 +9,7 @@ import {
 import { Order, Seat } from '../types/index.js'
 import { redis } from '../db/redis.js'
 import * as promotionsService from './promotions.service.js'
+import { sendOrderNotificationToDevs } from './email.service.js'
 
 interface CreatePendingOrderParams {
   eventId: string
@@ -213,6 +214,20 @@ export async function createPendingOrder(
     )
 
     console.log(`[CREATE PENDING ORDER] Created order ${orderNumber} for ${seats.length} seats`)
+
+    // 📧 Send notification email to dev/admin (fire-and-forget)
+    sendOrderNotificationToDevs({
+      orderNumber,
+      eventName: event.name,
+      seats: seats.map((s) => ({
+        seatNumber: s.seat_number,
+        seatType: s.seat_type,
+        price: Number(s.price),
+      })),
+      totalAmount,
+      discountAmount: discountAmount,
+      promoCode: appliedPromoCode,
+    }).catch((err) => console.error('[NOTIFICATION] Failed:', err))
 
     return {
       orderId,
