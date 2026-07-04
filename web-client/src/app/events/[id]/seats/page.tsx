@@ -78,6 +78,78 @@ interface EventData {
   }
 }
 
+// ── Seat-gap validation ──────────────────────────────────────────────
+// Counts the number of isolated single-empty-seat gaps in a **sorted** slice.
+const countSingleGaps = (sortedSeats: SeatType[], selectedIds: Set<string>) => {
+  let gaps = 0;
+  let currentEmpty = 0;
+  for (let i = 0; i < sortedSeats.length; i++) {
+    const s = sortedSeats[i];
+    const isOccupied =
+      s.status === 'sold' ||
+      s.status === 'locked' ||
+      s.status === 'locked_by_me' ||
+      selectedIds.has(s.id);
+    if (!isOccupied) {
+      currentEmpty++;
+    } else {
+      if (currentEmpty === 1) gaps++;
+      currentEmpty = 0;
+    }
+  }
+  // Edge: single empty seat at the end of the section
+  if (currentEmpty === 1) gaps++;
+  return gaps;
+};
+
+// Split a row into physical sections (LEFT / RIGHT or auto-halve) and
+// sort each section by seat number so that array order == physical order.
+const getSections = (rowSeats: SeatType[]): SeatType[][] => {
+  const hasDefinedSections = rowSeats.some(
+    (s) => s.section === 'LEFT' || s.section === 'RIGHT'
+  );
+  const sortBySeatNum = (a: SeatType, b: SeatType) => {
+    const numA = parseInt((a.seatNumber || '').replace(/[A-Z]/gi, '')) || a.number;
+    const numB = parseInt((b.seatNumber || '').replace(/[A-Z]/gi, '')) || b.number;
+    return numA - numB;
+  };
+
+  if (hasDefinedSections) {
+    const left = rowSeats.filter((s) => s.section === 'LEFT').sort(sortBySeatNum);
+    const right = rowSeats.filter((s) => s.section === 'RIGHT').sort(sortBySeatNum);
+    return [left, right].filter((sec) => sec.length > 0);
+  }
+  // No explicit section → sort then auto-split at midpoint
+  const sorted = [...rowSeats].sort(sortBySeatNum);
+  const mid = Math.ceil(sorted.length / 2);
+  return [sorted.slice(0, mid), sorted.slice(mid)].filter((sec) => sec.length > 0);
+};
+
+// Validate that a proposed seat change does NOT create any new single-seat gap
+// in any section of the row.
+const validateSeatSelection = (
+  rowSeats: SeatType[],
+  currentSelectedIds: string[],
+  proposedSelectedIds: string[]
+): { valid: boolean; message?: string } => {
+  const currentSet = new Set(currentSelectedIds);
+  const proposedSet = new Set(proposedSelectedIds);
+  const sections = getSections(rowSeats);
+
+  for (const section of sections) {
+    const gapsBefore = countSingleGaps(section, currentSet);
+    const gapsAfter = countSingleGaps(section, proposedSet);
+    if (gapsAfter > gapsBefore) {
+      return {
+        valid: false,
+        message:
+          'Bạn không được để trống 1 ghế ở giữa. Vui lòng chọn ghế liền kề hoặc để trống từ 2 ghế trở lên.',
+      };
+    }
+  }
+  return { valid: true };
+};
+
 export default function SeatSelectionPage({params}: {params: Promise<{id: string}>}) {
   const {id} = use(params)
   const [event, setEvent] = useState<EventData | null>(null)
@@ -518,6 +590,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
     if (!seat || seat.status === 'sold' || seat.status === 'locked') return
 
     const isSelected = selectedSeats.some((s) => s.id === seatId)
+    
+    // NOTE: Seat-gap validation moved to handleCheckout — users can freely select seats
+
     setLockError(null)
 
     if (isSelected) {
@@ -593,7 +668,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         // Use seat's own price and type from database
         const seatWithPrice = {
           ...seat,
-          ticketTypeId: seat.ticketTypeId || seat.seatType?.toLowerCase() || 'standard',
+          ticketTypeId: seat.ticketTypeId || (seat.seatType ? seat.seatType.toLowerCase() : 'standard'),
           price: seat.price,
         }
 
@@ -622,6 +697,23 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
   // Handle checkout - create pending order and navigate
   const handleCheckout = async () => {
     if (selectedSeats.length === 0 || !id || !sessionId) return
+
+    // ── Seat-gap validation: check ALL rows for single-seat gaps ──
+    const allSelectedIds = selectedSeats.map(s => s.id);
+    for (const row of event!.seatMap) {
+      const validation = validateSeatSelection(
+        row.seats,
+        [],           // baseline = no selection (check absolute gaps)
+        allSelectedIds
+      );
+      if (!validation.valid) {
+        toast.error(
+          'Bạn không được để trống 1 ghế ở giữa. Vui lòng chọn ghế liền kề hoặc để trống từ 2 ghế trở lên.\n\nYou cannot leave a single empty seat in between. Please select adjacent seats or leave at least 2 empty seats.',
+          { duration: 6000 }
+        );
+        return;
+      }
+    }
 
     setIsCheckingOut(true)
     try {
