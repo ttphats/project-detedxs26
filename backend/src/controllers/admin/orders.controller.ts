@@ -1,7 +1,7 @@
 import {FastifyRequest, FastifyReply} from 'fastify'
 import * as ordersService from '../../services/admin/orders.service.js'
 import {generateTicketQRCode, generateTicketUrl} from '../../services/qrcode.service.js'
-import {sendEmailByPurpose} from '../../services/email.service.js'
+import {sendEmailByPurpose, sendOnDutyStaffNotification} from '../../services/email.service.js'
 import {
   UnauthorizedError,
   ForbiddenError,
@@ -136,6 +136,21 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       emailStatus === 'SENT'
         ? 'Xác nhận thanh toán thành công. Email đã gửi.'
         : 'Xác nhận thanh toán thành công nhưng gửi email thất bại.'
+
+    // 📧 Notify on-duty staff (fire-and-forget, non-blocking)
+    sendOnDutyStaffNotification({
+      orderNumber: result.order.orderNumber,
+      customerName: result.order.customerName,
+      customerEmail: result.order.customerEmail,
+      customerPhone: result.order.customerPhone,
+      eventName: result.order.event.name,
+      seats: result.order.orderItems.map((item: any) => ({
+        seatNumber: item.seat?.seatNumber || item.seatNumber || '',
+        seatType: item.seat?.seatType || item.seatType || '',
+        price: Number(item.price),
+      })),
+      totalAmount: Number(result.order.totalAmount),
+    }).catch((err: any) => console.error('[ON-DUTY] Failed to send staff notification:', err))
 
     return reply.send({
       success: true,

@@ -74,3 +74,21 @@ export async function getNotificationEmails(): Promise<string[]> {
 export async function setNotificationEmails(emails: string[]): Promise<void> {
   await setSetting('notification_emails', emails.join(','))
 }
+
+// ── On-duty staff helpers ──
+
+/**
+ * Get the current on-duty staff email (single address)
+ */
+export async function getOnDutyEmail(): Promise<string | null> {
+  const value = await getSetting('on_duty_email')
+  if (!value || value.trim().length === 0) return null
+  return value.trim()
+}
+
+/**
+ * Set the current on-duty staff email
+ */
+export async function setOnDutyEmail(email: string): Promise<void> {
+  await setSetting('on_duty_email', email.trim())
+}

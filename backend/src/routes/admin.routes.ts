@@ -174,4 +174,6 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
   fastify.put('/admin/settings', {preHandler}, settingsController.updateSettings)
   fastify.get('/admin/settings/notification-emails', {preHandler}, settingsController.getNotificationEmails)
   fastify.put('/admin/settings/notification-emails', {preHandler}, settingsController.updateNotificationEmails)
+  fastify.get('/admin/settings/on-duty-email', {preHandler}, settingsController.getOnDutyEmail)
+  fastify.put('/admin/settings/on-duty-email', {preHandler}, settingsController.updateOnDutyEmail)
 }
