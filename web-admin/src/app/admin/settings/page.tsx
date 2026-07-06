@@ -20,6 +20,12 @@ export default function SettingsPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const [confirmModal, setConfirmModal] = useState(false)
 
+  // On-duty staff email state
+  const [onDutyEmail, setOnDutyEmail] = useState('')
+  const [onDutyEmailInput, setOnDutyEmailInput] = useState('')
+  const [onDutyEmailLoading, setOnDutyEmailLoading] = useState(true)
+  const [onDutyEmailSaving, setOnDutyEmailSaving] = useState(false)
+
   // Notification emails state
   const [notificationEmails, setNotificationEmails] = useState<string[]>([])
   const [newEmail, setNewEmail] = useState('')
@@ -29,8 +35,64 @@ export default function SettingsPage() {
 
   // Load notification emails on mount
   useEffect(() => {
+    loadOnDutyEmail()
     loadNotificationEmails()
   }, [])
+
+  const loadOnDutyEmail = async () => {
+    setOnDutyEmailLoading(true)
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
+      const res = await fetch(`${apiUrl}/admin/settings/on-duty-email`, {
+        headers: {Authorization: `Bearer ${token}`},
+      })
+      const data = await res.json()
+      if (data.success) {
+        const val = data.data.email || ''
+        setOnDutyEmail(val)
+        setOnDutyEmailInput(val)
+      }
+    } catch (err) {
+      console.error('Failed to load on-duty email:', err)
+    } finally {
+      setOnDutyEmailLoading(false)
+    }
+  }
+
+  const handleSaveOnDutyEmail = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const trimmed = onDutyEmailInput.trim()
+    if (trimmed.length > 0 && !emailRegex.test(trimmed)) {
+      message.error('Email kh\u00f4ng h\u1ee3p l\u1ec7 / Invalid email format')
+      return
+    }
+    setOnDutyEmailSaving(true)
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
+      const res = await fetch(`${apiUrl}/admin/settings/on-duty-email`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({email: trimmed}),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save')
+      }
+      const saved = data.data.email || ''
+      setOnDutyEmail(saved)
+      setOnDutyEmailInput(saved)
+      message.success('\u0110\u00e3 c\u1eadp nh\u1eadt email tr\u1ef1c ca! / On-duty email updated!')
+    } catch (err: any) {
+      message.error(err.message || 'L\u1ed7i khi l\u01b0u / Error saving')
+    } finally {
+      setOnDutyEmailSaving(false)
+    }
+  }
 
   const loadNotificationEmails = async () => {
     setEmailsLoading(true)
@@ -142,6 +204,65 @@ export default function SettingsPage() {
     <AdminLayout>
       <div className='p-6'>
         <h1 className='text-2xl font-bold mb-6'>Cài đặt hệ thống</h1>
+
+        {/* On-Duty Staff Email */}
+        <Card
+          title={
+            <Space>
+              <MailOutlined style={{color: '#dc2626'}} />
+              <span>Email Nhân viên Trực ca / Current On-Duty Staff Email</span>
+            </Space>
+          }
+          className='mb-6'
+          style={{borderTop: '3px solid #dc2626'}}
+        >
+          <Alert
+            description='Email này sẽ nhận thông báo ngay khi admin xác nhận thanh toán. Cập nhật mỗi ca trực. / This email receives an instant alert each time an admin confirms a payment. Update at the start of each shift.'
+            type='warning'
+            showIcon
+            className='mb-4'
+          />
+          {onDutyEmailLoading ? (
+            <Text type='secondary'>Đang tải... / Loading...</Text>
+          ) : (
+            <>
+              <div className='flex gap-2 mb-2'>
+                <Input
+                  id='on-duty-email-input'
+                  type='email'
+                  placeholder='staff@example.com'
+                  value={onDutyEmailInput}
+                  onChange={(e) => setOnDutyEmailInput(e.target.value)}
+                  onPressEnter={handleSaveOnDutyEmail}
+                  prefix={<MailOutlined style={{color: '#dc2626'}} />}
+                  style={{maxWidth: 420}}
+                  status={onDutyEmailInput && onDutyEmailInput !== onDutyEmail ? 'warning' : ''}
+                />
+                <Button
+                  id='on-duty-email-save-btn'
+                  type='primary'
+                  danger
+                  icon={<SaveOutlined />}
+                  loading={onDutyEmailSaving}
+                  onClick={handleSaveOnDutyEmail}
+                  disabled={onDutyEmailInput === onDutyEmail}
+                >
+                  Cập nhật / Update
+                </Button>
+              </div>
+              {onDutyEmail && (
+                <Text type='secondary' style={{fontSize: 12}}>
+                  Hiện tại / Current: <strong>{onDutyEmail}</strong>
+                </Text>
+              )}
+              {!onDutyEmail && (
+                <Text type='secondary' italic style={{fontSize: 12}}>
+                  Chưa có email trực ca. / No on-duty email set.
+                </Text>
+              )}
+            </>
+          )}
+        </Card>
 
         {/* Notification Emails */}
         <Card
