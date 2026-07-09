@@ -1174,13 +1174,16 @@ export default function Home() {
             </button>
 
             {/* YouTube iframe */}
-            <iframe
-              className="w-full h-full rounded-xl shadow-2xl shadow-red-500/20"
-              src="https://www.youtube.com/embed/2XuXC3_pLGg?autoplay=1"
-              title="TEDxFPTUniversityHCMC Intro"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+            {/* You can replace /trailer.mp4 with your actual video file in the public folder */}
+            <video
+              className="w-full h-full rounded-xl shadow-2xl shadow-red-500/20 bg-black"
+              src="/trailer.mp4"
+              controls
+              autoPlay
+              playsInline
+            >
+              Your browser does not support the video tag.
+            </video>
           </div>
         </div>
       )}

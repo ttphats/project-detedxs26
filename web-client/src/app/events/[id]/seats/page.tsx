@@ -945,7 +945,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                         className="font-black text-xl"
                         style={{ color: ticketType.color }}
                       >
-                        {Math.round(ticketType.price).toLocaleString("vi-VN")}đ
+                        {Math.round(ticketType.price).toLocaleString("vi-VN")} VND
                       </p>
                     </div>
                   </div>

@@ -191,7 +191,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'VND',
     }).format(amount)
@@ -487,7 +487,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                   <div>
                     <p className='text-emerald-400 font-semibold'>{t('checkinSuccess')}</p>
                     <p className='text-sm text-gray-400'>
-                      {ticket.checkedInAt && new Date(ticket.checkedInAt).toLocaleString('vi-VN')}
+                      {ticket.checkedInAt && new Date(ticket.checkedInAt).toLocaleString('en-US')}
                     </p>
                   </div>
                 </div>

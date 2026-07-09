@@ -46,7 +46,7 @@ interface EventData {
 
 // Bank account info for transfer
 const bankInfo = {
-  bankName: "Ngân hàng Á Châu - ACB",
+  bankName: "Asia Commercial Bank - ACB",
   bankLogo: "/acb-logo.png",
   accountNumber: "85085588",
   accountHolder: "CONG TY TNHH TICKETHUB VN",
@@ -107,7 +107,7 @@ function CheckoutContent() {
           // Navigation Guard: if order is no longer PENDING, redirect away
           if (data.data.status !== "PENDING") {
             console.log("[CHECKOUT] Order is not PENDING, redirecting...");
-            router.replace(`/ticket/${orderNumber}?token=${accessToken}`);
+            router.replace(`/order-waiting?order=${orderNumber}&token=${accessToken}`);
             return;
           }
 
@@ -237,7 +237,7 @@ function CheckoutContent() {
   const totalPrice =
     orderData?.totalAmount ||
     selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
-  const transferContent = `Nap quy khach hang id ${orderCode}`;
+  const transferContent = `Ticket payment order ${orderCode}`;
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -291,9 +291,9 @@ function CheckoutContent() {
 
       console.log("[CHECKOUT] Payment confirmed for order:", orderNumber);
 
-      // Navigate to ticket page with token for status tracking (using replace to prevent back navigation)
-      const ticketPath = `/ticket/${orderNumber}?token=${accessToken}`;
-      router.replace(ticketPath);
+      // Navigate to waiting page where we poll for admin confirmation
+      const waitingPath = `/order-waiting?order=${orderNumber}&token=${accessToken}`;
+      router.replace(waitingPath);
     } catch (error: unknown) {
       console.error("Payment confirmation error:", error);
       setOrderError(
@@ -627,7 +627,7 @@ function CheckoutContent() {
                       <div className="w-80 h-80 bg-white rounded-lg flex items-center justify-center relative overflow-hidden">
                         <img
                           src="/bank-qr.png"
-                          alt="QR chuyển khoản ngân hàng"
+                          alt="Bank transfer QR code"
                           className="w-full h-full object-contain"
                           onError={(e) => {
                             // Fallback: hide img and show placeholder text
@@ -638,7 +638,7 @@ function CheckoutContent() {
                               fallback.className = "qr-fallback flex flex-col items-center justify-center gap-2 p-4 text-center";
                               fallback.innerHTML = `
                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9V7a2 2 0 012-2h2m0 0V3m0 2h2M3 15v2a2 2 0 002 2h2m0 0v2m0-2h2m6-14h2a2 2 0 012 2v2m0 0h2m-2 0V5m0 6h2m-2 0v2m0 4h2a2 2 0 01-2 2h-2m0 0v2m0-2h-2"/></svg>
-                                <p class="text-xs text-gray-400">Đặt file <strong>bank-qr.png</strong> vào thư mục <strong>public/</strong></p>
+                                <p class="text-xs text-gray-400">Place <strong>bank-qr.png</strong> in the <strong>public/</strong> folder</p>
                               `;
                               parent.appendChild(fallback);
                             }
