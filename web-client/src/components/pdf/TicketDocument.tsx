@@ -267,7 +267,7 @@ export interface TicketDocumentProps {
 
 // Format currency
 const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("vi-VN", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "VND",
   }).format(amount);
@@ -280,7 +280,7 @@ const formatDate = (dateString: string): string => {
   if (isNaN(date.getTime())) return "-";
   // Subtract 7 hours to correct timezone offset
   const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
-  return vnDate.toLocaleDateString("vi-VN", {
+  return vnDate.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -295,7 +295,7 @@ const formatTime = (dateString: string): string => {
   if (isNaN(date.getTime())) return "-";
   // Subtract 7 hours to correct timezone offset
   const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
-  return vnDate.toLocaleTimeString("vi-VN", {
+  return vnDate.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
   });

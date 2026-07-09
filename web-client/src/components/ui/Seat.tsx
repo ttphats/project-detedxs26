@@ -95,7 +95,7 @@ export default function Seat({
   const getTitleText = () => {
     if (isSeatDisabled) return "Disabled Seat";
     const displaySeat = seatNumber || `${row}${number}`;
-    const priceText = `${displaySeat} - ${price.toLocaleString("vi-VN")}đ`;
+    const priceText = `${displaySeat} - ${price.toLocaleString("vi-VN")} VND`;
     if (status === "sold") return `${priceText} (Sold)`;
     if (status === "locked") return `${priceText} (Reserved)`;
     if (status === "locked_by_me" || status === "selected")

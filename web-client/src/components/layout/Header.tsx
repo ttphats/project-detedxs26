@@ -39,15 +39,29 @@ export default function Header() {
           <Link href="/" className="group flex items-center gap-1 relative">
             {/* Glow behind logo on hover */}
             <div className="absolute -inset-4 bg-red-600/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <span className="relative text-2xl font-black text-white ted-logo-text tracking-tight">
-              TED
-            </span>
-            <span className="relative text-2xl font-black text-red-600 ted-logo-text animate-pulse">
-              x
-            </span>
-            <span className="relative text-lg font-light text-white/90 tracking-wide">
-              FPTUniversityHCMC
-            </span>
+            {/* You can replace /logo.png with your actual logo file in the public folder */}
+            <img 
+              src="/logo.png" 
+              alt="TEDxFPTUniversityHCMC Logo" 
+              className="relative h-16 md:h-20 w-auto object-contain z-10"
+              onError={(e) => {
+                // Fallback to text if image not found
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+            {/* Fallback text logo (hidden by default) */}
+            <div className="hidden flex items-center gap-1">
+              <span className="relative text-2xl font-black text-white ted-logo-text tracking-tight">
+                TED
+              </span>
+              <span className="relative text-2xl font-black text-red-600 ted-logo-text animate-pulse">
+                x
+              </span>
+              <span className="relative text-lg font-light text-white/90 tracking-wide">
+                FPTUniversityHCMC
+              </span>
+            </div>
           </Link>
 
           {/* Desktop Navigation */}
