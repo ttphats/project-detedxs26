@@ -554,6 +554,33 @@ export async function confirmPayment(
 
   console.log(`[CONFIRM PAYMENT] Order ${orderNumber} set to PENDING_CONFIRMATION`)
 
+  // Notify on-duty staff that an order is waiting for payment confirmation
+  try {
+    const { sendOnDutyStaffNotification } = await import('./email.service.js')
+    const orderDetails = await getOrderByNumber(orderNumber, accessToken)
+    const orderDataForEmail = await queryOne<{discount_amount: number | null, promo_code: string | null}>(
+       'SELECT discount_amount, promo_code FROM orders WHERE id = ?', [order.id]
+    )
+
+    sendOnDutyStaffNotification({
+      orderNumber: orderDetails.orderNumber,
+      customerName: orderDetails.customerName,
+      customerEmail: orderDetails.customerEmail || '',
+      customerPhone: orderDetails.customerPhone || '',
+      eventName: orderDetails.eventName,
+      seats: orderDetails.seats.map(s => ({
+        seatNumber: s.seatNumber,
+        seatType: s.seatType,
+        price: s.price
+      })),
+      totalAmount: orderDetails.totalAmount,
+      discountAmount: orderDataForEmail?.discount_amount,
+      promoCode: orderDataForEmail?.promo_code
+    }).catch((err) => console.error('[ON-DUTY] Failed to send staff notification:', err))
+  } catch (err) {
+    console.error('[ON-DUTY] Failed to prepare staff notification:', err)
+  }
+
   return {
     orderNumber,
     status: 'PENDING_CONFIRMATION',

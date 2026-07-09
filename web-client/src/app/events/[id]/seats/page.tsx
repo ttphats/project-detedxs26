@@ -143,7 +143,7 @@ const validateSeatSelection = (
       return {
         valid: false,
         message:
-          'Bạn không được để trống 1 ghế ở giữa. Vui lòng chọn ghế liền kề hoặc để trống từ 2 ghế trở lên.',
+          'You cannot leave a single empty seat in between. Please select adjacent seats or leave at least 2 empty seats.',
       };
     }
   }
@@ -458,6 +458,8 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
     // Only auto-check if no promo code is manually entered/valid
     if (promoCode && discountInfo) return
 
+    const controller = new AbortController()
+
     const checkAutoPromo = async () => {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
@@ -467,7 +469,8 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
           body: JSON.stringify({
             eventId: id,
             seatIds: selectedSeats.map(s => s.id)
-          })
+          }),
+          signal: controller.signal
         })
         const data = await res.json()
         if (data.success && data.data?.discount) {
@@ -478,14 +481,20 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         } else {
           setDiscountInfo(null)
         }
-      } catch (err) {
-        console.error('Failed to check auto promotions', err)
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          // Ignore network errors on unmount or fast navigation
+          console.debug('Promo check cancelled or failed', err)
+        }
       }
     }
     
     // Debounce slightly to avoid spamming the API when selecting multiple seats
     const timeout = setTimeout(checkAutoPromo, 500)
-    return () => clearTimeout(timeout)
+    return () => {
+      clearTimeout(timeout)
+      controller.abort()
+    }
   }, [selectedSeats, id, promoCode])
 
   const handleApplyPromoCode = async () => {
@@ -708,7 +717,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
       );
       if (!validation.valid) {
         toast.error(
-          'Bạn không được để trống 1 ghế ở giữa. Vui lòng chọn ghế liền kề hoặc để trống từ 2 ghế trở lên.\n\nYou cannot leave a single empty seat in between. Please select adjacent seats or leave at least 2 empty seats.',
+          'You cannot leave a single empty seat in between. Please select adjacent seats or leave at least 2 empty seats.',
           { duration: 6000 }
         );
         return;
@@ -927,7 +936,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                             isVIP ? 'text-orange-400' : 'text-emerald-400'
                           }`}
                         >
-                          {Math.round(ticketType.price).toLocaleString('vi-VN')}đ
+                          {Math.round(ticketType.price).toLocaleString()} VND
                         </p>
                       </div>
                     </div>
@@ -1101,7 +1110,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                 <div className='overflow-x-auto mobile-hide-scrollbar pb-4'>
                   {/* Mobile scroll hint */}
                   <p className='text-center text-gray-500 text-xs mb-3 sm:hidden'>
-                    ← Vuốt ngang để xem thêm seats →
+                    ← Swipe to see more seats →
                   </p>
                   <div className='min-w-[600px] sm:min-w-[500px] space-y-3 sm:space-y-3 px-2'>
                     {(event.seatMap || []).map((row) => {
@@ -1283,7 +1292,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                               })()}
                             </div>
                             <span className='font-semibold text-red-500'>
-                              {Number(seat.price).toLocaleString('vi-VN')}đ
+                              {Number(seat.price).toLocaleString()} VND
                             </span>
                           </div>
                         ))}
@@ -1328,7 +1337,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                               <span className='text-xs opacity-80'>({discountInfo.name})</span>
                             </span>
                             <span className='font-semibold'>
-                              -{discountInfo.amount.toLocaleString('vi-VN')}đ
+                              -{discountInfo.amount.toLocaleString()} VND
                             </span>
                           </div>
                         )}
@@ -1337,7 +1346,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                           <span className='text-lg font-bold text-white'>Total</span>
                           <div className='text-right'>
                             <span className='text-2xl md:text-3xl font-black text-red-500 animate-glow-text'>
-                              {Math.max(0, totalPrice - (discountInfo?.amount || 0)).toLocaleString('vi-VN')}đ
+                              {Math.max(0, totalPrice - (discountInfo?.amount || 0)).toLocaleString()} VND
                             </span>
                           </div>
                         </div>
@@ -1418,7 +1427,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                 <div className='text-right'>
                   <p className='text-xs text-gray-400'>Total</p>
                   <p className='text-xl font-black text-red-500'>
-                    {totalPrice.toLocaleString('vi-VN')}đ
+                    {totalPrice.toLocaleString()} VND
                   </p>
                 </div>
               </div>

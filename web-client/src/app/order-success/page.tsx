@@ -58,10 +58,10 @@ function OrderSuccessContent() {
               />
             </div>
             <h1 className="text-3xl md:text-4xl font-black text-white mt-6 mb-3">
-              Đặt vé thành công!
+              Booking successful!
             </h1>
             <p className="text-gray-400">
-              Cảm ơn bạn đã đặt vé. Thông tin vé đã được gửi đến email của bạn.
+              Thank you for booking. Ticket information has been sent to your email.
             </p>
           </div>
 
@@ -70,7 +70,7 @@ function OrderSuccessContent() {
             <div className="flex items-center justify-center gap-2 mb-3">
               <Ticket className="w-5 h-5 text-red-500" />
               <span className="text-sm font-medium text-gray-400">
-                Mã đơn hàng
+                Order number
               </span>
             </div>
             <p className="text-2xl md:text-3xl font-black text-red-500 font-mono tracking-wider">
@@ -107,7 +107,7 @@ function OrderSuccessContent() {
 
             {/* Seats */}
             <div className="mt-4 pt-4 border-t border-white/10">
-              <p className="text-sm text-gray-400 mb-3">Ghế đã đặt:</p>
+              <p className="text-sm text-gray-400 mb-3">Selected seats:</p>
               <div className="flex flex-wrap gap-2">
                 {seatIds.map((seatId) => (
                   <span
@@ -127,12 +127,12 @@ function OrderSuccessContent() {
               {/* Shine effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
               <Download className="relative w-5 h-5" />
-              <span className="relative">Tải vé điện tử</span>
+              <span className="relative">Download e-ticket</span>
             </button>
             <Link href="/" className="block">
               <button className="w-full py-4 px-6 rounded-xl font-bold text-white flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 transition-all duration-300">
                 <Home className="w-5 h-5" />
-                <span>Về trang chủ</span>
+                <span>Back to home</span>
               </button>
             </Link>
           </div>
@@ -140,8 +140,8 @@ function OrderSuccessContent() {
           {/* Note */}
           <div className="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
             <p className="text-sm text-yellow-400">
-              <strong>Lưu ý:</strong> Vui lòng mang theo vé điện tử hoặc mã QR
-              khi đến sự kiện. Vé đã được gửi đến email của bạn.
+              <strong>Note:</strong> Please bring the e-ticket or QR code
+              to the event. The ticket has been sent to your email.
             </p>
           </div>
         </div>
@@ -157,7 +157,7 @@ export default function OrderSuccessPage() {
         <div className="min-h-screen bg-black flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-400">Đang tải...</p>
+            <p className="text-gray-400">Loading...</p>
           </div>
         </div>
       }

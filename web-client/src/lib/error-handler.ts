@@ -2,7 +2,7 @@
  * Sanitize error messages for production
  * Never expose technical database errors to users
  */
-export function sanitizeError(error: any, fallbackMessage: string = 'Có lỗi xảy ra'): string {
+export function sanitizeError(error: any, fallbackMessage: string = 'An error occurred'): string {
   // Always log the real error for debugging
   console.error('Error:', error)
 
@@ -46,7 +46,7 @@ export function sanitizeError(error: any, fallbackMessage: string = 'Có lỗi x
  */
 export function createErrorResponse(
   error: any,
-  fallbackMessage: string = 'Có lỗi xảy ra'
+  fallbackMessage: string = 'An error occurred'
 ): {success: false; error: string} {
   return {
     success: false,

@@ -2,7 +2,6 @@
 
 import {useEffect, useState, use} from 'react'
 import {useSearchParams} from 'next/navigation'
-import {useTranslations} from 'next-intl'
 import {toast} from 'sonner'
 import {
   Calendar,
@@ -47,6 +46,47 @@ interface TicketData {
     seatType: string
     price: number
   }[]
+}
+
+const TRANSLATIONS: Record<string, string> = {
+  'status.pending.text': 'Pending Payment',
+  'status.pending.desc': 'Please complete your payment to receive the ticket.',
+  'status.pendingConf.text': 'Pending Confirmation',
+  'status.pendingConf.desc': 'Your order is pending confirmation from the organizer.',
+  'status.paid.text': 'Paid',
+  'status.paid.desc': 'Payment successful. Below is your e-ticket.',
+  'status.cancelled.text': 'Cancelled',
+  'status.cancelled.desc': 'This order has been cancelled.',
+  'status.expired.text': 'Expired',
+  'status.expired.desc': 'Ticket reservation time has expired.',
+  'error.missingToken': 'Missing authentication token.',
+  'error.fetchFailed': 'Failed to fetch ticket information.',
+  'error.generic': 'An error occurred, please try again later.',
+  'success.download': 'Ticket downloaded successfully',
+  'error.downloadFailed': 'Failed to download ticket. Please try again.',
+  'loading': 'Loading ticket data...',
+  'error.accessDenied': 'Access Denied',
+  'error.notFound': 'Ticket not found. Please check the link.',
+  'backHome': 'Back to home',
+  'eTicket': 'E-Ticket',
+  'importantNote': 'Important Note',
+  'date': 'Date',
+  'time': 'Time',
+  'venue': 'Venue',
+  'attendeeInfo': 'Attendee Information',
+  'tickets': 'tickets',
+  'seat': 'Seat',
+  'checkinCode': 'Check-in Code',
+  'scanInstruction': 'Please present this code to the staff at the event',
+  'checkinSuccess': 'Checked-in',
+  'totalAmount': 'Total Amount',
+  'downloading': 'Downloading...',
+  'downloadTicket': 'Download Ticket (PDF)',
+  'footerNote': 'TEDxFPTUniversityHCMC 2026. For inquiries, please contact our fanpage.'
+}
+
+const useTranslations = () => {
+  return (key: string) => TRANSLATIONS[key] || key
 }
 
 const getStatusConfig = (t: any) => ({
@@ -95,12 +135,13 @@ const getStatusConfig = (t: any) => ({
     text: t('status.expired.text'),
     description: t('status.expired.desc'),
   },
-}
+})
 
 export default function TicketPage({params}: {params: Promise<{orderNumber: string}>}) {
   const {orderNumber} = use(params)
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
+  const t = useTranslations()
 
   const [ticket, setTicket] = useState<TicketData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -234,6 +275,7 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
     )
   }
 
+  const STATUS_CONFIG = getStatusConfig(t)
   const statusConfig =
     STATUS_CONFIG[ticket.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.PENDING
   const StatusIcon = statusConfig.icon
@@ -268,14 +310,12 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
               <Shield className='w-5 h-5 text-amber-400' />
             </div>
             <div className='flex-1'>
-              <h3 className='text-amber-400 font-bold mb-1 flex items-center gap-2'>
+              <h3 className='text-sm font-semibold text-amber-300 flex items-center gap-2 mb-2'>
                 <AlertTriangle className='w-4 h-4' />
                 {t('importantNote')}
               </h3>
               <p className='text-sm text-amber-100/90 leading-relaxed'>
-                Vui lòng <strong>lưu đường link này</strong> (bookmark hoặc copy URL) để xem trạng
-                thái vé sau này. Link chứa mã xác thực duy nhất của bạn và không thể khôi phục nếu
-                bị mất.
+                Please <strong>save this link</strong> (bookmark or copy URL) to check your ticket status later. The link contains your unique authentication code and cannot be recovered if lost.
               </p>
             </div>
           </div>
@@ -424,11 +464,11 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                       {t('checkinCode')}
                     </span>
                   </div>
-                  <div className='bg-white rounded-lg p-4 flex items-center justify-center'>
+                  <div className='bg-white rounded-lg p-3 flex items-center justify-center'>
                     <img
                       src={ticket.qrCodeUrl}
                       alt='QR Code'
-                      className='w-48 h-48 object-contain'
+                      className='w-72 h-72 object-contain'
                       style={{imageRendering: 'crisp-edges'}}
                     />
                   </div>

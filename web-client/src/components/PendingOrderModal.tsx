@@ -118,10 +118,10 @@ export default function PendingOrderModal({
               </div>
               <div>
                 <h3 className="text-base sm:text-lg font-bold text-white">
-                  Đơn Hàng Chưa Hoàn Tất
+                  Incomplete Order
                 </h3>
                 <p className="text-[10px] sm:text-xs text-gray-300 mt-0.5">
-                  Bạn có đơn hàng đang chờ thanh toán
+                  You have a pending order
                 </p>
               </div>
             </div>
@@ -141,7 +141,7 @@ export default function PendingOrderModal({
             <div className="flex items-center gap-1.5 sm:gap-2">
               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
               <span className="text-xs sm:text-sm text-gray-300">
-                Thời gian còn lại:
+                Time remaining:
               </span>
             </div>
             <span
@@ -156,23 +156,23 @@ export default function PendingOrderModal({
           {/* Order Info */}
           <div className="space-y-2 sm:space-y-2.5">
             <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="text-gray-400">Mã đơn hàng:</span>
+              <span className="text-gray-400">Order number:</span>
               <span className="font-mono font-semibold text-white">
                 {order.orderNumber}
               </span>
             </div>
 
             <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="text-gray-400">Số ghế:</span>
+              <span className="text-gray-400">Seats:</span>
               <span className="font-semibold text-white flex items-center gap-1">
                 <Ticket className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                {order.seatCount} ghế
+                {order.seatCount} seats
               </span>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-gray-400 text-xs sm:text-sm">
-                Tổng tiền:
+                Total amount:
               </span>
               <span className="text-lg sm:text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400">
                 {formatCurrency(order.totalAmount)}
@@ -183,7 +183,7 @@ export default function PendingOrderModal({
           {/* Seats List (collapsed) */}
           <div className="p-2.5 sm:p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
             <div className="text-[10px] sm:text-xs text-gray-400 mb-1.5 sm:mb-2">
-              Ghế đã chọn:
+              Selected seats:
             </div>
             <div className="flex flex-wrap gap-1.5 sm:gap-2">
               {order.seats.map((seat) => (
@@ -205,7 +205,7 @@ export default function PendingOrderModal({
             disabled={isCanceling}
             className="w-full py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl shadow-lg shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
-            Tiếp Tục Thanh Toán
+            Continue Payment
           </button>
           <button
             onClick={handleSelectOtherSeats}
@@ -230,10 +230,10 @@ export default function PendingOrderModal({
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   />
                 </svg>
-                <span>Đang hủy...</span>
+                <span>Canceling...</span>
               </div>
             ) : (
-              "Chọn Ghế Khác"
+              "Select Other Seats"
             )}
           </button>
         </div>

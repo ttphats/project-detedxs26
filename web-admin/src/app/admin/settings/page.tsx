@@ -217,7 +217,7 @@ export default function SettingsPage() {
           style={{borderTop: '3px solid #dc2626'}}
         >
           <Alert
-            description='Email này sẽ nhận thông báo ngay khi admin xác nhận thanh toán. Cập nhật mỗi ca trực. / This email receives an instant alert each time an admin confirms a payment. Update at the start of each shift.'
+            description='Email này sẽ nhận thông báo ngay khi khách hàng đặt mua vé (chờ xác nhận thanh toán). Cập nhật mỗi ca trực. / This email receives an instant alert each time a customer proceeds to checkout. Update at the start of each shift.'
             type='warning'
             showIcon
             className='mb-4'

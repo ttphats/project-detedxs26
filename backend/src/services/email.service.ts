@@ -331,8 +331,8 @@ export async function sendOnDutyStaffNotification(orderInfo: {
   const html = `
     <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:620px;margin:0 auto;">
       <div style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:28px 24px;border-radius:12px 12px 0 0;">
-        <h2 style="color:#fff;margin:0 0 6px;font-size:22px;">&#x2705; Thanh to&#x00E1;n &#x0111;&#x00E3; x&#x00E1;c nh&#x1EAD;n</h2>
-        <p style="color:#fecaca;margin:0;font-size:13px;">Payment Confirmed &#x2014; ${timestamp}</p>
+        <h2 style="color:#fff;margin:0 0 6px;font-size:22px;">&#x1F552; &#x0110;&#x01A1;n h&#x00E0;ng m&#x1EDB;i ch&#x1EDD; x&#x00E1;c nh&#x1EAD;n</h2>
+        <p style="color:#fecaca;margin:0;font-size:13px;">Pending Payment Confirmation &#x2014; ${timestamp}</p>
       </div>
       <div style="background:#ffffff;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
         <h3 style="margin:0 0 12px;font-size:15px;color:#111827;border-left:4px solid #dc2626;padding-left:10px;">
@@ -382,8 +382,8 @@ export async function sendOnDutyStaffNotification(orderInfo: {
           <tr>
             <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Tr&#x1EA1;ng th&#x00E1;i / Status</td>
             <td style="padding:8px 12px;border:1px solid #e5e7eb;">
-              <span style="background:#dcfce7;color:#166534;padding:4px 14px;border-radius:9999px;font-size:12px;font-weight:700;">
-                &#x2705; PAID &#x2014; &#x0110;&#x00E3; x&#x00E1;c nh&#x1EAD;n
+              <span style="background:#fef08a;color:#854d0e;padding:4px 14px;border-radius:9999px;font-size:12px;font-weight:700;">
+                &#x1F552; PENDING CONFIRMATION &#x2014; Ch&#x1EDD; x&#x00E1;c nh&#x1EAD;n ti&#x1EC1;n v&#x00E0;o
               </span>
             </td>
           </tr>
@@ -395,7 +395,7 @@ export async function sendOnDutyStaffNotification(orderInfo: {
     </div>
   `
 
-  const subject = `[TEDx] Da xac nhan #${orderInfo.orderNumber} - ${orderInfo.customerName} - ${Number(orderInfo.totalAmount).toLocaleString('vi-VN')}d`
+  const subject = `[TEDx] Don moi cho xac nhan #${orderInfo.orderNumber} - ${orderInfo.customerName} - ${Number(orderInfo.totalAmount).toLocaleString('vi-VN')}d`
 
   // Fire-and-forget — don't block the caller
   sendEmail({ to: onDutyEmail, subject, html }).then((result) => {
