@@ -1,0 +1,36 @@
+{
+  "projectName": "project-detedxs26",
+  "projectOwner": "ttphats",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "ttphats",
+      "name": "ttphats",
+      "avatar_url": "https://avatars.githubusercontent.com/ttphats",
+      "profile": "https://github.com/ttphats",
+      "contributions": [
+        "code",
+        "ideas",
+        "projectManagement"
+      ]
+    },
+    {
+      "login": "phatmap114",
+      "name": "phatmap114",
+      "avatar_url": "https://avatars.githubusercontent.com/phatmap114",
+      "profile": "https://github.com/phatmap114",
+      "contributions": [
+        "code",
+        "design"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7
+}
