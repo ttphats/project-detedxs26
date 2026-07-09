@@ -56,7 +56,7 @@ export default function Seat({
     : SEAT_COLORS[seatType as keyof typeof SEAT_COLORS] || SEAT_COLORS.STANDARD;
   const selectedColors = SELECTED_SEAT_COLORS;
   const soldColors = SOLD_SEAT_COLORS;
-  const lockedColors = LOCKED_SEAT_COLORS;
+  const lockedColors = SOLD_SEAT_COLORS; // Changed from LOCKED_SEAT_COLORS to make them look like SOLD
 
   // Use custom color for available state if provided
   const hasCustomColor = color && status === "available";
@@ -152,7 +152,7 @@ export default function Seat({
       />
 
       {/* Sold or Disabled X indicator */}
-      {(status === "sold" || isSeatDisabled) && (
+      {(status === "sold" || status === "locked" || isSeatDisabled) && (
         <div className="absolute inset-0 top-0 flex items-start justify-center pt-0.5 pointer-events-none">
           <svg
             className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-white drop-shadow"
@@ -170,24 +170,7 @@ export default function Seat({
         </div>
       )}
 
-      {/* Locked indicator (clock icon) */}
-      {status === "locked" && (
-        <div className="absolute -top-1 -right-1 z-10 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center shadow-sm">
-          <svg
-            className="w-2 h-2 text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="3"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 6v6l4 2"
-            />
-          </svg>
-        </div>
-      )}
+      {/* Locked indicator (clock icon) removed to match sold styling */}
     </button>
   );
 }
@@ -239,8 +222,13 @@ export function SeatLegend({ ticketTypes = [] }: SeatLegendProps) {
       {/* Locked by others */}
       <div className="flex items-center gap-2">
         <div
-          className={`w-6 h-6 rounded-md bg-gradient-to-b ${lockedColors.back}`}
-        />
+          className={`w-6 h-6 rounded-md bg-gradient-to-b ${lockedColors.back} relative`}
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-4 h-0.5 bg-gray-400/80 rotate-45" />
+            <div className="w-4 h-0.5 bg-gray-400/80 -rotate-45 absolute" />
+          </div>
+        </div>
         <span className="text-sm text-gray-300">Reserved</span>
       </div>
       {/* Sold */}

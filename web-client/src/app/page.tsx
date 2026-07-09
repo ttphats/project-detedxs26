@@ -494,7 +494,7 @@ export default function Home() {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-red-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Đang tải...</p>
+          <p className="text-gray-400">Loading...</p>
         </div>
       </div>
     );
