@@ -22,6 +22,7 @@
     "lucide-react": "^0.563.0",
     "mysql2": "^3.16.2",
     "next": "16.1.6",
+    "next-intl": "^4.13.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sonner": "^2.0.7"
@@ -29,14 +30,16 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^20.19.43",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "source-map-js": "^1.2.1",
     "tailwindcss": "^4",
-    "typescript": "^5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.8"
   }
 }

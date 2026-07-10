@@ -189,3 +189,222 @@ export async function sendEmailByPurpose(options: SendEmailByPurposeOptions): Pr
   return result;
 }
 
+/**
+ * Send order notification email to dev/admin notification recipients.
+ * Triggered when a new pending order is created (before payment).
+ */
+export async function sendOrderNotificationToDevs(orderInfo: {
+  orderNumber: string;
+  eventName: string;
+  seats: { seatNumber: string; seatType: string; price: number }[];
+  totalAmount: number;
+  discountAmount?: number | null;
+  promoCode?: string | null;
+}): Promise<void> {
+  // Lazy import to avoid circular dependency
+  const { getNotificationEmails } = await import('./settings.service.js');
+
+  const emails = await getNotificationEmails();
+  if (emails.length === 0) {
+    console.log('[NOTIFICATION] No notification emails configured, skipping');
+    return;
+  }
+
+  const seatsList = orderInfo.seats
+    .map((s) => `${s.seatNumber} (${s.seatType}) - ${Number(s.price).toLocaleString('vi-VN')}đ`)
+    .join('<br/>');
+
+  const now = new Date();
+  const timestamp = now.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+  const discountHtml = orderInfo.discountAmount
+    ? `<tr>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#6b7280;">Giảm giá / Discount</td>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#16a34a;font-weight:bold;">
+          -${Number(orderInfo.discountAmount).toLocaleString('vi-VN')}đ
+          ${orderInfo.promoCode ? `(${orderInfo.promoCode})` : ''}
+        </td>
+      </tr>`
+    : '';
+
+  const html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:24px;border-radius:12px 12px 0 0;">
+        <h2 style="color:#fff;margin:0;font-size:20px;">🎫 Đơn hàng mới / New Order</h2>
+        <p style="color:#fecaca;margin:8px 0 0;font-size:14px;">${timestamp}</p>
+      </div>
+      <div style="background:#ffffff;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;width:40%;">Mã đơn / Order #</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:bold;color:#dc2626;">${orderInfo.orderNumber}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Sự kiện / Event</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${orderInfo.eventName}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Ghế / Seats (${orderInfo.seats.length})</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${seatsList}</td>
+          </tr>
+          ${discountHtml}
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Tổng tiền / Total</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-size:18px;font-weight:bold;color:#dc2626;">
+              ${Number(orderInfo.totalAmount).toLocaleString('vi-VN')}đ
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Trạng thái / Status</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">
+              <span style="background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;">
+                ⏳ PENDING - Chờ thanh toán
+              </span>
+            </td>
+          </tr>
+        </table>
+        <p style="color:#9ca3af;font-size:12px;margin:16px 0 0;text-align:center;">
+          Email tự động từ hệ thống TEDx Ticketing / Automated notification from TEDx Ticketing System
+        </p>
+      </div>
+    </div>
+  `;
+
+  const subject = `🎫 [TEDx] Đơn hàng mới #${orderInfo.orderNumber} - ${orderInfo.seats.length} ghế - ${Number(orderInfo.totalAmount).toLocaleString('vi-VN')}đ`;
+
+  // Send to all notification emails (fire-and-forget, don't block order creation)
+  for (const email of emails) {
+    sendEmail({ to: email, subject, html }).then((result) => {
+      if (result.success) {
+        console.log(`[NOTIFICATION] ✅ Sent order notification to ${email}`);
+      } else {
+        console.error(`[NOTIFICATION] ❌ Failed to send to ${email}:`, result.error);
+      }
+    }).catch((err) => {
+      console.error(`[NOTIFICATION] ❌ Error sending to ${email}:`, err);
+    });
+  }
+}
+
+
+/**
+ * Send notification to the currently on-duty staff member after admin confirms payment.
+ * Fire-and-forget — does NOT block the confirmation response.
+ */
+export async function sendOnDutyStaffNotification(orderInfo: {
+  orderNumber: string
+  customerName: string
+  customerEmail: string
+  customerPhone: string
+  eventName: string
+  seats: { seatNumber: string; seatType: string; price: number }[]
+  totalAmount: number
+  discountAmount?: number | null
+  promoCode?: string | null
+}): Promise<void> {
+  // Lazy import to avoid circular dependency
+  const { getOnDutyEmail } = await import('./settings.service.js')
+
+  const onDutyEmail = await getOnDutyEmail()
+  if (!onDutyEmail) {
+    console.log('[ON-DUTY] No on-duty email configured, skipping staff notification')
+    return
+  }
+
+  const seatsList = orderInfo.seats
+    .map((s) => `${s.seatNumber} (${s.seatType}) — ${Number(s.price).toLocaleString('vi-VN')}đ`)
+    .join('<br/>')
+
+  const now = new Date()
+  const timestamp = now.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+
+  const discountHtml = orderInfo.discountAmount
+    ? `<tr>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Giảm giá / Discount</td>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#16a34a;font-weight:bold;">
+          -${Number(orderInfo.discountAmount).toLocaleString('vi-VN')}đ
+          ${orderInfo.promoCode ? `(${orderInfo.promoCode})` : ''}
+        </td>
+      </tr>`
+    : ''
+
+  const html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:620px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:28px 24px;border-radius:12px 12px 0 0;">
+        <h2 style="color:#fff;margin:0 0 6px;font-size:22px;">&#x1F552; &#x0110;&#x01A1;n h&#x00E0;ng m&#x1EDB;i ch&#x1EDD; x&#x00E1;c nh&#x1EAD;n</h2>
+        <p style="color:#fecaca;margin:0;font-size:13px;">Pending Payment Confirmation &#x2014; ${timestamp}</p>
+      </div>
+      <div style="background:#ffffff;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <h3 style="margin:0 0 12px;font-size:15px;color:#111827;border-left:4px solid #dc2626;padding-left:10px;">
+          Th&#x00F4;ng tin kh&#x00E1;ch h&#x00E0;ng / Buyer Info
+        </h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;width:40%;">T&#x00EA;n / Name</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;">${orderInfo.customerName}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Email</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${orderInfo.customerEmail}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">&#x110;i&#x1EC7;n tho&#x1EA1;i / Phone</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${orderInfo.customerPhone || '&#x2014;'}</td>
+          </tr>
+        </table>
+        <h3 style="margin:0 0 12px;font-size:15px;color:#111827;border-left:4px solid #dc2626;padding-left:10px;">
+          Chi ti&#x1EBF;t &#x0111;&#x01A1;n h&#x00E0;ng / Order Details
+        </h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;width:40%;">M&#x00E3; &#x0111;&#x01A1;n / Order #</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:bold;color:#dc2626;">${orderInfo.orderNumber}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">S&#x1EF1; ki&#x1EC7;n / Event</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${orderInfo.eventName}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">S&#x1ED1; gh&#x1EBF; / Qty</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${orderInfo.seats.length} v&#x00E9; / ticket(s)</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Gh&#x1EBF; / Seats</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;line-height:1.8;">${seatsList}</td>
+          </tr>
+          ${discountHtml}
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">T&#x1ED5;ng ti&#x1EC1;n / Total Paid</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-size:20px;font-weight:bold;color:#dc2626;">
+              ${Number(orderInfo.totalAmount).toLocaleString('vi-VN')}&#x0111;
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Tr&#x1EA1;ng th&#x00E1;i / Status</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">
+              <span style="background:#fef08a;color:#854d0e;padding:4px 14px;border-radius:9999px;font-size:12px;font-weight:700;">
+                &#x1F552; PENDING CONFIRMATION &#x2014; Ch&#x1EDD; x&#x00E1;c nh&#x1EAD;n ti&#x1EC1;n v&#x00E0;o
+              </span>
+            </td>
+          </tr>
+        </table>
+        <p style="color:#9ca3af;font-size:11px;margin:0;text-align:center;border-top:1px solid #f3f4f6;padding-top:16px;">
+          Th&#x00F4;ng b&#x00E1;o t&#x1EF1; &#x0111;&#x1ED9;ng g&#x1EED;i cho nh&#x00E2;n vi&#x00EA;n tr&#x1EF1;c ca / Automated on-duty staff notification &middot; TEDx Ticketing System
+        </p>
+      </div>
+    </div>
+  `
+
+  const subject = `[TEDx] Don moi cho xac nhan #${orderInfo.orderNumber} - ${orderInfo.customerName} - ${Number(orderInfo.totalAmount).toLocaleString('vi-VN')}d`
+
+  // Fire-and-forget — don't block the caller
+  sendEmail({ to: onDutyEmail, subject, html }).then((result) => {
+    if (result.success) {
+      console.log(`[ON-DUTY] ✅ Staff notification sent to ${onDutyEmail}`)
+    } else {
+      console.error(`[ON-DUTY] ❌ Failed to send staff notification to ${onDutyEmail}:`, result.error)
+    }
+  }).catch((err) => {
+    console.error(`[ON-DUTY] ❌ Error sending staff notification:`, err)
+  })
+}

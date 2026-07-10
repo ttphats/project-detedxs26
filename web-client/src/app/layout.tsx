@@ -1,23 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { Header, Footer, MobileBottomNav } from "@/components";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin", "vietnamese"],
 });
 
 export const metadata: Metadata = {
   title: "TEDxFPTUniversityHCMC 2026 - Finding Flow",
   description:
-    "TEDxFPTUniversityHCMC 2026: Finding Flow - Đặt vé ngay để tham gia sự kiện TEDx lớn nhất tại FPTU HCMC.",
+    "TEDxFPTUniversityHCMC 2026: Finding Flow - Book your tickets now to join the biggest TEDx event at FPTU HCMC.",
 };
 
 export default function RootLayout({
@@ -26,10 +21,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black`}
-      >
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.variable} font-sans antialiased bg-black`}>
         <Toaster
           position="top-center"
           richColors

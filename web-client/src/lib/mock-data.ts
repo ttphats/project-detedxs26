@@ -104,7 +104,7 @@ const tedxSpeakers: Speaker[] = [
   {
     id: 's1',
     name: 'Dr. Nguyen Thi Mai',
-    title: 'AI Research Director tại VinAI Research với hơn 15 năm kinh nghiệm trong lĩnh vực Machine Learning và Computer Vision. Cô đã dẫn dắt nhiều dự án nghiên cứu đột phá và công bố hơn 50 bài báo khoa học tại các hội nghị quốc tế hàng đầu.',
+    title: 'AI Research Director at VinAI Research with over 15 years of experience in Machine Learning and Computer Vision. She has led numerous groundbreaking research projects and published over 50 scientific papers at top international conferences.',
     company: 'VinAI Research',
     bio: 'Leading AI researcher with 15+ years of experience in machine learning and computer vision.',
     image: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&h=400&fit=crop',
@@ -113,7 +113,7 @@ const tedxSpeakers: Speaker[] = [
   {
     id: 's2',
     name: 'Tran Minh Duc',
-    title: 'Founder & CEO của EcoVietnam - startup tiên phong trong lĩnh vực nông nghiệp bền vững tại Đồng bằng sông Cửu Long. Anh đã giúp hơn 10,000 nông dân chuyển đổi sang phương pháp canh tác thân thiện với môi trường.',
+    title: 'Founder & CEO of EcoVietnam - a pioneering startup in sustainable agriculture in the Mekong Delta. He has helped over 10,000 farmers transition to environmentally friendly farming methods.',
     company: 'EcoVietnam',
     bio: 'Social entrepreneur revolutionizing sustainable agriculture in the Mekong Delta.',
     image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop',
@@ -122,7 +122,7 @@ const tedxSpeakers: Speaker[] = [
   {
     id: 's3',
     name: 'Le Hoang Anh',
-    title: 'Tác giả đoạt giải thưởng văn học với 5 cuốn sách bestseller về bản sắc Việt Nam và trải nghiệm kiều bào. Tác phẩm của cô đã được dịch ra 12 ngôn ngữ và được đưa vào chương trình giảng dạy tại nhiều trường đại học.',
+    title: 'Award-winning author of 5 bestselling books on Vietnamese identity and diaspora experiences. Her works have been translated into 12 languages and included in the curriculum at many universities.',
     company: 'Independent',
     bio: 'Bestselling author exploring Vietnamese identity and diaspora experiences.',
     image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=400&fit=crop',
@@ -131,7 +131,7 @@ const tedxSpeakers: Speaker[] = [
   {
     id: 's4',
     name: 'Prof. Pham Van Tuan',
-    title: 'Giáo sư Vật lý Lượng tử tại Đại học Quốc gia Việt Nam, chuyên gia hàng đầu về điện toán lượng tử. Ông đang dẫn dắt dự án xây dựng máy tính lượng tử đầu tiên của Việt Nam với sự hợp tác của IBM và Google.',
+    title: "Professor of Quantum Physics at Vietnam National University, leading expert in quantum computing. He is currently leading the project to build Vietnam's first quantum computer in collaboration with IBM and Google.",
     company: 'Vietnam National University',
     bio: 'Pioneering researcher in quantum computing and its applications.',
     image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
@@ -173,7 +173,7 @@ export const events: Event[] = [
     highlights: [
       { icon: 'mic', text: '12 Inspiring Speakers' },
       { icon: 'lightbulb', text: 'Ideas Worth Spreading' },
-      { icon: 'users', text: '500+ Attendees' },
+      { icon: 'users', text: '100+ Attendees' },
       { icon: 'coffee', text: 'Networking Sessions' },
     ],
     speakers: tedxSpeakers,

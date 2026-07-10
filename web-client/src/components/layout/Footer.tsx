@@ -93,7 +93,7 @@ export default function Footer() {
               <li className="flex items-start gap-2.5">
                 <MapPin className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                 <span className="leading-relaxed">
-                  Lô E2a-7, Đường D1, Khu Công nghệ cao, P. Long Thạnh Mỹ, TP. Thủ Đức, TP. HCM
+                  Lot E2a-7, D1 Street, Hi-Tech Park, Long Thanh My Ward, Thu Duc City, HCMC
                 </span>
               </li>
             </ul>
@@ -169,10 +169,10 @@ export default function Footer() {
               Privacy
             </Link>
             <Link
-              href="/policy"
+              href="/terms"
               className="text-gray-400 hover:text-white transition-colors"
             >
-              Policy
+              Terms & Conditions
             </Link>
           </div>
         </div>

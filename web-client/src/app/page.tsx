@@ -494,7 +494,7 @@ export default function Home() {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-red-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Đang tải...</p>
+          <p className="text-gray-400">Loading...</p>
         </div>
       </div>
     );
@@ -729,7 +729,7 @@ export default function Home() {
                       </p>
                     </div>
                     <div className="flex-1 glass-dark rounded-xl p-4 animate-fade-in-up delay-700 hover:bg-white/10 transition-colors">
-                      <p className="text-3xl font-black text-red-500">500+</p>
+                      <p className="text-3xl font-black text-red-500">100+</p>
                       <p className="text-gray-400 text-sm uppercase tracking-wide">
                         Attendees
                       </p>
@@ -1141,7 +1141,7 @@ export default function Home() {
           </h2>
           <p className="text-xl text-white/80 mb-8 animate-fade-in-up delay-100">
             Join {featuredEvent.speakerCount || speakers.length}+ speakers and
-            500+ attendees for a day of ideas worth spreading.
+            100+ attendees for a day of ideas worth spreading.
           </p>
           <Link href={`/events/${featuredEvent.id}/seats`}>
             <Button
@@ -1174,13 +1174,16 @@ export default function Home() {
             </button>
 
             {/* YouTube iframe */}
-            <iframe
-              className="w-full h-full rounded-xl shadow-2xl shadow-red-500/20"
-              src="https://www.youtube.com/embed/2XuXC3_pLGg?autoplay=1"
-              title="TEDxFPTUniversityHCMC Intro"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+            {/* You can replace /trailer.mp4 with your actual video file in the public folder */}
+            <video
+              className="w-full h-full rounded-xl shadow-2xl shadow-red-500/20 bg-black"
+              src="/trailer.mp4"
+              controls
+              autoPlay
+              playsInline
+            >
+              Your browser does not support the video tag.
+            </video>
           </div>
         </div>
       )}
