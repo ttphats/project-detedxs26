@@ -39,15 +39,29 @@ export default function Header() {
           <Link href="/" className="group flex items-center gap-1 relative">
             {/* Glow behind logo on hover */}
             <div className="absolute -inset-4 bg-red-600/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <span className="relative text-2xl font-black text-white ted-logo-text tracking-tight">
-              TED
-            </span>
-            <span className="relative text-2xl font-black text-red-600 ted-logo-text animate-pulse">
-              x
-            </span>
-            <span className="relative text-lg font-light text-white/90 tracking-wide">
-              FPTUniversityHCMC
-            </span>
+            {/* You can replace /logo.png with your actual logo file in the public folder */}
+            <img 
+              src="/logo.png" 
+              alt="TEDxFPTUniversityHCMC Logo" 
+              className="relative h-16 md:h-20 w-auto object-contain z-10"
+              onError={(e) => {
+                // Fallback to text if image not found
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+            {/* Fallback text logo (hidden by default) */}
+            <div className="hidden flex items-center gap-1">
+              <span className="relative text-2xl font-black text-white ted-logo-text tracking-tight">
+                TED
+              </span>
+              <span className="relative text-2xl font-black text-red-600 ted-logo-text animate-pulse">
+                x
+              </span>
+              <span className="relative text-lg font-light text-white/90 tracking-wide">
+                FPTUniversityHCMC
+              </span>
+            </div>
           </Link>
 
           {/* Desktop Navigation */}
@@ -114,18 +128,34 @@ export default function Header() {
                 { href: "/#program", label: "Timeline" },
                 { href: "/#speakers", label: "Speakers" },
                 { href: "/#partners", label: "Partners" },
-              ].map((item, index) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className="group relative px-4 py-3 text-gray-300 hover:text-white font-medium uppercase text-sm tracking-wider overflow-hidden"
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  <span className="relative z-10">{item.label}</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-300" />
-                </a>
-              ))}
+                { href: "/privacy", label: "Privacy Policy" },
+                { href: "/terms", label: "Terms & Conditions" },
+              ].map((item, index) => {
+                const isExternal = item.href.startsWith("/#");
+                return isExternal ? (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    className="group relative px-4 py-3 text-gray-300 hover:text-white font-medium uppercase text-sm tracking-wider overflow-hidden"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <span className="relative z-10">{item.label}</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-300" />
+                  </a>
+                ) : (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="group relative px-4 py-3 text-gray-300 hover:text-white font-medium uppercase text-sm tracking-wider overflow-hidden"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <span className="relative z-10">{item.label}</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-300" />
+                  </Link>
+                );
+              })}
               <Link
                 href="/events/evt-tedx-2026/seats"
                 className="mx-4 mt-3 px-4 py-3 bg-red-600 text-white font-bold text-center uppercase text-sm tracking-wider rounded-full hover:bg-red-500 transition-colors"

@@ -113,6 +113,7 @@ model Seat {
   col        String    @db.VarChar(10)
   section    String    @db.VarChar(50)
   seatType   String    @map("seat_type") @db.VarChar(20)
+  ticketTypeId String? @map("ticket_type_id") @db.VarChar(36)
   price      Decimal   @db.Decimal(10, 2)
   status     String    @default("AVAILABLE") @db.VarChar(20)
   positionX  Int?      @map("position_x")

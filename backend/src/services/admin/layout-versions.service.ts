@@ -240,8 +240,6 @@ export async function publishLayoutVersion(id: string, userId?: string) {
       const seatId = randomUUID()
 
       // Convert editor format to database format
-      // Editor uses: side: "left"/"right", type: "VIP"/"STANDARD"
-      // Database uses: section: "LEFT"/"RIGHT", seat_type: "VIP"/"STANDARD"
       const seatType = seat.type || seat.seat_type || 'STANDARD'
       const section = seat.side
         ? (seat.side === 'left' ? 'LEFT' : 'RIGHT')
@@ -249,10 +247,31 @@ export async function publishLayoutVersion(id: string, userId?: string) {
 
       const price = seat.price || priceMap.get(seatType.toUpperCase()) || 0
 
+      // Match ticket type by level or name
+      const seatTypeUpper = seatType.toUpperCase()
+      let matchedTtId: string | null = null
+
+      let seatLevel = 2 // Default to Standard
+      if (seatTypeUpper.startsWith('LEVEL_')) {
+        seatLevel = parseInt(seatTypeUpper.replace('LEVEL_', ''), 10)
+      } else if (seatTypeUpper === 'VIP') {
+        const vipTt = ticketTypes.find(tt => tt.name.toLowerCase().includes('vip'))
+        seatLevel = vipTt ? vipTt.level : 4
+      } else if (seatTypeUpper === 'STANDARD') {
+        const stdTt = ticketTypes.find(tt => tt.name.toLowerCase().includes('standard') || tt.name.toLowerCase().includes('tiêu chuẩn'))
+        seatLevel = stdTt ? stdTt.level : 2
+      }
+
+      const matchedTt = ticketTypes.find(tt => tt.level === seatLevel) || 
+                        ticketTypes.find(tt => tt.name.toUpperCase() === seatTypeUpper)
+      if (matchedTt) {
+        matchedTtId = matchedTt.id
+      }
+
       await connection.query(
         `INSERT INTO seats
-         (id, event_id, seat_number, row, col, section, seat_type, price, status, position_x, position_y, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?, NOW(), NOW())`,
+         (id, event_id, seat_number, row, col, section, seat_type, ticket_type_id, price, status, position_x, position_y, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?, NOW(), NOW())`,
         [
           seatId,
           version.event_id,
@@ -261,6 +280,7 @@ export async function publishLayoutVersion(id: string, userId?: string) {
           seat.col,
           section,
           seatType,
+          matchedTtId,
           price,
           seat.position_x || 0,
           seat.position_y || 0,

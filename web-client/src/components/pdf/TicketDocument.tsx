@@ -267,7 +267,7 @@ export interface TicketDocumentProps {
 
 // Format currency
 const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("vi-VN", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "VND",
   }).format(amount);
@@ -280,7 +280,7 @@ const formatDate = (dateString: string): string => {
   if (isNaN(date.getTime())) return "-";
   // Subtract 7 hours to correct timezone offset
   const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
-  return vnDate.toLocaleDateString("vi-VN", {
+  return vnDate.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -295,7 +295,7 @@ const formatTime = (dateString: string): string => {
   if (isNaN(date.getTime())) return "-";
   // Subtract 7 hours to correct timezone offset
   const vnDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
-  return vnDate.toLocaleTimeString("vi-VN", {
+  return vnDate.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -305,15 +305,15 @@ const formatTime = (dateString: string): string => {
 const getStatusConfig = (status: string) => {
   switch (status) {
     case "PAID":
-      return { color: "#22c55e", text: "Đã xác nhận" };
+      return { color: "#22c55e", text: "Confirmed" };
     case "PENDING":
-      return { color: "#eab308", text: "Chờ thanh toán" };
+      return { color: "#eab308", text: "Pending Payment" };
     case "PENDING_CONFIRMATION":
-      return { color: "#3b82f6", text: "Chờ xác nhận" };
+      return { color: "#3b82f6", text: "Pending Confirmation" };
     case "CANCELLED":
-      return { color: "#ef4444", text: "Đã hủy" };
+      return { color: "#ef4444", text: "Cancelled" };
     case "EXPIRED":
-      return { color: "#6b7280", text: "Hết hạn" };
+      return { color: "#6b7280", text: "Expired" };
     default:
       return { color: "#6b7280", text: status };
   }
@@ -359,19 +359,19 @@ export function TicketDocument({
             </Text>
             <View style={styles.eventDetails}>
               <View style={styles.eventDetailItem}>
-                <Text style={styles.eventLabel}>Ngày</Text>
+                <Text style={styles.eventLabel}>Date</Text>
                 <Text style={styles.eventValue}>
                   {event ? formatDate(event.eventDate) : "-"}
                 </Text>
               </View>
               <View style={styles.eventDetailItem}>
-                <Text style={styles.eventLabel}>Giờ</Text>
+                <Text style={styles.eventLabel}>Time</Text>
                 <Text style={styles.eventValue}>
                   {event ? formatTime(event.startTime) : "-"}
                 </Text>
               </View>
               <View style={[styles.eventDetailItem, styles.venueItem]}>
-                <Text style={styles.eventLabel}>Địa điểm</Text>
+                <Text style={styles.eventLabel}>Venue</Text>
                 <Text style={styles.eventValue}>{event?.venue || "-"}</Text>
               </View>
             </View>
@@ -379,7 +379,7 @@ export function TicketDocument({
 
           {/* Attendee Info */}
           <View style={styles.attendeeSection}>
-            <Text style={styles.sectionTitle}>Thông tin người tham dự</Text>
+            <Text style={styles.sectionTitle}>Attendee Information</Text>
             <Text style={styles.attendeeName}>{customerName}</Text>
             <Text style={styles.orderNumber}>#{orderNumber}</Text>
           </View>
@@ -387,7 +387,7 @@ export function TicketDocument({
           {/* Seats */}
           <View style={styles.seatsSection}>
             <Text style={styles.sectionTitle}>
-              Ghế ngồi ({seats.length} vé)
+              Seats ({seats.length} tickets)
             </Text>
             <View style={styles.seatsGrid}>
               {seats.map((seat, index) => {
@@ -412,20 +412,20 @@ export function TicketDocument({
           {/* QR Code */}
           {qrCodeUrl && (
             <View style={styles.qrSection}>
-              <Text style={styles.qrLabel}>Mã check-in</Text>
+              <Text style={styles.qrLabel}>Check-in Code</Text>
               <Image src={qrCodeUrl} style={styles.qrCode} />
-              <Text style={styles.qrHint}>Quét mã này tại quầy check-in</Text>
+              <Text style={styles.qrHint}>Scan this code at the check-in desk</Text>
             </View>
           )}
 
           {/* Footer with Total */}
           <View style={styles.footer}>
-            <Text style={styles.totalLabel}>Tổng tiền</Text>
+            <Text style={styles.totalLabel}>Total Amount</Text>
             <Text style={styles.totalAmount}>
               {formatCurrency(totalAmount)}
             </Text>
             <Text style={styles.footerNote}>
-              © 2026 TEDxFPTUniversityHCMC. Vui lòng mang vé này đến sự kiện.
+              © 2026 TEDxFPTUniversityHCMC. Please bring this ticket to the event.
             </Text>
           </View>
         </View>

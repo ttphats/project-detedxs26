@@ -1,0 +1,42 @@
+# DATABASE (Prisma format)
+DATABASE_URL="mysql://rymukbi_admin:Admin%402026@103.179.188.241:3306/rymukbi_easyticketdb"
+
+# JWT
+JWT_SECRET=8dbeed8a671eec89989ae43593f956fb3f62e4b944acd3e8d9193c000eb0f649cc033da0d9212e8e9b6cff748d7b4a8e628d633551ab07951c7a1a1eb95c5a0a
+JWT_EXPIRES_IN=7d
+
+# REDIS (Optional - uses mock if not provided)
+# REDIS_URL=redis://localhost:6379
+# REDIS_TOKEN=
+
+# EMAIL - Resend
+EMAIL_PROVIDER=resend
+EMAIL_FROM="TEDxFPT University HCMC <onboarding@resend.dev>"
+RESEND_API_KEY=re_S7rTjxuw_25cPnF4cMJBHMMtUHg43jnxr
+
+# PAYMENT
+PAYMENT_PROVIDER=mock
+
+# APP URLs
+NEXT_PUBLIC_API_URL=http://localhost:4000/api
+NEXT_PUBLIC_APP_URL=http://localhost:3002
+NEXT_PUBLIC_CLIENT_URL=http://localhost:3000
+
+# SEAT LOCK
+SEAT_LOCK_TTL=300
+
+# RATE LIMITING
+RATE_LIMIT_MAX=100
+RATE_LIMIT_WINDOW=60
+
+# NODE ENVIRONMENT
+NODE_ENV=development
+
+# BANK INFO (Custom - for display in order response)
+BANK_NAME=Vietcombank
+BANK_ACCOUNT=0123456789
+BANK_OWNER=NGUYEN VAN A
+
+
+CLOUDINARY_URL=cloudinary://415597173285343:fwsKHBt_f_vqqqXyjM3PMaG_EqI@dug62fhtq
+CLOUDINARY_FOLDER=tedx-fptuhcmc

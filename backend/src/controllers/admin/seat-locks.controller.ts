@@ -21,7 +21,7 @@ export async function list(request: FastifyRequest, reply: FastifyReply) {
     console.error('Get seat locks error:', error);
     return reply.status(500).send({
       success: false,
-      error: 'Failed to get seat locks',
+      error: error.message || 'Failed to get seat locks',
     });
   }
 }

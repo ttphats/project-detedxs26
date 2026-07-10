@@ -128,8 +128,11 @@ export async function getEventById(eventId: string, sessionId?: string) {
     const level = getSeatLevel(seat.seat_type)
 
     // Determine final status based on DB status and locks
+    // IMPORTANT: Check SOLD/RESERVED first - these override any lock status
     let finalStatus = seat.status.toLowerCase()
-    if (seat.locked_by) {
+    if (finalStatus === 'sold' || finalStatus === 'reserved') {
+      finalStatus = 'sold'
+    } else if (seat.locked_by) {
       finalStatus = seat.locked_by === sessionId ? 'locked_by_me' : 'locked'
     }
 

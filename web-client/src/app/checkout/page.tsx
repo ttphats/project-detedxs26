@@ -46,7 +46,7 @@ interface EventData {
 
 // Bank account info for transfer
 const bankInfo = {
-  bankName: "Ngân hàng Á Châu - ACB",
+  bankName: "Asia Commercial Bank - ACB",
   bankLogo: "/acb-logo.png",
   accountNumber: "85085588",
   accountHolder: "CONG TY TNHH TICKETHUB VN",
@@ -65,6 +65,7 @@ function CheckoutContent() {
 
   const [formData, setFormData] = useState({ name: "", email: "", phone: "" });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(COUNTDOWN_DURATION);
   const [isExpired, setIsExpired] = useState(false);
@@ -103,6 +104,13 @@ function CheckoutContent() {
         const data = await res.json();
 
         if (data.success) {
+          // Navigation Guard: if order is no longer PENDING, redirect away
+          if (data.data.status !== "PENDING") {
+            console.log("[CHECKOUT] Order is not PENDING, redirecting...");
+            router.replace(`/order-waiting?order=${orderNumber}&token=${accessToken}`);
+            return;
+          }
+
           setOrderData(data.data);
           setOrderCode(data.data.orderNumber);
 
@@ -131,11 +139,11 @@ function CheckoutContent() {
           });
         } else {
           console.error("Failed to fetch order:", data.error);
-          setOrderError(data.error || "Không thể tải thông tin đơn hàng");
+          setOrderError(data.error || "Cannot load order information");
         }
       } catch (err) {
         console.error("Error fetching order:", err);
-        setOrderError("Lỗi khi tải thông tin đơn hàng");
+        setOrderError("Error loading order information");
       } finally {
         setLoading(false);
       }
@@ -229,7 +237,7 @@ function CheckoutContent() {
   const totalPrice =
     orderData?.totalAmount ||
     selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
-  const transferContent = `Nap quy khach hang id ${orderCode}`;
+  const transferContent = `Ticket payment order ${orderCode}`;
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -237,15 +245,19 @@ function CheckoutContent() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleConfirmPayment = async () => {
+  const handleOpenConfirm = () => {
     if (!formData.name || !formData.email || !formData.phone) {
-      toast.error("Vui lòng điền đầy đủ thông tin");
+      toast.error("Please fill in all information");
       return;
     }
+    setShowConfirmModal(true);
+  };
+
+  const submitPayment = async () => {
 
     if (!orderNumber || !accessToken) {
       setOrderError(
-        "Thiếu thông tin đơn hàng. Vui lòng quay lại trang chọn ghế.",
+        "Missing order information. Please return to the seat selection page.",
       );
       return;
     }
@@ -279,15 +291,15 @@ function CheckoutContent() {
 
       console.log("[CHECKOUT] Payment confirmed for order:", orderNumber);
 
-      // Navigate to ticket page with token for status tracking
-      const ticketPath = `/ticket/${orderNumber}?token=${accessToken}`;
-      router.push(ticketPath);
+      // Navigate to waiting page where we poll for admin confirmation
+      const waitingPath = `/order-waiting?order=${orderNumber}&token=${accessToken}`;
+      router.replace(waitingPath);
     } catch (error: unknown) {
       console.error("Payment confirmation error:", error);
       setOrderError(
         error instanceof Error
           ? error.message
-          : "Có lỗi xảy ra khi xác nhận thanh toán",
+          : "An error occurred while confirming payment",
       );
       setIsProcessing(false);
     }
@@ -299,7 +311,7 @@ function CheckoutContent() {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-red-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Đang tải thông tin đơn hàng...</p>
+          <p className="text-gray-400">Loading order information...</p>
         </div>
       </div>
     );
@@ -310,13 +322,13 @@ function CheckoutContent() {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center glass-panel p-8 rounded-2xl">
           <h1 className="text-2xl font-bold text-white mb-4">
-            Không tìm thấy đơn hàng
+            Order not found
           </h1>
           <Link
             href="/"
             className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl transition-colors"
           >
-            Về trang chủ
+            Back to home
           </Link>
         </div>
       </div>
@@ -375,8 +387,8 @@ function CheckoutContent() {
                     }`}
                   >
                     {isExpired
-                      ? "Hết thời gian thanh toán"
-                      : "Thời gian còn lại để thanh toán"}
+                      ? "Payment time expired"
+                      : "Time remaining to pay"}
                   </p>
                 </div>
               </div>
@@ -398,7 +410,7 @@ function CheckoutContent() {
                   href={`/events/${eventId}/seats`}
                   className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-lg transition-colors"
                 >
-                  Chọn lại ghế
+                  Select seats again
                 </Link>
               )}
             </div>
@@ -415,10 +427,10 @@ function CheckoutContent() {
             className="inline-flex items-center gap-2 text-gray-400 hover:text-red-500 transition-colors group"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Quay lại chọn ghế
+            Back to seat selection
           </Link>
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white mt-4">
-            Thanh toán
+            Payment
           </h1>
         </div>
 
@@ -433,13 +445,13 @@ function CheckoutContent() {
                 <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
                   <CreditCard className="w-5 h-5 text-red-500" />
                 </div>
-                Thông tin khách hàng
+                Customer Information
               </h2>
 
               <div className="space-y-4 relative">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Họ và tên *
+                    Full Name *
                   </label>
                   <input
                     type="text"
@@ -449,7 +461,7 @@ function CheckoutContent() {
                       setFormData({ ...formData, name: e.target.value })
                     }
                     className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-white placeholder-gray-500 transition-all"
-                    placeholder="Nguyễn Văn A"
+                    placeholder="John Doe"
                   />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -470,7 +482,7 @@ function CheckoutContent() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Số điện thoại *
+                      Phone Number *
                     </label>
                     <input
                       type="tel"
@@ -497,7 +509,7 @@ function CheckoutContent() {
               <div className="border-l-4 border-red-500 px-6 py-4 bg-red-600/10">
                 <h2 className="text-xl font-bold text-white flex items-center gap-3">
                   <QrCode className="w-5 h-5 text-red-500" />
-                  Thanh toán chuyển khoản
+                  Bank Transfer
                 </h2>
               </div>
 
@@ -519,7 +531,7 @@ function CheckoutContent() {
 
                     {/* Account Number */}
                     <div className="p-3 bg-white/5 rounded-xl">
-                      <p className="text-sm text-red-400 mb-1">Số tài khoản</p>
+                      <p className="text-sm text-red-400 mb-1">Account Number</p>
                       <div className="flex items-center gap-2">
                         <span className="text-xl font-bold text-white">
                           {bankInfo.accountNumber}
@@ -541,7 +553,7 @@ function CheckoutContent() {
 
                     {/* Account Holder */}
                     <div className="p-3 bg-white/5 rounded-xl">
-                      <p className="text-sm text-red-400 mb-1">Chủ tài khoản</p>
+                      <p className="text-sm text-red-400 mb-1">Account Holder</p>
                       <p className="font-semibold text-white">
                         {bankInfo.accountHolder}
                       </p>
@@ -550,7 +562,7 @@ function CheckoutContent() {
                     {/* Transfer Content */}
                     <div className="p-3 bg-white/5 rounded-xl">
                       <p className="text-sm text-red-400 mb-1">
-                        Nội dung chuyển khoản
+                        Transfer Content
                       </p>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-white">
@@ -573,10 +585,10 @@ function CheckoutContent() {
 
                     {/* Amount */}
                     <div className="p-4 bg-linear-to-r from-red-600/20 to-red-600/10 rounded-xl border border-red-500/30">
-                      <p className="text-sm text-red-400 mb-1">Số tiền</p>
+                      <p className="text-sm text-red-400 mb-1">Amount</p>
                       <div className="flex items-center gap-2">
                         <span className="text-2xl font-black text-red-500">
-                          {totalPrice.toLocaleString("vi-VN")}đ
+                          {totalPrice.toLocaleString()} VND
                         </span>
                         <button
                           onClick={() =>
@@ -597,11 +609,11 @@ function CheckoutContent() {
                   {/* QR Code Right */}
                   <div className="flex flex-col items-center justify-center">
                     <p className="text-sm text-gray-400 mb-4 text-center">
-                      Quét mã qua ứng dụng
+                      Scan QR code via
                       <br />
-                      ngân hàng/ ví điện tử để thanh toán
+                      banking/e-wallet app to pay
                     </p>
-                    <div className="border-2 border-white/10 rounded-2xl p-4 bg-white relative overflow-hidden">
+                    <div className="border-2 border-white/10 rounded-2xl p-3 bg-white relative overflow-hidden">
                       {/* VietQR Header */}
                       <div className="flex items-center justify-center gap-1 mb-3">
                         <span className="text-blue-600 font-bold text-lg">
@@ -611,25 +623,27 @@ function CheckoutContent() {
                           QR
                         </span>
                       </div>
-                      {/* QR Code Placeholder */}
-                      <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center relative overflow-hidden">
-                        <div className="absolute inset-0 grid grid-cols-10 gap-0.5 p-3">
-                          {Array.from({ length: 100 }).map((_, i) => (
-                            <div
-                              key={i}
-                              className={`aspect-square rounded-sm ${
-                                Math.random() > 0.5 ? "bg-gray-900" : "bg-white"
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center shadow-lg border border-gray-200">
-                            <span className="text-red-500 font-black text-sm">
-                              TEDx
-                            </span>
-                          </div>
-                        </div>
+                      {/* QR Code - Static bank QR image */}
+                      <div className="w-80 h-80 bg-white rounded-lg flex items-center justify-center relative overflow-hidden">
+                        <img
+                          src="/bank-qr.png"
+                          alt="Bank transfer QR code"
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            // Fallback: hide img and show placeholder text
+                            e.currentTarget.style.display = "none";
+                            const parent = e.currentTarget.parentElement;
+                            if (parent && !parent.querySelector(".qr-fallback")) {
+                              const fallback = document.createElement("div");
+                              fallback.className = "qr-fallback flex flex-col items-center justify-center gap-2 p-4 text-center";
+                              fallback.innerHTML = `
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9V7a2 2 0 012-2h2m0 0V3m0 2h2M3 15v2a2 2 0 002 2h2m0 0v2m0-2h2m6-14h2a2 2 0 012 2v2m0 0h2m-2 0V5m0 6h2m-2 0v2m0 4h2a2 2 0 01-2 2h-2m0 0v2m0-2h-2"/></svg>
+                                <p class="text-xs text-gray-400">Place <strong>bank-qr.png</strong> in the <strong>public/</strong> folder</p>
+                              `;
+                              parent.appendChild(fallback);
+                            }
+                          }}
+                        />
                       </div>
                       {/* Footer */}
                       <div className="flex items-center justify-center gap-2 mt-3 text-xs text-gray-500">
@@ -661,7 +675,7 @@ function CheckoutContent() {
                   <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
                     <Ticket className="w-5 h-5 text-red-500" />
                   </div>
-                  Thông tin đơn hàng
+                  Order Information
                 </h2>
 
                 <div className="mb-4 pb-4 border-b border-white/10">
@@ -683,10 +697,10 @@ function CheckoutContent() {
                       className="flex justify-between text-sm py-2 border-b border-white/5"
                     >
                       <span className="text-gray-300">
-                        Ghế {seat.seatNumber}
+                        Seat {seat.seatNumber}
                       </span>
                       <span className="font-medium text-white">
-                        {seat.price.toLocaleString("vi-VN")}đ
+                        {seat.price.toLocaleString()} VND
                       </span>
                     </div>
                   ))}
@@ -694,9 +708,9 @@ function CheckoutContent() {
 
                 <div className="p-4 bg-linear-to-r from-red-600/20 to-transparent rounded-xl mb-6">
                   <div className="flex justify-between items-center">
-                    <span className="font-bold text-white">Tổng cộng</span>
+                    <span className="font-bold text-white">Total</span>
                     <span className="text-2xl font-black text-red-500">
-                      {totalPrice.toLocaleString("vi-VN")}đ
+                      {totalPrice.toLocaleString()} VND
                     </span>
                   </div>
                 </div>
@@ -706,10 +720,10 @@ function CheckoutContent() {
                     <Clock className="w-5 h-5 text-yellow-500 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-yellow-400">
-                        Thời gian thanh toán
+                        Payment Time
                       </p>
                       <p className="text-xs text-yellow-500/80">
-                        Vui lòng thanh toán trong vòng 15 phút
+                        Please pay within 15 minutes
                       </p>
                     </div>
                   </div>
@@ -726,26 +740,92 @@ function CheckoutContent() {
                 )}
 
                 <button
-                  onClick={handleConfirmPayment}
-                  disabled={isProcessing}
+                  onClick={handleOpenConfirm}
+                  disabled={isProcessing || isExpired}
                   className="relative w-full py-4 px-6 rounded-xl font-bold text-white flex items-center justify-center gap-2 bg-linear-to-r from-red-600 to-red-500 shadow-xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {/* Shine effect */}
                   <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                   <span className="relative">
-                    {isProcessing ? "Đang xử lý..." : "Đã thanh toán"}
+                    {isProcessing ? "Processing..." : "I have paid"}
                   </span>
                 </button>
 
                 <p className="text-xs text-gray-500 text-center mt-4">
-                  Sau khi chuyển khoản, vui lòng nhấn &quot;Đã thanh toán&quot;
-                  để xác nhận
+                  After transferring, please click &quot;I have paid&quot; to confirm
                 </p>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !isProcessing && setShowConfirmModal(false)}
+          />
+          <div className="relative bg-zinc-900 border border-white/10 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-600/20 rounded-full flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                </div>
+                <h3 className="text-xl font-bold text-white">
+                  Confirm Information
+                </h3>
+              </div>
+              <p className="text-sm text-gray-400 mb-6 leading-relaxed">
+                The e-ticket will be sent to the email address below. Please double-check your information before confirming payment!
+              </p>
+              <div className="space-y-3 bg-white/5 p-4 rounded-xl mb-6 border border-white/10">
+                <div>
+                  <span className="text-xs text-gray-500 block">Full Name</span>
+                  <span className="text-sm font-semibold text-white">
+                    {formData.name}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 block">Email</span>
+                  <span className="text-sm font-semibold text-white">
+                    {formData.email}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 block">
+                    Phone Number
+                  </span>
+                  <span className="text-sm font-semibold text-white">
+                    {formData.phone}
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  disabled={isProcessing}
+                  className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold transition-colors disabled:opacity-50"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={submitPayment}
+                  disabled={isProcessing}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    "Confirm"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -757,7 +837,7 @@ export default function CheckoutPage() {
         <div className="min-h-screen bg-black flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-400">Đang tải...</p>
+            <p className="text-gray-400">Loading...</p>
           </div>
         </div>
       }

@@ -6,17 +6,17 @@ import {BadRequestError} from '../utils/errors.js'
 // POST /orders/create-pending
 export async function createPendingOrder(
   request: FastifyRequest<{
-    Body: {eventId: string; seatIds: string[]; sessionId: string}
+    Body: {eventId: string; seatIds: string[]; sessionId: string; promoCode?: string}
   }>,
   reply: FastifyReply
 ) {
-  const {eventId, seatIds, sessionId} = request.body
+  const {eventId, seatIds, sessionId, promoCode} = request.body
 
   if (!eventId || !seatIds?.length || !sessionId) {
     throw new BadRequestError('Missing required fields')
   }
 
-  const result = await orderService.createPendingOrder({eventId, seatIds, sessionId})
+  const result = await orderService.createPendingOrder({eventId, seatIds, sessionId, promoCode})
 
   return reply.send(successResponse(result))
 }

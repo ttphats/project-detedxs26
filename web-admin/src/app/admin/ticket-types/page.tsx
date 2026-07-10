@@ -188,7 +188,7 @@ export default function TicketTypesPage() {
   const handleDelete = async (id: string) => {
     try {
       const token = localStorage.getItem('token')
-      const res = await fetch(`/api/admin/ticket-types/${id}`, {
+      const res = await fetch(`/api/admin/ticket-types?id=${id}`, {
         method: 'DELETE',
         headers: {Authorization: `Bearer ${token}`},
       })

@@ -43,7 +43,7 @@ export async function getSessionLocks(sessionId: string, eventId: string): Promi
     `SELECT sl.*, s.seat_number, s.row, s.col, s.section, s.seat_type, s.price
      FROM seat_locks sl
      JOIN seats s ON sl.seat_id COLLATE utf8mb4_unicode_ci = s.id COLLATE utf8mb4_unicode_ci
-     WHERE sl.session_id = ? AND sl.event_id = ? AND sl.expires_at > NOW()`,
+     WHERE sl.session_id = ? AND sl.event_id = ? AND sl.expires_at > NOW() AND s.status = 'AVAILABLE'`,
     [sessionId, eventId]
   )
 
@@ -71,7 +71,7 @@ export async function lockSeats(
   }
 
   // Clean up expired locks first
-  await execute('DELETE FROM seat_locks WHERE expires_at < NOW()')
+  await execute('DELETE FROM seat_locks WHERE expires_at < NOW()', [])
 
   // Check if seats exist and are available
   const placeholders = seatIds.map(() => '?').join(',')
@@ -124,9 +124,9 @@ export async function lockSeats(
     const lockId = generateUUID()
     await execute(
       `INSERT INTO seat_locks (id, seat_id, event_id, session_id, ticket_type_id, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())
+       VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())
        ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), ticket_type_id = VALUES(ticket_type_id), expires_at = VALUES(expires_at)`,
-      [lockId, seatId, eventId, sessionId, ticketTypeId || null, expiresAt]
+      [lockId, seatId, eventId, sessionId, ticketTypeId || null, LOCK_DURATION_MINUTES]
     )
   }
 
@@ -238,6 +238,7 @@ export async function getEventSeats(eventId: string, sessionId?: string): Promis
       section: seat.section,
       status,
       seatType: seat.seat_type, // Keep original LEVEL_X format
+      ticketTypeId: (seat as any).ticket_type_id || null,
       level: getSeatLevel(seat.seat_type), // Add level for client-side mapping
       price: Number(seat.price),
       lockExpiresAt: seat.lock_expires_at || null,
