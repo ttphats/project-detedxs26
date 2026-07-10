@@ -46,10 +46,11 @@ interface EventData {
 
 // Bank account info for transfer
 const bankInfo = {
-  bankName: "Asia Commercial Bank - ACB",
-  bankLogo: "/acb-logo.png",
-  accountNumber: "85085588",
-  accountHolder: "CONG TY TNHH TICKETHUB VN",
+  bankName: process.env.NEXT_PUBLIC_BANK_NAME || "Asia Commercial Bank - ACB",
+  bankCode: process.env.NEXT_PUBLIC_BANK_CODE || "acb",
+  bankLogo: process.env.NEXT_PUBLIC_BANK_LOGO || "/acb-logo.png",
+  accountNumber: process.env.NEXT_PUBLIC_BANK_ACCOUNT_NUMBER || "85085588",
+  accountHolder: process.env.NEXT_PUBLIC_BANK_ACCOUNT_HOLDER || "CONG TY TNHH TICKETHUB VN",
 };
 
 // Countdown timer duration in seconds (15 minutes)
@@ -65,7 +66,6 @@ function CheckoutContent() {
 
   const [formData, setFormData] = useState({ name: "", email: "", phone: "" });
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(COUNTDOWN_DURATION);
   const [isExpired, setIsExpired] = useState(false);
@@ -110,7 +110,6 @@ function CheckoutContent() {
             router.replace(`/order-waiting?order=${orderNumber}&token=${accessToken}`);
             return;
           }
-
           setOrderData(data.data);
           setOrderCode(data.data.orderNumber);
 
@@ -139,11 +138,11 @@ function CheckoutContent() {
           });
         } else {
           console.error("Failed to fetch order:", data.error);
-          setOrderError(data.error || "Cannot load order information");
+          setOrderError(data.error || "Unable to load order details");
         }
       } catch (err) {
         console.error("Error fetching order:", err);
-        setOrderError("Error loading order information");
+        setOrderError("Error loading order details");
       } finally {
         setLoading(false);
       }
@@ -239,21 +238,30 @@ function CheckoutContent() {
     selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
   const transferContent = `Ticket payment order ${orderCode}`;
 
+  const formatENDate = (dateStr: string) => {
+    if (!dateStr) return "-";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "Asia/Ho_Chi_Minh",
+    });
+  };
+
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleOpenConfirm = () => {
+  const handleConfirmPayment = async () => {
     if (!formData.name || !formData.email || !formData.phone) {
-      toast.error("Please fill in all information");
+      toast.error("Please fill in all required fields");
       return;
     }
-    setShowConfirmModal(true);
-  };
-
-  const submitPayment = async () => {
 
     if (!orderNumber || !accessToken) {
       setOrderError(
@@ -299,7 +307,7 @@ function CheckoutContent() {
       setOrderError(
         error instanceof Error
           ? error.message
-          : "An error occurred while confirming payment",
+          : "An error occurred while confirming the payment",
       );
       setIsProcessing(false);
     }
@@ -311,7 +319,7 @@ function CheckoutContent() {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-red-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading order information...</p>
+          <p className="text-gray-400">Loading order details...</p>
         </div>
       </div>
     );
@@ -322,13 +330,13 @@ function CheckoutContent() {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center glass-panel p-8 rounded-2xl">
           <h1 className="text-2xl font-bold text-white mb-4">
-            Order not found
+            Order Not Found
           </h1>
           <Link
             href="/"
             className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl transition-colors"
           >
-            Back to home
+            Back to Home
           </Link>
         </div>
       </div>
@@ -388,7 +396,7 @@ function CheckoutContent() {
                   >
                     {isExpired
                       ? "Payment time expired"
-                      : "Time remaining to pay"}
+                      : "Time remaining for payment"}
                   </p>
                 </div>
               </div>
@@ -410,7 +418,7 @@ function CheckoutContent() {
                   href={`/events/${eventId}/seats`}
                   className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-lg transition-colors"
                 >
-                  Select seats again
+                  Reselect Seats
                 </Link>
               )}
             </div>
@@ -492,7 +500,7 @@ function CheckoutContent() {
                         setFormData({ ...formData, phone: e.target.value })
                       }
                       className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-white placeholder-gray-500 transition-all"
-                      placeholder="0901234567"
+                      placeholder="e.g. 0901234567"
                     />
                   </div>
                 </div>
@@ -509,7 +517,7 @@ function CheckoutContent() {
               <div className="border-l-4 border-red-500 px-6 py-4 bg-red-600/10">
                 <h2 className="text-xl font-bold text-white flex items-center gap-3">
                   <QrCode className="w-5 h-5 text-red-500" />
-                  Bank Transfer
+                  Bank Transfer Payment
                 </h2>
               </div>
 
@@ -520,7 +528,7 @@ function CheckoutContent() {
                     {/* Bank Name */}
                     <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl">
                       <div className="w-12 h-12 bg-linear-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-red-500/30">
-                        ACB
+                        {bankInfo.bankCode.toUpperCase()}
                       </div>
                       <div>
                         <p className="font-semibold text-white">
@@ -588,7 +596,7 @@ function CheckoutContent() {
                       <p className="text-sm text-red-400 mb-1">Amount</p>
                       <div className="flex items-center gap-2">
                         <span className="text-2xl font-black text-red-500">
-                          {totalPrice.toLocaleString()} VND
+                          {totalPrice.toLocaleString("en-US")} VND
                         </span>
                         <button
                           onClick={() =>
@@ -609,11 +617,11 @@ function CheckoutContent() {
                   {/* QR Code Right */}
                   <div className="flex flex-col items-center justify-center">
                     <p className="text-sm text-gray-400 mb-4 text-center">
-                      Scan QR code via
+                      Scan the QR code using your mobile banking
                       <br />
-                      banking/e-wallet app to pay
+                      or e-wallet app to pay
                     </p>
-                    <div className="border-2 border-white/10 rounded-2xl p-3 bg-white relative overflow-hidden">
+                    <div className="border-2 border-white/10 rounded-2xl p-4 bg-white relative overflow-hidden">
                       {/* VietQR Header */}
                       <div className="flex items-center justify-center gap-1 mb-3">
                         <span className="text-blue-600 font-bold text-lg">
@@ -623,27 +631,19 @@ function CheckoutContent() {
                           QR
                         </span>
                       </div>
-                      {/* QR Code - Static bank QR image */}
-                      <div className="w-80 h-80 bg-white rounded-lg flex items-center justify-center relative overflow-hidden">
-                        <img
-                          src="/bank-qr.png"
-                          alt="Bank transfer QR code"
-                          className="w-full h-full object-contain"
-                          onError={(e) => {
-                            // Fallback: hide img and show placeholder text
-                            e.currentTarget.style.display = "none";
-                            const parent = e.currentTarget.parentElement;
-                            if (parent && !parent.querySelector(".qr-fallback")) {
-                              const fallback = document.createElement("div");
-                              fallback.className = "qr-fallback flex flex-col items-center justify-center gap-2 p-4 text-center";
-                              fallback.innerHTML = `
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9V7a2 2 0 012-2h2m0 0V3m0 2h2M3 15v2a2 2 0 002 2h2m0 0v2m0-2h2m6-14h2a2 2 0 012 2v2m0 0h2m-2 0V5m0 6h2m-2 0v2m0 4h2a2 2 0 01-2 2h-2m0 0v2m0-2h-2"/></svg>
-                                <p class="text-xs text-gray-400">Place <strong>bank-qr.png</strong> in the <strong>public/</strong> folder</p>
-                              `;
-                              parent.appendChild(fallback);
-                            }
-                          }}
-                        />
+                      {/* QR Code Image */}
+                      <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center relative overflow-hidden p-2">
+                        {totalPrice > 0 ? (
+                          <img
+                            src={`https://img.vietqr.io/image/${bankInfo.bankCode}-${bankInfo.accountNumber}-qr_only.png?amount=${Math.round(totalPrice)}&addInfo=${encodeURIComponent(transferContent)}&accountName=${encodeURIComponent(bankInfo.accountHolder)}`}
+                            alt="VietQR Code"
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center text-gray-400 text-xs">
+                            Generating QR Code...
+                          </div>
+                        )}
                       </div>
                       {/* Footer */}
                       <div className="flex items-center justify-center gap-2 mt-3 text-xs text-gray-500">
@@ -652,7 +652,7 @@ function CheckoutContent() {
                         </span>
                         <span>247</span>
                         <span className="text-gray-300">|</span>
-                        <span className="text-red-500 font-bold">ACB</span>
+                        <span className="text-red-500 font-bold">{bankInfo.bankCode.toUpperCase()}</span>
                       </div>
                     </div>
                   </div>
@@ -675,18 +675,13 @@ function CheckoutContent() {
                   <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
                     <Ticket className="w-5 h-5 text-red-500" />
                   </div>
-                  Order Information
+                  Order Summary
                 </h2>
 
                 <div className="mb-4 pb-4 border-b border-white/10">
                   <p className="font-semibold text-white">{event.name}</p>
                   <p className="text-sm text-gray-400">
-                    {formatVNDate(event.eventDate || event.date || "", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
+                    {formatENDate(event.eventDate || event.date || "")}
                   </p>
                 </div>
 
@@ -700,7 +695,7 @@ function CheckoutContent() {
                         Seat {seat.seatNumber}
                       </span>
                       <span className="font-medium text-white">
-                        {seat.price.toLocaleString()} VND
+                        {seat.price.toLocaleString("en-US")} VND
                       </span>
                     </div>
                   ))}
@@ -710,7 +705,7 @@ function CheckoutContent() {
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-white">Total</span>
                     <span className="text-2xl font-black text-red-500">
-                      {totalPrice.toLocaleString()} VND
+                      {totalPrice.toLocaleString("en-US")} VND
                     </span>
                   </div>
                 </div>
@@ -720,10 +715,10 @@ function CheckoutContent() {
                     <Clock className="w-5 h-5 text-yellow-500 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-yellow-400">
-                        Payment Time
+                        Payment Timeout
                       </p>
                       <p className="text-xs text-yellow-500/80">
-                        Please pay within 15 minutes
+                        Please complete payment within 15 minutes
                       </p>
                     </div>
                   </div>
@@ -740,92 +735,26 @@ function CheckoutContent() {
                 )}
 
                 <button
-                  onClick={handleOpenConfirm}
-                  disabled={isProcessing || isExpired}
+                  onClick={handleConfirmPayment}
+                  disabled={isProcessing}
                   className="relative w-full py-4 px-6 rounded-xl font-bold text-white flex items-center justify-center gap-2 bg-linear-to-r from-red-600 to-red-500 shadow-xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {/* Shine effect */}
                   <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                   <span className="relative">
-                    {isProcessing ? "Processing..." : "I have paid"}
+                    {isProcessing ? "Processing..." : "I Have Paid"}
                   </span>
                 </button>
 
                 <p className="text-xs text-gray-500 text-center mt-4">
-                  After transferring, please click &quot;I have paid&quot; to confirm
+                  After transferring, please click &quot;I Have Paid&quot;
+                  to confirm
                 </p>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => !isProcessing && setShowConfirmModal(false)}
-          />
-          <div className="relative bg-zinc-900 border border-white/10 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-fade-in-up">
-            <div className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-red-600/20 rounded-full flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-red-500" />
-                </div>
-                <h3 className="text-xl font-bold text-white">
-                  Confirm Information
-                </h3>
-              </div>
-              <p className="text-sm text-gray-400 mb-6 leading-relaxed">
-                The e-ticket will be sent to the email address below. Please double-check your information before confirming payment!
-              </p>
-              <div className="space-y-3 bg-white/5 p-4 rounded-xl mb-6 border border-white/10">
-                <div>
-                  <span className="text-xs text-gray-500 block">Full Name</span>
-                  <span className="text-sm font-semibold text-white">
-                    {formData.name}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-500 block">Email</span>
-                  <span className="text-sm font-semibold text-white">
-                    {formData.email}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-500 block">
-                    Phone Number
-                  </span>
-                  <span className="text-sm font-semibold text-white">
-                    {formData.phone}
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowConfirmModal(false)}
-                  disabled={isProcessing}
-                  className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold transition-colors disabled:opacity-50"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={submitPayment}
-                  disabled={isProcessing}
-                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    "Confirm"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
