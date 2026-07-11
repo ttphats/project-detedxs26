@@ -101,6 +101,9 @@ function CheckoutContent() {
         const res = await fetch(
           `${apiUrl}/orders/${orderNumber}?token=${accessToken}`,
         );
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
 
         if (data.success) {
@@ -173,6 +176,9 @@ function CheckoutContent() {
         const apiUrl =
           process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
         const res = await fetch(`${apiUrl}/events/${eventId}`);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
 
         if (data.success) {
@@ -290,6 +296,10 @@ function CheckoutContent() {
           customerPhone: formData.phone,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const data = await response.json();
 

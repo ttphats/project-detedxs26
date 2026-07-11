@@ -159,6 +159,9 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
         const res = await fetch(`${apiUrl}/ticket/${orderNumber}?token=${token}`)
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`)
+        }
         const data = await res.json()
 
         if (!res.ok || !data.success) {

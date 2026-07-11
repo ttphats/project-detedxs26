@@ -39,6 +39,13 @@ export default function RegisterSpeakerPage() {
           fetch("/api/speakers/register/fields")
         ]);
         
+        if (!configRes.ok) {
+          throw new Error(`Config HTTP error! status: ${configRes.status}`);
+        }
+        if (!fieldsRes.ok) {
+          throw new Error(`Fields HTTP error! status: ${fieldsRes.status}`);
+        }
+        
         const configData = await configRes.json();
         const fieldsData = await fieldsRes.json();
 
@@ -120,6 +127,9 @@ export default function RegisterSpeakerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData)
       });
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       const data = await res.json();
       if (data.success) {
         setSubmitted(true);
