@@ -26,10 +26,14 @@ yarn-error.log*
 
 # Local env files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+env (*
+backend/env*
+web-admin/env*
+web-client/env*
+backend/.env.*
+web-admin/.env.*
+web-client/.env.*
 
 # Vercel
 .vercel
