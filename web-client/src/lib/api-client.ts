@@ -42,6 +42,23 @@ export async function apiRequest<T = any>(
       headers,
     });
 
+    if (!response.ok) {
+      const text = await response.text();
+      return {
+        success: false,
+        error: text || `HTTP error ${response.status}: ${response.statusText}`,
+      };
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      return {
+        success: false,
+        error: `Invalid response format: expected JSON, got ${contentType || 'plain text'}. Response: ${text.substring(0, 100)}`,
+      };
+    }
+
     const data = await response.json();
     return data;
   } catch (error: any) {
