@@ -71,6 +71,9 @@ function OrderWaitingContent() {
       const res = await fetch(
         `${apiUrl}/ticket/${orderNumber}?token=${token}`,
       );
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       const data = await res.json();
 
       if (!res.ok || !data.success) {

@@ -359,6 +359,9 @@ export default function Home() {
     const fetchFeaturedEvent = async () => {
       try {
         const res = await fetch("/api/events?featured=true", { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
         if (data.success && data.data) {
           // Merge with mock timeline since API doesn't have it yet
@@ -427,6 +430,9 @@ export default function Home() {
     const fetchSpeakers = async () => {
       try {
         const res = await fetch(`/api/events/${featuredEvent.id}/speakers`);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
         if (data.success && data.data.length > 0) {
           setSpeakers(data.data);
@@ -445,6 +451,9 @@ export default function Home() {
     const fetchTimeline = async () => {
       try {
         const res = await fetch(`/api/events/${featuredEvent.id}/timeline`);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
         if (data.success && data.data.length > 0) {
           // Transform API format - use type directly from database (lowercase)
@@ -476,6 +485,9 @@ export default function Home() {
     const fetchPartners = async () => {
       try {
         const res = await fetch("/api/partners");
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
         if (data.success && data.data && data.data.length > 0) {
           setPartners(data.data);
