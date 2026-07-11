@@ -317,9 +317,8 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                 {t('importantNote')}
               </h3>
               <p className='text-sm text-amber-100/90 leading-relaxed'>
-                Vui lòng <strong>lưu đường link này</strong> (bookmark hoặc copy URL) để xem trạng
-                thái vé sau này. Link chứa mã xác thực duy nhất của bạn và không thể khôi phục nếu
-                bị mất.
+                Please <strong>save this link</strong> (bookmark or copy URL) to check your ticket status later. The link contains your unique
+                authentication code and cannot be recovered if lost.
               </p>
             </div>
           </div>
