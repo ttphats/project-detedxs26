@@ -2,6 +2,46 @@
 
 import {useEffect, useState, use} from 'react'
 import {useSearchParams} from 'next/navigation'
+const MESSAGES: Record<string, string> = {
+  'status.pending.text': 'Pending Payment',
+  'status.pending.desc': 'Please complete the bank transfer to reserve your tickets.',
+  'status.pendingConf.text': 'Pending Confirmation',
+  'status.pendingConf.desc': 'We are confirming your payment. The ticket will be issued in a few minutes.',
+  'status.paid.text': 'Paid',
+  'status.paid.desc': 'Payment successful. See you at the event!',
+  'status.cancelled.text': 'Cancelled',
+  'status.cancelled.desc': 'This order has been cancelled.',
+  'status.expired.text': 'Expired',
+  'status.expired.desc': 'The payment time has expired.',
+  'error.missingToken': 'Missing order validation token.',
+  'error.fetchFailed': 'Unable to load ticket details.',
+  'error.generic': 'An error occurred.',
+  'error.downloadFailed': 'Failed to download ticket.',
+  'success.download': 'Ticket downloaded successfully!',
+  'loading': 'Loading...',
+  'error.accessDenied': 'Access Denied',
+  'error.notFound': 'Ticket not found',
+  'backHome': 'Back to Home',
+  'eTicket': 'E-Ticket',
+  'importantNote': 'Important Note',
+  'date': 'Date',
+  'time': 'Time',
+  'venue': 'Venue',
+  'attendeeInfo': 'Attendee Info',
+  'tickets': 'tickets',
+  'seat': 'Seat',
+  'checkinCode': 'Check-in Code',
+  'scanInstruction': 'Scan this code at the check-in counter',
+  'checkinSuccess': 'Check-in Successful',
+  'totalAmount': 'Total Amount',
+  'downloading': 'Downloading...',
+  'downloadTicket': 'Download PDF Ticket',
+  'footerNote': 'Please bring this ticket to the event.',
+}
+
+const useTranslations = () => {
+  return (key: string) => MESSAGES[key] || key;
+}
 import {toast} from 'sonner'
 import {
   Calendar,
@@ -46,47 +86,6 @@ interface TicketData {
     seatType: string
     price: number
   }[]
-}
-
-const TRANSLATIONS: Record<string, string> = {
-  'status.pending.text': 'Pending Payment',
-  'status.pending.desc': 'Please complete your payment to receive the ticket.',
-  'status.pendingConf.text': 'Pending Confirmation',
-  'status.pendingConf.desc': 'Your order is pending confirmation from the organizer.',
-  'status.paid.text': 'Paid',
-  'status.paid.desc': 'Payment successful. Below is your e-ticket.',
-  'status.cancelled.text': 'Cancelled',
-  'status.cancelled.desc': 'This order has been cancelled.',
-  'status.expired.text': 'Expired',
-  'status.expired.desc': 'Ticket reservation time has expired.',
-  'error.missingToken': 'Missing authentication token.',
-  'error.fetchFailed': 'Failed to fetch ticket information.',
-  'error.generic': 'An error occurred, please try again later.',
-  'success.download': 'Ticket downloaded successfully',
-  'error.downloadFailed': 'Failed to download ticket. Please try again.',
-  'loading': 'Loading ticket data...',
-  'error.accessDenied': 'Access Denied',
-  'error.notFound': 'Ticket not found. Please check the link.',
-  'backHome': 'Back to home',
-  'eTicket': 'E-Ticket',
-  'importantNote': 'Important Note',
-  'date': 'Date',
-  'time': 'Time',
-  'venue': 'Venue',
-  'attendeeInfo': 'Attendee Information',
-  'tickets': 'tickets',
-  'seat': 'Seat',
-  'checkinCode': 'Check-in Code',
-  'scanInstruction': 'Please present this code to the staff at the event',
-  'checkinSuccess': 'Checked-in',
-  'totalAmount': 'Total Amount',
-  'downloading': 'Downloading...',
-  'downloadTicket': 'Download Ticket (PDF)',
-  'footerNote': 'TEDxFPTUniversityHCMC 2026. For inquiries, please contact our fanpage.'
-}
-
-const useTranslations = () => {
-  return (key: string) => TRANSLATIONS[key] || key
 }
 
 const getStatusConfig = (t: any) => ({
@@ -160,6 +159,9 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
         const res = await fetch(`${apiUrl}/ticket/${orderNumber}?token=${token}`)
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`)
+        }
         const data = await res.json()
 
         if (!res.ok || !data.success) {
@@ -310,12 +312,13 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
               <Shield className='w-5 h-5 text-amber-400' />
             </div>
             <div className='flex-1'>
-              <h3 className='text-sm font-semibold text-amber-300 flex items-center gap-2 mb-2'>
+              <h3 className='text-amber-400 font-bold mb-1 flex items-center gap-2'>
                 <AlertTriangle className='w-4 h-4' />
                 {t('importantNote')}
               </h3>
               <p className='text-sm text-amber-100/90 leading-relaxed'>
-                Please <strong>save this link</strong> (bookmark or copy URL) to check your ticket status later. The link contains your unique authentication code and cannot be recovered if lost.
+                Please <strong>save this link</strong> (bookmark or copy URL) to check your ticket status later. The link contains your unique
+                authentication code and cannot be recovered if lost.
               </p>
             </div>
           </div>
@@ -464,11 +467,11 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                       {t('checkinCode')}
                     </span>
                   </div>
-                  <div className='bg-white rounded-lg p-3 flex items-center justify-center'>
+                  <div className='bg-white rounded-lg p-4 flex items-center justify-center'>
                     <img
                       src={ticket.qrCodeUrl}
                       alt='QR Code'
-                      className='w-72 h-72 object-contain'
+                      className='w-48 h-48 object-contain'
                       style={{imageRendering: 'crisp-edges'}}
                     />
                   </div>

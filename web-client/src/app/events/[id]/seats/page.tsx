@@ -211,6 +211,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         // ✅ Fetch event data from backend Fastify
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
         const res = await fetch(`${apiUrl}/events/${id}?sessionId=${sessionId}`)
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`)
+        }
         const data = await res.json()
 
         if (!data.success) {
@@ -228,6 +231,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
           const pendingOrderRes = await fetch(
             `${apiUrl}/orders/check-pending?eventId=${id}&sessionId=${sessionId}`
           )
+          if (!pendingOrderRes.ok) {
+            throw new Error(`HTTP error! status: ${pendingOrderRes.status}`)
+          }
           const pendingOrderData = await pendingOrderRes.json()
 
           if (pendingOrderData.success && pendingOrderData.data) {
@@ -247,6 +253,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         // Always restore locks from DB (supports page reload + checkout return)
         try {
           const locksRes = await fetch(`${apiUrl}/seats/lock?sessionId=${sessionId}&eventId=${id}`)
+          if (!locksRes.ok) {
+            throw new Error(`HTTP error! status: ${locksRes.status}`)
+          }
           const locksData = await locksRes.json()
 
           if (locksData.success && locksData.data.locks.length > 0) {
@@ -348,6 +357,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`${apiUrl}/events/${id}/seats?sessionId=${sessionId}`)
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`)
+        }
         const data = await res.json()
         if (data.success && data.data) {
           // Backend returns different structure
@@ -472,6 +484,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
           }),
           signal: controller.signal
         })
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`)
+        }
         const data = await res.json()
         if (data.success && data.data?.discount) {
           setDiscountInfo({
@@ -518,6 +533,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
           promoCode: promoCode.trim()
         })
       })
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`)
+      }
       const data = await res.json()
       
       if (!data.success) {
@@ -631,6 +649,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         // Refresh seat map immediately to show unlocked seat
         try {
           const seatsRes = await fetch(`${apiUrl}/events/${id}/seats?sessionId=${sessionId}`)
+          if (!seatsRes.ok) {
+            throw new Error(`HTTP error! status: ${seatsRes.status}`)
+          }
           const seatsData = await seatsRes.json()
           if (seatsData.success) {
             setEvent((prev) =>
@@ -667,6 +688,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
             sessionId,
           }),
         })
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`)
+        }
         const data = await res.json()
 
         if (!data.success) {
@@ -738,6 +762,10 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
           sessionId,
         }),
       })
+
+      if (!extendResponse.ok) {
+        throw new Error(`HTTP error! status: ${extendResponse.status}`)
+      }
 
       const extendData = await extendResponse.json()
 
