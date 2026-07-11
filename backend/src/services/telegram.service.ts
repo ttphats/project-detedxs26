@@ -59,21 +59,21 @@ export async function notifyNewOrderPendingConfirmation(order: {
   seats: Array<{ seatNumber: string; seatType: string }>;
 }): Promise<boolean> {
   const seatList = order.seats.map((s) => `${s.seatNumber} (${s.seatType})`).join(', ');
-  const amountFormatted = order.totalAmount.toLocaleString('vi-VN') + ' VND';
+  const amountFormatted = order.totalAmount.toLocaleString('en-US') + ' VND';
 
   const message = `
-🔔 <b>YÊU CẦU XÁC NHẬN THANH TOÁN MỚI</b>
+🔔 <b>NEW PAYMENT CONFIRMATION REQUEST</b>
 
-<b>Mã đơn hàng:</b> <code>${escapeHtml(order.orderNumber)}</code>
-<b>Khách hàng:</b> ${escapeHtml(order.customerName)}
-<b>Số điện thoại:</b> <code>${escapeHtml(order.customerPhone)}</code>
+<b>Order Number:</b> <code>${escapeHtml(order.orderNumber)}</code>
+<b>Customer Name:</b> ${escapeHtml(order.customerName)}
+<b>Phone Number:</b> <code>${escapeHtml(order.customerPhone)}</code>
 <b>Email:</b> ${escapeHtml(order.customerEmail)}
 
-<b>Sự kiện:</b> ${escapeHtml(order.eventName)}
-<b>Danh sách ghế:</b> <code>${escapeHtml(seatList)}</code>
-<b>Tổng số tiền:</b> <b>${escapeHtml(amountFormatted)}</b>
+<b>Event Name:</b> ${escapeHtml(order.eventName)}
+<b>Seats:</b> <code>${escapeHtml(seatList)}</code>
+<b>Total Amount:</b> <b>${escapeHtml(amountFormatted)}</b>
 
-<i>Vui lòng truy cập Web Admin để kiểm tra giao dịch và phê duyệt vé cho khách hàng.</i>
+<i>Please access the Web Admin to check the transaction and approve the ticket.</i>
   `.trim();
 
   return sendTelegramMessage(message);
@@ -90,18 +90,18 @@ export async function notifyOrderConfirmed(order: {
   seats: Array<{ seatNumber: string; seatType: string }>;
 }): Promise<boolean> {
   const seatList = order.seats.map((s) => `${s.seatNumber} (${s.seatType})`).join(', ');
-  const amountFormatted = order.totalAmount.toLocaleString('vi-VN') + ' VND';
+  const amountFormatted = order.totalAmount.toLocaleString('en-US') + ' VND';
 
   const message = `
-✅ <b>ĐƠN HÀNG ĐÃ ĐƯỢC XÁC NHẬN THÀNH CÔNG</b>
+✅ <b>ORDER CONFIRMED SUCCESSFULLY</b>
 
-<b>Mã đơn hàng:</b> <code>${escapeHtml(order.orderNumber)}</code>
-<b>Khách hàng:</b> ${escapeHtml(order.customerName)}
-<b>Sự kiện:</b> ${escapeHtml(order.eventName)}
-<b>Danh sách ghế:</b> <code>${escapeHtml(seatList)}</code>
-<b>Tổng số tiền:</b> <b>${escapeHtml(amountFormatted)}</b>
+<b>Order Number:</b> <code>${escapeHtml(order.orderNumber)}</code>
+<b>Customer Name:</b> ${escapeHtml(order.customerName)}
+<b>Event Name:</b> ${escapeHtml(order.eventName)}
+<b>Seats:</b> <code>${escapeHtml(seatList)}</code>
+<b>Total Amount:</b> <b>${escapeHtml(amountFormatted)}</b>
 
-<i>Hệ thống đã tự động tạo vé QR và gửi email xác nhận cho khách hàng.</i>
+<i>The system has generated the QR tickets and sent a confirmation email to the customer.</i>
   `.trim();
 
   return sendTelegramMessage(message);
