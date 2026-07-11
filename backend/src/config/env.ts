@@ -52,6 +52,10 @@ const envSchema = z.object({
 
   // Payment
   PAYMENT_PROVIDER: z.enum(['mock', 'stripe', 'vnpay']).default('mock'),
+
+  // Telegram
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
 function loadEnv() {
@@ -70,8 +74,8 @@ export const env = loadEnv();
 
 export const config = {
   server: {
-    port: parseInt(env.PORT, 10),
     host: env.HOST,
+    port: parseInt(env.PORT, 10),
   },
   database: {
     url: env.DATABASE_URL,
@@ -108,6 +112,10 @@ export const config = {
   },
   payment: {
     provider: env.PAYMENT_PROVIDER,
+  },
+  telegram: {
+    botToken: env.TELEGRAM_BOT_TOKEN,
+    chatId: env.TELEGRAM_CHAT_ID,
   },
   isDev: env.NODE_ENV === 'development',
   isProd: env.NODE_ENV === 'production',

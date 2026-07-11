@@ -221,6 +221,24 @@ async function processPaymentConfirmation(
         },
       }).catch((err) => console.error('Failed to send ticket email:', err))
 
+      // Send Telegram Notification
+      import('../services/telegram.service.js')
+        .then((m) =>
+          m.notifyOrderConfirmed({
+            orderNumber: order.orderNumber,
+            customerName: order.customerName,
+            eventName: order.event.name,
+            totalAmount: Number(order.totalAmount),
+            seats: order.orderItems.map((item: any) => ({
+              seatNumber: item.seatNumber,
+              seatType: item.seatType,
+            })),
+          })
+        )
+        .catch((telegramErr) =>
+          console.error('[TELEGRAM] Failed to send order confirmed notification:', telegramErr)
+        )
+
       console.log(`✅ Payment confirmed for order ${orderId}`)
     },
     {timeout: 30000}
