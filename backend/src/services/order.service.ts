@@ -557,6 +557,7 @@ export async function confirmPayment(
   // Notify on-duty staff that an order is waiting for payment confirmation
   try {
     const { sendOnDutyStaffNotification } = await import('./email.service.js')
+    const { notifyNewOrderPendingConfirmation } = await import('./telegram.service.js')
     const orderDetails = await getOrderByNumber(orderNumber, accessToken)
     const orderDataForEmail = await queryOne<{discount_amount: number | null, promo_code: string | null}>(
        'SELECT discount_amount, promo_code FROM orders WHERE id = ?', [order.id]
@@ -577,6 +578,19 @@ export async function confirmPayment(
       discountAmount: orderDataForEmail?.discount_amount,
       promoCode: orderDataForEmail?.promo_code
     }).catch((err) => console.error('[ON-DUTY] Failed to send staff notification:', err))
+
+    notifyNewOrderPendingConfirmation({
+      orderNumber: orderDetails.orderNumber,
+      customerName: orderDetails.customerName,
+      customerPhone: orderDetails.customerPhone || '',
+      customerEmail: orderDetails.customerEmail || '',
+      eventName: orderDetails.eventName,
+      totalAmount: orderDetails.totalAmount,
+      seats: orderDetails.seats.map(s => ({
+        seatNumber: s.seatNumber,
+        seatType: s.seatType,
+      })),
+    }).catch((err) => console.error('[TELEGRAM] Failed to send order pending confirmation notification:', err))
   } catch (err) {
     console.error('[ON-DUTY] Failed to prepare staff notification:', err)
   }
