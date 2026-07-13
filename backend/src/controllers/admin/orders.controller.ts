@@ -132,6 +132,23 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       console.error('Failed to send confirmation email:', err)
     }
 
+    // Send Telegram Notification
+    try {
+      const { notifyOrderConfirmed } = await import('../../services/telegram.service.js')
+      await notifyOrderConfirmed({
+        orderNumber: result.order.orderNumber,
+        customerName: result.order.customerName,
+        eventName: result.order.event.name,
+        totalAmount: Number(result.order.totalAmount),
+        seats: result.order.orderItems.map((item: any) => ({
+          seatNumber: item.seat.seatNumber,
+          seatType: item.seat.seatType,
+        })),
+      })
+    } catch (telegramErr) {
+      console.error('[TELEGRAM] Failed to send order confirmed notification:', telegramErr)
+    }
+
     const message =
       emailStatus === 'SENT'
         ? 'Xác nhận thanh toán thành công. Email đã gửi.'
