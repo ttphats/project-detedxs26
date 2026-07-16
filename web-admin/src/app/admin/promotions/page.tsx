@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Plus, Edit2, Trash2, Tag } from "lucide-react";
-import { Modal, Form, Input, InputNumber, Select, DatePicker, message } from "antd";
+import { Modal, Form, Input, InputNumber, Select, DatePicker, message, Switch } from "antd";
 import { AdminLayout } from "@/components/admin";
 import dayjs from "dayjs";
 
@@ -38,6 +38,7 @@ export default function PromotionsPage() {
   const [form] = Form.useForm();
   
   const type = Form.useWatch("type", form);
+  const isBulk = Form.useWatch("isBulk", form);
 
   useEffect(() => {
     fetchEvents();
@@ -154,13 +155,21 @@ export default function PromotionsPage() {
   const handleCreate = async (values: any) => {
     try {
       setIsSubmitting(true);
-      const payload = {
+
+      let codes: string[] | undefined = undefined;
+      if (values.isBulk && values.codes_text) {
+        codes = values.codes_text
+          .split(/,|\n/)
+          .map((c: string) => c.trim().toUpperCase())
+          .filter(Boolean);
+      }
+
+      const payload: any = {
         eventId: selectedEventId,
         name: values.name,
         type: values.type,
         discountType: values.discount_type,
         discountValue: values.discount_value,
-        code: values.code || undefined,
         minTickets: values.min_tickets || undefined,
         maxTickets: values.max_tickets || undefined,
         startDate: values.dateRange[0].toISOString(),
@@ -169,6 +178,12 @@ export default function PromotionsPage() {
         maxPerCustomer: values.max_per_customer || 1,
         ticketTypeIds: values.ticket_type_ids?.length ? values.ticket_type_ids : undefined,
       };
+
+      if (codes) {
+        payload.codes = codes;
+      } else {
+        payload.code = values.code || undefined;
+      }
 
       const url = editingId ? `/api/admin/promotions/${editingId}` : "/api/admin/promotions";
       const method = editingId ? "PUT" : "POST";
@@ -347,6 +362,7 @@ export default function PromotionsPage() {
           initialValues={{
             discount_type: "PERCENTAGE",
             max_per_customer: 1,
+            isBulk: false,
           }}
         >
           <div className="grid grid-cols-2 gap-4">
@@ -371,13 +387,38 @@ export default function PromotionsPage() {
               </Select>
             </Form.Item>
 
-            <Form.Item
-              name="code"
-              label="Promo Code"
-              rules={[{ required: type === "PROMO_CODE", message: "Please enter code" }]}
-            >
-              <Input placeholder="e.g. SUMMER26" disabled={type !== "PROMO_CODE"} />
-            </Form.Item>
+            {type === "PROMO_CODE" && !editingId && (
+              <Form.Item
+                name="isBulk"
+                label="Tạo hàng loạt mã cho Affiliate?"
+                valuePropName="checked"
+                className="col-span-2"
+              >
+                <Switch checkedChildren="Bật" unCheckedChildren="Tắt" />
+              </Form.Item>
+            )}
+
+            {type === "PROMO_CODE" && (
+              isBulk && !editingId ? (
+                <Form.Item
+                  name="codes_text"
+                  label="Danh sách mã giảm giá"
+                  rules={[{ required: true, message: "Vui lòng nhập danh sách mã" }]}
+                  className="col-span-2"
+                  help="Nhập các mã phân cách bằng dấu phẩy hoặc dòng mới. Ví dụ: AFF_KHOI, AFF_PHU, AFF_TUAN"
+                >
+                  <Input.TextArea placeholder="Nhập các mã giảm giá..." rows={4} />
+                </Form.Item>
+              ) : (
+                <Form.Item
+                  name="code"
+                  label="Promo Code"
+                  rules={[{ required: type === "PROMO_CODE", message: "Please enter code" }]}
+                >
+                  <Input placeholder="e.g. SUMMER26" />
+                </Form.Item>
+              )
+            )}
 
             <Form.Item
               name="discount_type"

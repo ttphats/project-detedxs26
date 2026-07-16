@@ -32,7 +32,7 @@ test.describe('TC-04: Ticket Download', () => {
     const filename = download.suggestedFilename()
     expect(filename).toContain('ticket')
     expect(filename).toContain(mockOrderNumber)
-    expect(filename).toEndWith('.pdf')
+    expect(filename.endsWith('.pdf')).toBe(true)
     
     // Verify download successful
     const path = await download.path()

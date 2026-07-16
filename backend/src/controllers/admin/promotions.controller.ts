@@ -18,9 +18,14 @@ export async function createPromotion(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  const input = request.body as promotionsService.CreatePromotionInput;
+  const input = request.body as any;
   if (!input.eventId || !input.name || !input.type || !input.discountType || !input.discountValue || !input.startDate || !input.endDate) {
     throw new BadRequestError('Missing required fields');
+  }
+
+  if (input.codes && Array.isArray(input.codes)) {
+    const result = await promotionsService.createPromotionsBulk(input);
+    return reply.code(201).send(successResponse(result));
   }
 
   const promotion = await promotionsService.createPromotion(input);

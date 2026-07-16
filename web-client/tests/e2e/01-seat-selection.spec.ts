@@ -102,7 +102,7 @@ test.describe('TC-01: Seat Selection', () => {
     const soldSeat = page.locator('button[data-status="sold"]').first()
     
     if (await soldSeat.count() === 0) {
-      test.skip('No sold seats available for testing')
+      test.skip(true, 'No sold seats available for testing')
       return
     }
     
