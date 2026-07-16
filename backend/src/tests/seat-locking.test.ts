@@ -25,6 +25,7 @@ describe('Seat Lock Service', () => {
       
       mockPool.query
         .mockResolvedValueOnce([mockLocks]) // verification query
+        .mockResolvedValueOnce([[{ now: new Date().toISOString() }]]) // SELECT NOW() as now query
         .mockResolvedValueOnce([{ affectedRows: 1 }]) // update query
         .mockResolvedValueOnce([[{ expires_at: new Date(), expires_in: 900 }]]); // expiry select
 

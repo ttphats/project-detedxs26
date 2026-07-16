@@ -1,4 +1,4 @@
-import { query, execute, queryOne } from '../../db/mysql.js';
+import { query, execute, queryOne, transaction } from '../../db/mysql.js';
 import { randomUUID } from 'crypto';
 import { NotFoundError, BadRequestError } from '../../utils/errors.js';
 
@@ -94,6 +94,59 @@ export async function createPromotion(input: CreatePromotionInput) {
   );
 
   return getPromotion(id);
+}
+
+export async function createPromotionsBulk(input: CreatePromotionInput & { codes: string[] }) {
+  const { codes } = input;
+  
+  // Validate array uniqueness and non-emptiness
+  const uniqueCodes = Array.from(new Set(codes.map(c => c.trim().toUpperCase()))).filter(Boolean);
+  if (uniqueCodes.length === 0) {
+    throw new BadRequestError('Danh sách mã giảm giá trống');
+  }
+
+  // Check database uniqueness for all codes
+  const placeholders = uniqueCodes.map(() => '?').join(',');
+  const existing = await query<{ code: string }>(
+    `SELECT code FROM promotions WHERE code IN (${placeholders})`,
+    uniqueCodes
+  );
+  if (existing.length > 0) {
+    const existingCodes = existing.map(e => e.code).join(', ');
+    throw new BadRequestError(`Các mã giảm giá sau đã tồn tại: ${existingCodes}`);
+  }
+
+  // Insert in a transaction
+  return await transaction(async (connection) => {
+    for (const code of uniqueCodes) {
+      const id = randomUUID();
+      await connection.execute(
+        `INSERT INTO promotions (
+          id, event_id, name, type, discount_type, discount_value, 
+          code, min_tickets, max_tickets, start_date, end_date, 
+          max_usage, max_per_customer, ticket_type_ids, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          input.eventId,
+          `${input.name} (${code})`,
+          input.type,
+          input.discountType,
+          input.discountValue,
+          code,
+          input.minTickets || null,
+          input.maxTickets || null,
+          new Date(input.startDate),
+          new Date(input.endDate),
+          input.maxUsage || null,
+          input.maxPerCustomer || 1,
+          input.ticketTypeIds ? JSON.stringify(input.ticketTypeIds) : null,
+          input.isActive !== undefined ? input.isActive : true
+        ]
+      );
+    }
+    return { success: true, count: uniqueCodes.length };
+  });
 }
 
 export async function updatePromotion(id: string, input: UpdatePromotionInput) {
