@@ -84,7 +84,6 @@ const countSingleGaps = (sortedSeats: SeatType[], selectedIds: Set<string>) => {
   const isOccupied = (s: SeatType) =>
     s.status === 'sold' ||
     s.status === 'locked' ||
-    s.status === 'locked_by_me' ||
     selectedIds.has(s.id);
 
   let gaps = 0;
@@ -628,6 +627,24 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
     setLockError(null)
 
     if (isSelected) {
+      // Validate deselecting first
+      const proposedSelectedSeats = selectedSeats.filter((s) => s.id !== seatId)
+      const seatRow = event!.seatMap.find((row) => row.seats.some((s) => s.id === seatId))
+      if (seatRow) {
+        const validation = validateSeatSelection(
+          seatRow.seats,
+          selectedSeats.map((s) => s.id),
+          proposedSelectedSeats.map((s) => s.id)
+        )
+        if (!validation.valid) {
+          toast.error(
+            validation.message || 'Bạn không thể để trống một ghế đơn ở giữa. Vui lòng chọn các ghế liền kề nhau hoặc chừa lại ít nhất 2 ghế trống. / You cannot leave a single empty seat in between.',
+            { duration: 6000 }
+          )
+          return
+        }
+      }
+
       // Unlock this seat
       setLocking(seatId)
       try {
@@ -680,6 +697,29 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         setLocking(null)
       }
     } else {
+      // Validate selecting first
+      const seatWithPrice = {
+        ...seat,
+        ticketTypeId: seat.ticketTypeId || (seat.seatType ? seat.seatType.toLowerCase() : 'standard'),
+        price: seat.price,
+      }
+      const proposedSelectedSeats = [...selectedSeats, seatWithPrice]
+      const seatRow = event!.seatMap.find((row) => row.seats.some((s) => s.id === seatId))
+      if (seatRow) {
+        const validation = validateSeatSelection(
+          seatRow.seats,
+          selectedSeats.map((s) => s.id),
+          proposedSelectedSeats.map((s) => s.id)
+        )
+        if (!validation.valid) {
+          toast.error(
+            validation.message || 'Bạn không thể để trống một ghế đơn ở giữa. Vui lòng chọn các ghế liền kề nhau hoặc chừa lại ít nhất 2 ghế trống. / You cannot leave a single empty seat in between.',
+            { duration: 6000 }
+          )
+          return
+        }
+      }
+
       // Lock this seat
       setLocking(seatId)
       try {
@@ -701,13 +741,6 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
         if (!data.success) {
           setLockError(data.error || 'Failed to reserve seat. Please try again.')
           return
-        }
-
-        // Use seat's own price and type from database
-        const seatWithPrice = {
-          ...seat,
-          ticketTypeId: seat.ticketTypeId || (seat.seatType ? seat.seatType.toLowerCase() : 'standard'),
-          price: seat.price,
         }
 
         const newSelectedSeats = [...selectedSeats, seatWithPrice]
@@ -746,7 +779,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
       );
       if (!validation.valid) {
         toast.error(
-          'You cannot leave a single empty seat in between. Please select adjacent seats or leave at least 2 empty seats.',
+          validation.message || 'Bạn không thể để trống một ghế đơn ở giữa. Vui lòng chọn các ghế liền kề nhau hoặc chừa lại ít nhất 2 ghế trống. / You cannot leave a single empty seat in between.',
           { duration: 6000 }
         );
         return;
