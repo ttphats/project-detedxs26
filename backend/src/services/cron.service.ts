@@ -14,8 +14,9 @@ export async function expireOrders(): Promise<ExpireOrdersResult> {
     order_number: string;
     event_id: string;
     expires_at: Date;
+    promotion_id: string | null;
   }>(
-    `SELECT id, order_number, event_id, expires_at 
+    `SELECT id, order_number, event_id, expires_at, promotion_id 
      FROM orders 
      WHERE status = 'PENDING' AND expires_at < NOW()`
   );
@@ -47,6 +48,14 @@ export async function expireOrders(): Promise<ExpireOrdersResult> {
 
       if (seatIdList.length > 0) {
         const placeholders = seatIdList.map(() => '?').join(',');
+
+        // 0. Decrement promotion used count if applicable
+        if (order.promotion_id) {
+          await execute(
+            'UPDATE promotions SET used_count = GREATEST(0, used_count - 1) WHERE id = ?',
+            [order.promotion_id]
+          );
+        }
 
         // 1. Update order status to EXPIRED
         await execute(
