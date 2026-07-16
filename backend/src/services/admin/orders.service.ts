@@ -291,6 +291,19 @@ export async function rejectPayment(
         })
       }
 
+      // Decrement promotion used count if applicable
+      const orderPromo = await rawQuery<{promotion_id: string | null}>(
+        'SELECT promotion_id FROM orders WHERE id = ?',
+        [orderId]
+      );
+      const promotionId = orderPromo[0]?.promotion_id;
+      if (promotionId) {
+        await execute(
+          'UPDATE promotions SET used_count = GREATEST(0, used_count - 1) WHERE id = ?',
+          [promotionId]
+        );
+      }
+
       // Release seats back to AVAILABLE
       const seatIds = order.orderItems
         .map((item: any) => item.seatId)

@@ -52,13 +52,7 @@ export async function calculateBestDiscount(input: CalculateDiscountInput): Prom
       // But we still evaluate auto-promos and pick the highest overall.
     }
 
-    // 2. Check Combo Restrictions
-    if (promo.type === 'COMBO') {
-      if (promo.min_tickets && ticketCount < promo.min_tickets) continue;
-      if (promo.max_tickets && ticketCount > promo.max_tickets) continue;
-    }
-
-    // 3. Check Ticket Type Restrictions
+    // 2. Check Ticket Type Restrictions first
     let applicableTickets = tickets;
     if (promo.ticket_type_ids) {
       try {
@@ -71,10 +65,16 @@ export async function calculateBestDiscount(input: CalculateDiscountInput): Prom
         console.error('Failed to parse ticket_type_ids', promo.ticket_type_ids);
       }
     }
-    
-    // Check if Combo min_tickets still met with applicableTickets
-    if (promo.type === 'COMBO' && promo.min_tickets && applicableTickets.length < promo.min_tickets) {
-      continue;
+
+    // 3. Check Combo Restrictions against applicableTickets and calculate multiplier
+    let multiplier = 1;
+    if (promo.type === 'COMBO') {
+      const minT = promo.min_tickets || 1;
+      if (applicableTickets.length < minT) continue;
+      if (promo.max_tickets && applicableTickets.length > promo.max_tickets) continue;
+      
+      multiplier = Math.floor(applicableTickets.length / minT);
+      if (multiplier === 0) continue;
     }
 
     // Calculate discount amount based on applicable tickets
@@ -82,12 +82,21 @@ export async function calculateBestDiscount(input: CalculateDiscountInput): Prom
     
     let discountAmt = 0;
     if (promo.discount_type === 'PERCENTAGE') {
-      discountAmt = (applicableAmount * Number(promo.discount_value)) / 100;
+      if (promo.type === 'COMBO' && promo.min_tickets && promo.min_tickets > 0) {
+        // Sort tickets descending by price so we discount the most expensive ones first
+        const sortedTickets = [...applicableTickets].sort((a, b) => Number(b.price) - Number(a.price));
+        const discountedTickets = sortedTickets.slice(0, multiplier * promo.min_tickets);
+        const targetAmount = discountedTickets.reduce((sum, t) => sum + Number(t.price), 0);
+        discountAmt = (targetAmount * Number(promo.discount_value)) / 100;
+      } else {
+        discountAmt = (applicableAmount * Number(promo.discount_value)) / 100;
+      }
     } else if (promo.discount_type === 'FIXED_AMOUNT') {
-      discountAmt = Number(promo.discount_value);
-      // Ensure we don't discount more than the order total
-      if (discountAmt > totalAmount) discountAmt = totalAmount; 
+      discountAmt = multiplier * Number(promo.discount_value);
     }
+    
+    // Ensure we don't discount more than the order total
+    if (discountAmt > totalAmount) discountAmt = totalAmount;
 
     if (discountAmt > bestDiscountAmount) {
       bestDiscountAmount = discountAmt;

@@ -393,8 +393,9 @@ export async function cancelPendingOrder(
     status: string
     access_token_hash: string
     event_id: string
+    promotion_id: string | null
   }>(
-    `SELECT id, order_number, status, access_token_hash, event_id
+    `SELECT id, order_number, status, access_token_hash, event_id, promotion_id
      FROM orders WHERE order_number = ?`,
     [orderNumber]
   )
@@ -446,6 +447,14 @@ export async function cancelPendingOrder(
   // Delete from Redis (correct key format)
   for (const seatId of seatIdList) {
     await redis.del(`seat:${order.event_id}:${seatId}`)
+  }
+
+  // Decrement promotion used count if applicable
+  if (order.promotion_id) {
+    await execute(
+      'UPDATE promotions SET used_count = GREATEST(0, used_count - 1) WHERE id = ?',
+      [order.promotion_id]
+    )
   }
 
   // Delete order items first (foreign key constraint)

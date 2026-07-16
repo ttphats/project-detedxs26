@@ -79,26 +79,31 @@ interface EventData {
 }
 
 // ── Seat-gap validation ──────────────────────────────────────────────
-// Counts the number of isolated single-empty-seat gaps in a **sorted** slice.
+// Counts the number of single empty seats bordered by occupied seats on BOTH sides in a sorted section.
 const countSingleGaps = (sortedSeats: SeatType[], selectedIds: Set<string>) => {
+  const isOccupied = (s: SeatType) =>
+    s.status === 'sold' ||
+    s.status === 'locked' ||
+    s.status === 'locked_by_me' ||
+    selectedIds.has(s.id);
+
   let gaps = 0;
-  let currentEmpty = 0;
-  for (let i = 0; i < sortedSeats.length; i++) {
-    const s = sortedSeats[i];
-    const isOccupied =
-      s.status === 'sold' ||
-      s.status === 'locked' ||
-      s.status === 'locked_by_me' ||
-      selectedIds.has(s.id);
-    if (!isOccupied) {
-      currentEmpty++;
-    } else {
-      if (currentEmpty === 1) gaps++;
-      currentEmpty = 0;
+  for (let i = 1; i < sortedSeats.length - 1; i++) {
+    const prev = sortedSeats[i - 1];
+    const curr = sortedSeats[i];
+    const next = sortedSeats[i + 1];
+
+    if (!isOccupied(curr) && isOccupied(prev) && isOccupied(next)) {
+      // Ensure they are contiguous seat numbers (e.g. seat 4 is between 3 and 5)
+      const numPrev = parseInt((prev.seatNumber || '').replace(/[A-Z]/gi, '')) || prev.number;
+      const numCurr = parseInt((curr.seatNumber || '').replace(/[A-Z]/gi, '')) || curr.number;
+      const numNext = parseInt((next.seatNumber || '').replace(/[A-Z]/gi, '')) || next.number;
+
+      if (numCurr === numPrev + 1 && numNext === numCurr + 1) {
+        gaps++;
+      }
     }
   }
-  // Edge: single empty seat at the end of the section
-  if (currentEmpty === 1) gaps++;
   return gaps;
 };
 
@@ -143,7 +148,7 @@ const validateSeatSelection = (
       return {
         valid: false,
         message:
-          'You cannot leave a single empty seat in between. Please select adjacent seats or leave at least 2 empty seats.',
+          'Bạn không thể để trống một ghế đơn ở giữa. Vui lòng chọn các ghế liền kề nhau hoặc chừa lại ít nhất 2 ghế trống. / You cannot leave a single empty seat in between.',
       };
     }
   }
@@ -1427,7 +1432,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
           <div className='mx-4 mb-2'>
             <div className='glass-panel rounded-2xl p-4 shadow-2xl shadow-black/50 border border-white/10'>
               {/* Selected seats summary */}
-              <div className='flex items-center justify-between mb-3'>
+              <div className='flex items-center justify-between mb-2'>
                 <div className='flex items-center gap-3'>
                   <div className='w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center'>
                     <Ticket className='w-5 h-5 text-red-500' />
@@ -1455,10 +1460,18 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                 <div className='text-right'>
                   <p className='text-xs text-gray-400'>Total</p>
                   <p className='text-xl font-black text-red-500'>
-                    {totalPrice.toLocaleString()} VND
+                    {Math.max(0, totalPrice - (discountInfo?.amount || 0)).toLocaleString()} VND
                   </p>
                 </div>
               </div>
+
+              {/* Discount Info on Mobile */}
+              {discountInfo && (
+                <div className='flex justify-between items-center mb-3 text-green-400 text-xs px-1'>
+                  <span className='opacity-90'>Discount: {discountInfo.name}</span>
+                  <span className='font-semibold'>-{discountInfo.amount.toLocaleString()} VND</span>
+                </div>
+              )}
 
               {/* Checkout button */}
               <button
