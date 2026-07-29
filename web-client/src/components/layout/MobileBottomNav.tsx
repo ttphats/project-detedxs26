@@ -19,10 +19,10 @@ const navItems: NavItem[] = [
     active: (pathname) => pathname === "/",
   },
   {
-    href: "/events/evt-tedx-2026/seats",
+    href: "/events/evt-tedx-2026/tickets",
     icon: <Ticket className="w-5 h-5" />,
     label: "Book Tickets",
-    active: (pathname) => pathname.includes("/seats"),
+    active: (pathname) => pathname.includes("/tickets"),
   },
   {
     href: "/#program",

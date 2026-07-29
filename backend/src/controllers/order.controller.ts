@@ -21,6 +21,38 @@ export async function createPendingOrder(
   return reply.send(successResponse(result))
 }
 
+// POST /orders/create-pending-by-type
+// Ticket-class-only booking: user selects ticket type + quantity,
+// backend auto-assigns available seats. No seat map needed.
+export async function createPendingOrderByType(
+  request: FastifyRequest<{
+    Body: {
+      eventId: string
+      ticketTypeId: string
+      quantity: number
+      sessionId: string
+      promoCode?: string
+    }
+  }>,
+  reply: FastifyReply
+) {
+  const {eventId, ticketTypeId, quantity, sessionId, promoCode} = request.body
+
+  if (!eventId || !ticketTypeId || !sessionId || !quantity) {
+    throw new BadRequestError('Missing required fields: eventId, ticketTypeId, quantity, sessionId')
+  }
+
+  const result = await orderService.createPendingOrderByTicketType({
+    eventId,
+    ticketTypeId,
+    quantity,
+    sessionId,
+    promoCode,
+  })
+
+  return reply.send(successResponse(result))
+}
+
 // POST /orders/confirm-payment
 export async function confirmPayment(
   request: FastifyRequest<{

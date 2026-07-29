@@ -139,9 +139,9 @@ export default function EventDetailPage({
                   ))}
                 </div>
                 <div className="mt-6">
-                  <Link href={`/events/${event.id}/seats`}>
+                  <Link href={`/events/${event.id}/tickets`}>
                     <Button fullWidth size="lg">
-                      Choose Seat
+                      Buy Ticket
                       <ArrowRight className="w-5 h-5 ml-2" />
                     </Button>
                   </Link>

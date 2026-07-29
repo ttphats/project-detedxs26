@@ -283,3 +283,80 @@ export async function getEventTimeline(eventId: string) {
     status: t.status,
   }))
 }
+
+/**
+ * Get available seat counts per ticket type.
+ * Used by the ticket-class booking flow (no seat selection).
+ * Returns: [{ ticketTypeId, name, level, color, price, max_quantity,
+ *             totalSeats, sold, reserved, locked, available }]
+ */
+export async function getTicketAvailability(eventId: string) {
+  // Get ticket types for this event
+  const ticketTypes = await query<{
+    id: string
+    name: string
+    level: number
+    color: string
+    price: number
+    max_quantity: number | null
+  }>(
+    'SELECT id, name, level, color, price, max_quantity FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY level ASC',
+    [eventId]
+  )
+
+  // Aggregate seat counts per ticket_type_id (status breakdown)
+  // Seats without ticket_type_id are matched via seat_type LEVEL_<level> fallback
+  const seatStats = await query<{
+    ticket_type_id: string | null
+    seat_type: string
+    status: string
+    count: number
+  }>(
+    `SELECT ticket_type_id, seat_type, status, COUNT(*) as count
+     FROM seats WHERE event_id = ?
+     GROUP BY ticket_type_id, seat_type, status`,
+    [eventId]
+  )
+
+  // Active locks (not expired) per seat — count as "locked"
+  const lockedByType = await query<{
+    ticket_type_id: string | null
+    seat_type: string
+    count: number
+  }>(
+    `SELECT s.ticket_type_id, s.seat_type, COUNT(*) as count
+     FROM seat_locks sl
+     JOIN seats s ON sl.seat_id = s.id
+     WHERE sl.event_id = ? AND sl.expires_at > NOW() AND s.status = 'AVAILABLE'
+     GROUP BY s.ticket_type_id, s.seat_type`,
+    [eventId]
+  )
+
+  return ticketTypes.map((tt) => {
+    // Match stats: by ticket_type_id, or by seat_type LEVEL_<level>
+    const matchStat = (row: {ticket_type_id: string | null; seat_type: string}) =>
+      row.ticket_type_id === tt.id || row.seat_type === `LEVEL_${tt.level}`
+
+    const sold = seatStats.filter((s) => matchStat(s) && s.status === 'SOLD').reduce((sum, s) => sum + s.count, 0)
+    const reserved = seatStats.filter((s) => matchStat(s) && s.status === 'RESERVED').reduce((sum, s) => sum + s.count, 0)
+    const availableSeats = seatStats.filter((s) => matchStat(s) && s.status === 'AVAILABLE').reduce((sum, s) => sum + s.count, 0)
+    const locked = lockedByType.filter((l) => matchStat(l)).reduce((sum, l) => sum + l.count, 0)
+
+    const totalSeats = sold + reserved + availableSeats
+    const available = Math.max(0, availableSeats - locked)
+
+    return {
+      ticketTypeId: tt.id,
+      name: tt.name,
+      level: tt.level,
+      color: tt.color,
+      price: Number(tt.price),
+      maxQuantity: tt.max_quantity,
+      totalSeats,
+      sold,
+      reserved,
+      locked,
+      available,
+    }
+  })
+}

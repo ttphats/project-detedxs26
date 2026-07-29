@@ -653,7 +653,7 @@ export default function Home() {
               {/* CTA Buttons */}
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 animate-fade-in-up delay-500">
                 <Link
-                  href={`/events/${featuredEvent.id}/seats`}
+                  href={`/events/${featuredEvent.id}/tickets`}
                   className="w-full sm:w-auto"
                 >
                   <button className="w-full sm:w-auto group relative px-6 sm:px-8 py-3 sm:py-4 bg-red-600 text-white font-bold uppercase tracking-wider rounded-full overflow-hidden transition-all hover:bg-red-500 hover:shadow-lg hover:shadow-red-500/30 btn-ripple mobile-tap-feedback">
@@ -1155,7 +1155,7 @@ export default function Home() {
             Join {featuredEvent.speakerCount || speakers.length}+ speakers and
             100+ attendees for a day of ideas worth spreading.
           </p>
-          <Link href={`/events/${featuredEvent.id}/seats`}>
+          <Link href={`/events/${featuredEvent.id}/tickets`}>
             <Button
               size="lg"
               className="bg-white text-black hover:bg-zinc-100 hover:text-black px-12 rounded-full font-bold uppercase tracking-wider shadow-2xl transition-all duration-300 hover:scale-105 animate-fade-in-up delay-200"

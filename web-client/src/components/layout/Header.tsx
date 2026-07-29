@@ -40,14 +40,14 @@ export default function Header() {
             {/* Glow behind logo on hover */}
             <div className="absolute -inset-4 bg-red-600/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             {/* You can replace /logo.png with your actual logo file in the public folder */}
-            <img 
-              src="/logo.png" 
-              alt="TEDxFPTUniversityHCMC Logo" 
+            <img
+              src="/logo.png"
+              alt="TEDxFPTUniversityHCMC Logo"
               className="relative h-16 md:h-20 w-auto object-contain z-10"
               onError={(e) => {
                 // Fallback to text if image not found
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                e.currentTarget.style.display = "none";
+                e.currentTarget.nextElementSibling?.classList.remove("hidden");
               }}
             />
             {/* Fallback text logo (hidden by default) */}
@@ -86,7 +86,7 @@ export default function Header() {
 
             {/* CTA Button with glow */}
             <Link
-              href="/events/evt-tedx-2026/seats"
+              href="/events/evt-tedx-2026/tickets"
               className="group relative ml-4 px-6 py-3 overflow-hidden"
             >
               {/* Button background with gradient border */}
@@ -157,7 +157,7 @@ export default function Header() {
                 );
               })}
               <Link
-                href="/events/evt-tedx-2026/seats"
+                href="/events/evt-tedx-2026/tickets"
                 className="mx-4 mt-3 px-4 py-3 bg-red-600 text-white font-bold text-center uppercase text-sm tracking-wider rounded-full hover:bg-red-500 transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
