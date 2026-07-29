@@ -50,7 +50,8 @@ const bankInfo = {
   bankCode: process.env.NEXT_PUBLIC_BANK_CODE || "acb",
   bankLogo: process.env.NEXT_PUBLIC_BANK_LOGO || "/acb-logo.png",
   accountNumber: process.env.NEXT_PUBLIC_BANK_ACCOUNT_NUMBER || "85085588",
-  accountHolder: process.env.NEXT_PUBLIC_BANK_ACCOUNT_HOLDER || "CONG TY TNHH TICKETHUB VN",
+  accountHolder:
+    process.env.NEXT_PUBLIC_BANK_ACCOUNT_HOLDER || "CONG TY TNHH TICKETHUB VN",
 };
 
 // Countdown timer duration in seconds (15 minutes)
@@ -110,7 +111,9 @@ function CheckoutContent() {
           // Navigation Guard: if order is no longer PENDING, redirect away
           if (data.data.status !== "PENDING") {
             console.log("[CHECKOUT] Order is not PENDING, redirecting...");
-            router.replace(`/order-waiting?order=${orderNumber}&token=${accessToken}`);
+            router.replace(
+              `/order-waiting?order=${orderNumber}&token=${accessToken}`,
+            );
             return;
           }
           setOrderData(data.data);
@@ -425,10 +428,10 @@ function CheckoutContent() {
 
               {isExpired && (
                 <Link
-                  href={`/events/${eventId}/seats`}
+                  href={`/events/${eventId}/tickets`}
                   className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-lg transition-colors"
                 >
-                  Reselect Seats
+                  Reselect Tickets
                 </Link>
               )}
             </div>
@@ -441,11 +444,11 @@ function CheckoutContent() {
         {/* Header */}
         <div className="mb-6 sm:mb-8 animate-fade-in-down">
           <Link
-            href={`/events/${eventId}/seats`}
+            href={`/events/${eventId}/tickets`}
             className="inline-flex items-center gap-2 text-gray-400 hover:text-red-500 transition-colors group"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Back to seat selection
+            Back to ticket selection
           </Link>
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white mt-4">
             Payment
@@ -549,7 +552,9 @@ function CheckoutContent() {
 
                     {/* Account Number */}
                     <div className="p-3 bg-white/5 rounded-xl">
-                      <p className="text-sm text-red-400 mb-1">Account Number</p>
+                      <p className="text-sm text-red-400 mb-1">
+                        Account Number
+                      </p>
                       <div className="flex items-center gap-2">
                         <span className="text-xl font-bold text-white">
                           {bankInfo.accountNumber}
@@ -571,7 +576,9 @@ function CheckoutContent() {
 
                     {/* Account Holder */}
                     <div className="p-3 bg-white/5 rounded-xl">
-                      <p className="text-sm text-red-400 mb-1">Account Holder</p>
+                      <p className="text-sm text-red-400 mb-1">
+                        Account Holder
+                      </p>
                       <p className="font-semibold text-white">
                         {bankInfo.accountHolder}
                       </p>
@@ -662,7 +669,9 @@ function CheckoutContent() {
                         </span>
                         <span>247</span>
                         <span className="text-gray-300">|</span>
-                        <span className="text-red-500 font-bold">{bankInfo.bankCode.toUpperCase()}</span>
+                        <span className="text-red-500 font-bold">
+                          {bankInfo.bankCode.toUpperCase()}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -757,8 +766,8 @@ function CheckoutContent() {
                 </button>
 
                 <p className="text-xs text-gray-500 text-center mt-4">
-                  After transferring, please click &quot;I Have Paid&quot;
-                  to confirm
+                  After transferring, please click &quot;I Have Paid&quot; to
+                  confirm
                 </p>
               </div>
             </div>

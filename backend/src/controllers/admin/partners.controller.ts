@@ -135,10 +135,16 @@ export async function remove(request: FastifyRequest, reply: FastifyReply) {
  * GET /api/partners (Public)
  */
 export async function listPublic(request: FastifyRequest, reply: FastifyReply) {
-  const partners = await partnersService.listPublicPartners();
+  try {
+    const partners = await partnersService.listPublicPartners();
 
-  return reply.send({
-    success: true,
-    data: partners,
-  });
+    return reply.send({
+      success: true,
+      data: partners,
+    });
+  } catch (err) {
+    // Graceful degradation: DB unreachable → return empty list instead of 500
+    console.error('[PARTNERS] listPublic failed (DB unreachable?):', err);
+    return reply.send({ success: true, data: [] });
+  }
 }

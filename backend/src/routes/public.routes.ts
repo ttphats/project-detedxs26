@@ -44,8 +44,11 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /events/:eventId/speakers - Get speakers for an event
   fastify.get('/events/:eventId/speakers', eventController.getEventSpeakers)
 
-  // GET /events/:eventId/timeline - Get timeline for an event
+// GET /events/:eventId/timeline
   fastify.get('/events/:eventId/timeline', eventController.getEventTimeline)
+
+  // GET /events/:eventId/ticket-availability - Available seats per ticket type (ticket-class flow)
+  fastify.get('/events/:eventId/ticket-availability', eventController.getTicketAvailability)
 
   // =====================================
   // SEAT ROUTES
@@ -83,6 +86,9 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
 
   // POST /orders/create-pending - Create pending order
   fastify.post('/orders/create-pending', orderController.createPendingOrder)
+
+  // POST /orders/create-pending-by-type - Create pending order by ticket type + quantity (no seat selection)
+  fastify.post('/orders/create-pending-by-type', orderController.createPendingOrderByType)
 
   // POST /orders/confirm-payment - Confirm payment
   fastify.post('/orders/confirm-payment', orderController.confirmPayment)
