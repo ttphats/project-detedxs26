@@ -970,3 +970,26 @@ body {
   animation: confetti-fall 3s ease-in forwards;
 }
 
+
+/* Aurora — slow drifting blobs for AuroraBackground */
+@keyframes aurora {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(40px, -30px) scale(1.1);
+  }
+  66% {
+    transform: translate(-30px, 20px) scale(0.95);
+  }
+}
+
+.animate-aurora {
+  animation: aurora 16s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora {
+    animation: none;
+  }
+}

@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,9 +13,14 @@ import {
   Loader2,
   Minus,
   Plus,
-  Sparkles,
+  ShieldCheck,
+  Zap,
+  Monitor,
 } from "lucide-react";
 import { Button } from "@/components";
+import SpotlightCard from "@/components/ui/SpotlightCard";
+import AuroraBackground from "@/components/ui/AuroraBackground";
+import SeatOverview from "@/components/ui/SeatOverview";
 
 // Generate or get session ID for locking (same key as seat flow so locks interop)
 function getSessionId(): string {
@@ -63,6 +69,25 @@ interface EventData {
   time: string;
   venue: string;
   ticketTypes: TicketType[];
+  seatMap: SeatRow[];
+}
+
+interface SeatType {
+  id: string;
+  row: string;
+  number: number;
+  seatNumber?: string;
+  section?: string | null;
+  status: "available" | "sold" | "locked" | "locked_by_me";
+  ticketTypeId?: string | null;
+  seatType?: string;
+  level?: number;
+  price: number;
+}
+
+interface SeatRow {
+  row: string;
+  seats: SeatType[];
 }
 
 const MAX_QUANTITY = 10;
@@ -142,6 +167,7 @@ export default function TicketClassPage({
           time: ev.time,
           venue: ev.venue,
           ticketTypes: ev.ticketTypes || [],
+          seatMap: ev.seatMap || [],
         });
         await fetchAvailability();
       } catch (err) {
@@ -323,58 +349,66 @@ export default function TicketClassPage({
   const topTierId = sortedByLevelDesc[0]?.id;
   const valueTierId = sortedByLevelDesc[sortedByLevelDesc.length - 1]?.id;
 
-  return (
-    <div className="min-h-screen bg-black pt-24 pb-24 sm:pb-12">
-      {/* Ambient background — TEDx red glow + grid */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div
-          className="absolute -top-32 right-0 w-[600px] h-[600px] bg-red-600/15 rounded-full blur-[120px]"
-          style={{ animationDuration: "6s" }}
-        />
-        <div
-          className="absolute bottom-0 -left-32 w-[500px] h-[500px] bg-red-600/10 rounded-full blur-[120px]"
-          style={{ animationDuration: "8s" }}
-        />
-        <div
-          className="absolute inset-0 opacity-[0.015]"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)",
-            backgroundSize: "60px 60px",
-          }}
-        />
-      </div>
+  // Motion variants
+  const containerStagger = {
+    hidden: {},
+    show: {
+      transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+    },
+  };
+  const cardItem = {
+    hidden: { opacity: 0, y: 24 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { type: "spring" as const, stiffness: 260, damping: 24 },
+    },
+  };
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8 sm:mb-12 animate-fade-in-down">
+  return (
+    <AuroraBackground className="min-h-screen bg-[#08080a] pt-20 sm:pt-24 pb-28 sm:pb-12">
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header — editorial poster style, TEDx */}
+        <motion.header
+          initial={{ opacity: 0, y: -16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-8 sm:mb-12"
+        >
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-gray-400 hover:text-red-500 transition-colors mb-6 group"
+            className="inline-flex items-center gap-1.5 text-gray-500 hover:text-white transition-colors mb-5 sm:mb-7 group py-2 -ml-1"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            <span className="text-sm font-medium tracking-wide">
-              Back to homepage
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="text-xs sm:text-sm font-medium tracking-wide">
+              Home
             </span>
           </Link>
           <div className="flex flex-col gap-3">
-            <span className="inline-flex w-fit items-center gap-2 px-3 py-1 rounded-full bg-red-600/10 border border-red-600/30 text-red-400 text-xs font-bold uppercase tracking-widest">
-              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-              Tickets
+            <span className="inline-flex w-fit items-center gap-2 px-3 py-1 rounded-full bg-[#e62b1e]/10 border border-[#e62b1e]/30 text-[#e62b1e] text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em]">
+              <span className="w-1.5 h-1.5 bg-[#e62b1e] rounded-full animate-pulse" />
+              Get Tickets
             </span>
-            <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-white ted-logo-text leading-tight">
-              Choose Your <span className="text-red-600">Experience</span>
+            <h1 className="text-[32px] leading-[0.95] sm:text-6xl md:text-7xl font-black text-white tracking-tight uppercase">
+              Choose Your{" "}
+              <span className="text-[#e62b1e] italic">Experience</span>
             </h1>
-            <p className="text-gray-400 text-base sm:text-lg max-w-xl">
-              Select a ticket class and quantity. Seat numbers are assigned
-              automatically — no need to pick a seat.
+            <p className="text-gray-500 text-sm sm:text-base max-w-md leading-relaxed">
+              Pick a ticket class &amp; quantity. Seats assigned automatically —
+              no seat map needed.
             </p>
           </div>
-        </div>
+        </motion.header>
 
-        {/* Pricing tiers — 3 columns on desktop, stacked on mobile */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 mb-10 sm:mb-12">
-          {event.ticketTypes.map((tt, idx) => {
+        {/* Tier cards — mobile: horizontal scroll snap, desktop: 3-col grid */}
+        <motion.section
+          variants={containerStagger}
+          initial="hidden"
+          animate="show"
+          className="flex gap-3 overflow-x-auto snap-x snap-mandatory sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0 mb-6 sm:mb-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-label="Ticket classes"
+        >
+          {event.ticketTypes.map((tt) => {
             const avail = availability.find((a) => a.ticketTypeId === tt.id);
             const isSoldOut = avail ? avail.available <= 0 : false;
             const isSelected = selectedTypeId === tt.id;
@@ -388,205 +422,304 @@ export default function TicketClassPage({
                   )
                 : 0;
             return (
-              <div
+              <motion.div
                 key={tt.id}
-                className={`relative animate-fade-in-up`}
-                style={{ animationDelay: `${idx * 0.08}s` }}
+                variants={cardItem}
+                className="relative snap-center shrink-0 w-[80vw] sm:w-auto sm:shrink"
               >
-                {/* Badge ribbon */}
-                {isTopTier && !isSoldOut && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 px-4 py-1 bg-gradient-to-r from-amber-500 to-orange-500 text-black text-xs font-black uppercase tracking-wider rounded-full shadow-lg shadow-orange-500/40 whitespace-nowrap">
-                    Most Popular
-                  </div>
-                )}
-                {isValueTier && !isTopTier && !isSoldOut && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 px-4 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-black text-xs font-black uppercase tracking-wider rounded-full shadow-lg shadow-emerald-500/30 whitespace-nowrap">
-                    Best Value
-                  </div>
-                )}
-
-                <button
-                  onClick={() => !isSoldOut && handleSelectType(tt.id)}
-                  disabled={isSoldOut}
-                  className={`w-full h-full text-left relative overflow-hidden rounded-3xl border transition-all duration-300 group ${
-                    isSelected
-                      ? "scale-[1.02] shadow-2xl"
-                      : "hover:scale-[1.01] shadow-xl"
-                  } ${isSoldOut ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                  style={{
-                    borderColor: isSelected
-                      ? tt.color
-                      : "rgba(255,255,255,0.08)",
-                    background: isSelected
-                      ? `linear-gradient(160deg, ${tt.color}1f 0%, rgba(0,0,0,0.6) 60%)`
-                      : "linear-gradient(160deg, rgba(26,26,26,0.8) 0%, rgba(0,0,0,0.8) 100%)",
-                    boxShadow: isSelected
-                      ? `0 20px 60px -20px ${tt.color}80, 0 0 0 1px ${tt.color}40`
-                      : "0 10px 40px -10px rgba(0,0,0,0.5)",
-                  }}
-                >
-                  {/* Top accent bar */}
-                  <div
-                    className="absolute top-0 left-0 right-0 h-1"
-                    style={{
-                      background: `linear-gradient(90deg, ${tt.color}, ${tt.color}00)`,
-                    }}
-                  />
-
-                  {/* Selected check */}
-                  {isSelected && (
-                    <div
-                      className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center shadow-lg"
-                      style={{ backgroundColor: tt.color }}
+                {/* Badge */}
+                <AnimatePresence>
+                  {isTopTier && !isSoldOut && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute -top-3 left-5 z-20 px-3 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider rounded-full shadow-lg shadow-orange-500/30 whitespace-nowrap"
                     >
-                      <Check className="w-5 h-5 text-white" strokeWidth={3} />
-                    </div>
+                      Popular
+                    </motion.div>
                   )}
+                </AnimatePresence>
+                <AnimatePresence>
+                  {isValueTier && !isTopTier && !isSoldOut && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute -top-3 left-5 z-20 px-3 py-0.5 bg-gradient-to-r from-emerald-400 to-teal-500 text-black text-[10px] font-black uppercase tracking-wider rounded-full shadow-lg shadow-emerald-500/30 whitespace-nowrap"
+                    >
+                      Best Value
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-                  <div className="p-6 sm:p-7">
-                    {/* Tier icon + name */}
-                    <div className="flex items-center gap-3 mb-5">
-                      <div
-                        className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-                        style={{
-                          background: `linear-gradient(135deg, ${tt.color}, ${tt.color}bb)`,
-                          boxShadow: `0 8px 24px -8px ${tt.color}80`,
+                <SpotlightCard
+                  glowColor={tt.color}
+                  className="rounded-2xl border h-full transition-all duration-200"
+                >
+                  <button
+                    onClick={() => !isSoldOut && handleSelectType(tt.id)}
+                    disabled={isSoldOut}
+                    className="block w-full h-full text-left relative active:scale-[0.98] transition-transform"
+                    style={{
+                      borderColor: isSelected
+                        ? tt.color
+                        : "rgba(255,255,255,0.08)",
+                      background: isSelected
+                        ? `linear-gradient(160deg, ${tt.color}18 0%, rgba(8,8,10,0.9) 65%)`
+                        : "linear-gradient(160deg, rgba(14,14,16,0.9) 0%, rgba(5,5,7,0.9) 100%)",
+                      boxShadow: isSelected
+                        ? `0 16px 48px -16px ${tt.color}70, 0 0 0 1px ${tt.color}30`
+                        : "0 8px 32px -12px rgba(0,0,0,0.6)",
+                    }}
+                  >
+                    {/* Top accent line */}
+                    <div
+                      className="absolute top-0 left-0 right-0 h-0.5"
+                      style={{
+                        background: `linear-gradient(90deg, ${tt.color}, ${tt.color}00)`,
+                      }}
+                    />
+                    {isSelected && (
+                      <motion.div
+                        layoutId="selected-check"
+                        className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: tt.color }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 25,
                         }}
                       >
-                        {isVIP ? (
-                          <Star className="w-6 h-6 text-white" fill="white" />
-                        ) : (
-                          <Ticket className="w-6 h-6 text-white" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <h3
-                          className="font-black text-xl sm:text-2xl uppercase tracking-tight truncate"
-                          style={{ color: tt.color }}
-                        >
-                          {tt.name}
-                        </h3>
-                        {tt.subtitle && (
-                          <p className="text-gray-500 text-xs truncate">
-                            {tt.subtitle}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Price */}
-                    <div className="mb-5">
-                      <div className="flex items-baseline gap-1">
-                        <span
-                          className="text-3xl sm:text-4xl font-black text-white"
-                          style={{ textShadow: `0 0 30px ${tt.color}40` }}
-                        >
-                          {Math.round(Number(tt.price)).toLocaleString("vi-VN")}
-                        </span>
-                        <span className="text-sm font-bold text-gray-400">
-                          VND
-                        </span>
-                      </div>
-                      <p className="text-gray-500 text-xs mt-1">
-                        per ticket · all fees included
-                      </p>
-                    </div>
-
-                    {/* Benefits */}
-                    {tt.benefits && tt.benefits.length > 0 && (
-                      <ul className="space-y-2.5 mb-6">
-                        {tt.benefits.slice(0, 5).map((b, i) => (
-                          <li
-                            key={i}
-                            className="flex items-start gap-2.5 text-sm text-gray-300"
-                          >
-                            <span
-                              className="shrink-0 mt-0.5 w-4 h-4 rounded-full flex items-center justify-center"
-                              style={{ backgroundColor: `${tt.color}25` }}
-                            >
-                              <Check
-                                className="w-2.5 h-2.5"
-                                style={{ color: tt.color }}
-                                strokeWidth={4}
-                              />
-                            </span>
-                            <span className="leading-snug">{b}</span>
-                          </li>
-                        ))}
-                      </ul>
+                        <Check className="w-4 h-4 text-white" strokeWidth={3} />
+                      </motion.div>
                     )}
 
-                    {/* Availability bar */}
-                    {avail && (
-                      <div className="pt-4 border-t border-white/5">
-                        {isSoldOut ? (
-                          <div className="flex items-center justify-between">
-                            <span className="text-red-400 font-bold text-sm uppercase tracking-wider">
+                    <div className="p-4 sm:p-6">
+                      {/* Icon + name */}
+                      <div className="flex items-center gap-2.5 sm:gap-3 mb-4">
+                        <div
+                          className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0"
+                          style={{
+                            background: `linear-gradient(135deg, ${tt.color}, ${tt.color}bb)`,
+                          }}
+                        >
+                          {isVIP ? (
+                            <Star className="w-5 h-5 text-white" fill="white" />
+                          ) : (
+                            <Ticket className="w-5 h-5 text-white" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <h3
+                            className="font-black text-base sm:text-xl uppercase tracking-tight truncate"
+                            style={{ color: tt.color }}
+                          >
+                            {tt.name}
+                          </h3>
+                          {tt.subtitle && (
+                            <p className="text-gray-600 text-[10px] sm:text-xs truncate">
+                              {tt.subtitle}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Price */}
+                      <div className="mb-4">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl sm:text-3xl font-black text-white">
+                            {Math.round(Number(tt.price)).toLocaleString(
+                              "vi-VN",
+                            )}
+                          </span>
+                          <span className="text-xs font-bold text-gray-500">
+                            VND
+                          </span>
+                        </div>
+                        <p className="text-gray-600 text-[10px] sm:text-xs mt-0.5">
+                          per ticket · fees included
+                        </p>
+                      </div>
+
+                      {/* Benefits */}
+                      {tt.benefits && tt.benefits.length > 0 && (
+                        <ul className="space-y-2 mb-4">
+                          {tt.benefits.slice(0, 4).map((b, i) => (
+                            <li
+                              key={i}
+                              className="flex items-start gap-2 text-xs sm:text-sm text-gray-400"
+                            >
+                              <span
+                                className="shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center"
+                                style={{ backgroundColor: `${tt.color}20` }}
+                              >
+                                <Check
+                                  className="w-2 h-2"
+                                  style={{ color: tt.color }}
+                                  strokeWidth={4}
+                                />
+                              </span>
+                              <span className="leading-snug">{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* Availability */}
+                      {avail && (
+                        <div className="pt-3 border-t border-white/5">
+                          {isSoldOut ? (
+                            <span className="text-red-400/80 font-bold text-xs uppercase tracking-wider">
                               Sold Out
                             </span>
-                            <span className="text-gray-600 text-xs">
-                              {avail.sold + avail.reserved}/{avail.totalSeats}{" "}
-                              sold
-                            </span>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center justify-between mb-2">
-                              <span
-                                className={`text-xs font-bold uppercase tracking-wider ${
-                                  avail.available > 10
-                                    ? "text-green-400"
-                                    : avail.available > 3
-                                      ? "text-amber-400"
-                                      : "text-red-400"
-                                }`}
-                              >
-                                {avail.available <= 5
-                                  ? `Only ${avail.available} left`
-                                  : `${avail.available} available`}
-                              </span>
-                              <span className="text-gray-600 text-xs">
-                                {soldPct}% sold
-                              </span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${soldPct}%`,
-                                  background: `linear-gradient(90deg, ${tt.color}, ${tt.color}80)`,
-                                }}
-                              />
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span
+                                  className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${
+                                    avail.available > 10
+                                      ? "text-green-400/90"
+                                      : avail.available > 3
+                                        ? "text-amber-400/90"
+                                        : "text-red-400/90"
+                                  }`}
+                                >
+                                  {avail.available <= 5
+                                    ? `Only ${avail.available} left`
+                                    : `${avail.available} available`}
+                                </span>
+                                <span className="text-gray-700 text-[10px]">
+                                  {soldPct}% sold
+                                </span>
+                              </div>
+                              <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${soldPct}%` }}
+                                  transition={{
+                                    duration: 0.8,
+                                    ease: "easeOut",
+                                  }}
+                                  className="h-full rounded-full"
+                                  style={{
+                                    background: `linear-gradient(90deg, ${tt.color}, ${tt.color}80)`,
+                                  }}
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                </SpotlightCard>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.section>
 
-        {/* Quantity + Summary — two-column on desktop, stacked on mobile */}
-        {selectedType && (
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-fade-in-up">
-            {/* Quantity selector — left, wider */}
-            <div className="lg:col-span-3">
-              <div className="glass-panel rounded-3xl p-6 sm:p-8 border border-white/10 h-full">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2.5">
-                    <Ticket
-                      className="w-5 h-5"
-                      style={{ color: selectedType.color }}
+        {/* Mobile scroll hint */}
+        <p className="sm:hidden text-center text-gray-700 text-[10px] -mt-3 mb-6">
+          ← Swipe to see all tiers →
+        </p>
+
+        {/* Seat map — read-only overview, highlights the selected tier zone */}
+        {event.seatMap && event.seatMap.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="mb-8 sm:mb-10"
+            aria-label="Venue seat map"
+          >
+            <div className="rounded-2xl border border-white/[0.06] bg-gradient-to-b from-white/[0.02] to-transparent p-4 sm:p-6 md:p-8 relative overflow-hidden">
+              {/* Section header */}
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
+                  <span className="w-1 h-4 bg-[#e62b1e] rounded-full" />
+                  Venue Overview
+                </h2>
+                {selectedType && (
+                  <motion.span
+                    key={selectedType.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider"
+                    style={{
+                      backgroundColor: `${selectedType.color}1a`,
+                      color: selectedType.color,
+                    }}
+                  >
+                    {selectedType.name} zone highlighted
+                  </motion.span>
+                )}
+              </div>
+
+              {/* Stage */}
+              <div className="mb-6 sm:mb-8 relative">
+                <div className="absolute inset-0 bg-[#e62b1e]/20 blur-2xl rounded-full transform scale-y-50" />
+                <div className="relative bg-gradient-to-r from-[#e62b1e] via-red-600 to-[#e62b1e] text-white py-2.5 sm:py-4 px-4 sm:px-8 rounded-lg text-center flex items-center justify-center gap-2 shadow-lg shadow-red-500/30 border border-[#e62b1e]/40">
+                  <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="font-black uppercase tracking-widest text-xs sm:text-base">
+                    Stage
+                  </span>
+                </div>
+              </div>
+
+              {/* Venue overview — read-only, uses same Seat component as
+                  the legacy seat page (compact mode: no number, no click) */}
+              <SeatOverview
+                rows={event.seatMap}
+                tiers={event.ticketTypes.map((tt) => ({
+                  id: tt.id,
+                  name: tt.name,
+                  level: tt.level,
+                  color: tt.color,
+                }))}
+                highlightedTierId={selectedTypeId}
+              />
+
+              {/* Note */}
+              <p className="text-center text-gray-600 text-[10px] sm:text-xs mt-4 flex items-center justify-center gap-1.5">
+                <Zap className="w-3 h-3" />
+                Seats are assigned automatically based on your selected class —
+                no need to pick individual seats.
+              </p>
+            </div>
+          </motion.section>
+        )}
+
+        {/* Quantity selector — always visible when a tier is selected */}
+        <AnimatePresence>
+          {selectedType && (
+            <motion.section
+              key="quantity"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden mb-6 sm:mb-8"
+              aria-label="Quantity"
+            >
+              <div
+                className="rounded-2xl border p-4 sm:p-6"
+                style={{
+                  borderColor: "rgba(255,255,255,0.06)",
+                  background:
+                    "linear-gradient(160deg, rgba(14,14,16,0.6), rgba(5,5,7,0.6))",
+                }}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
+                    <span
+                      className="w-1 h-4 rounded-full"
+                      style={{ backgroundColor: selectedType.color }}
                     />
                     Quantity
                   </h3>
                   <span
-                    className="text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider"
+                    className="text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider"
                     style={{
-                      backgroundColor: `${selectedType.color}20`,
+                      backgroundColor: `${selectedType.color}1a`,
                       color: selectedType.color,
                     }}
                   >
@@ -594,179 +727,200 @@ export default function TicketClassPage({
                   </span>
                 </div>
 
-                {/* Big stepper */}
-                <div className="flex items-center justify-center gap-6 sm:gap-8 py-6 mb-6 rounded-2xl bg-gradient-to-b from-white/[0.03] to-transparent border border-white/5">
-                  <button
-                    onClick={() => handleQuantityChange(-1)}
-                    disabled={quantity <= 1}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/5 hover:bg-white/15 text-white flex items-center justify-center transition-all disabled:opacity-20 disabled:cursor-not-allowed active:scale-90"
-                    aria-label="Decrease quantity"
-                  >
-                    <Minus className="w-6 h-6" />
-                  </button>
-                  <div className="text-center">
-                    <div
-                      className="text-5xl sm:text-6xl font-black text-white leading-none"
-                      style={{ textShadow: `0 0 40px ${selectedType.color}60` }}
+                {/* Stepper + quick chips in one row on mobile */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+                  {/* Stepper */}
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <button
+                      onClick={() => handleQuantityChange(-1)}
+                      disabled={quantity <= 1}
+                      className="w-12 h-12 sm:w-11 sm:h-11 rounded-xl bg-white/5 active:bg-white/15 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed active:scale-90"
+                      aria-label="Decrease quantity"
                     >
-                      {quantity}
-                    </div>
-                    <div className="text-xs text-gray-500 uppercase tracking-widest mt-2">
-                      {quantity === 1 ? "ticket" : "tickets"}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleQuantityChange(1)}
-                    disabled={maxAllowed > 0 && quantity >= maxAllowed}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/5 hover:bg-white/15 text-white flex items-center justify-center transition-all disabled:opacity-20 disabled:cursor-not-allowed active:scale-90"
-                    aria-label="Increase quantity"
-                  >
-                    <Plus className="w-6 h-6" />
-                  </button>
-                </div>
-
-                {/* Quick-select chips */}
-                <div className="flex flex-wrap gap-2 mb-6">
-                  {[1, 2, 3, 4, 5].map((n) => {
-                    const capped = maxAllowed > 0 ? Math.min(n, maxAllowed) : n;
-                    const active = quantity === capped;
-                    return (
-                      <button
-                        key={n}
-                        onClick={() => {
-                          setQuantity(capped);
-                          setDiscountInfo(null);
-                          setPromoCode("");
-                          setPromoError(null);
+                      <Minus className="w-5 h-5" />
+                    </button>
+                    <div className="text-center w-12">
+                      <div
+                        className="text-3xl sm:text-4xl font-black text-white leading-none"
+                        style={{
+                          textShadow: `0 0 24px ${selectedType.color}50`,
                         }}
-                        disabled={maxAllowed > 0 && n > maxAllowed}
-                        className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${
-                          active
-                            ? "text-white scale-110"
-                            : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
-                        } disabled:opacity-20 disabled:cursor-not-allowed`}
-                        style={
-                          active
-                            ? {
-                                backgroundColor: selectedType.color,
-                                boxShadow: `0 4px 16px -4px ${selectedType.color}80`,
-                              }
-                            : undefined
-                        }
                       >
-                        {n}
-                      </button>
-                    );
-                  })}
+                        {quantity}
+                      </div>
+                      <div className="text-[9px] text-gray-600 uppercase tracking-widest mt-1">
+                        {quantity === 1 ? "ticket" : "tickets"}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleQuantityChange(1)}
+                      disabled={maxAllowed > 0 && quantity >= maxAllowed}
+                      className="w-12 h-12 sm:w-11 sm:h-11 rounded-xl bg-white/5 active:bg-white/15 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed active:scale-90"
+                      aria-label="Increase quantity"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Quick chips */}
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                    {[1, 2, 3, 4, 5].map((n) => {
+                      const capped =
+                        maxAllowed > 0 ? Math.min(n, maxAllowed) : n;
+                      const active = quantity === capped;
+                      return (
+                        <button
+                          key={n}
+                          onClick={() => {
+                            setQuantity(capped);
+                            setDiscountInfo(null);
+                            setPromoCode("");
+                            setPromoError(null);
+                          }}
+                          disabled={maxAllowed > 0 && n > maxAllowed}
+                          className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg text-xs sm:text-sm font-bold transition-all active:scale-90 ${
+                            active
+                              ? "text-white"
+                              : "bg-white/5 text-gray-500 active:bg-white/10"
+                          } disabled:opacity-20 disabled:cursor-not-allowed`}
+                          style={
+                            active
+                              ? {
+                                  backgroundColor: selectedType.color,
+                                  boxShadow: `0 4px 14px -4px ${selectedType.color}80`,
+                                }
+                              : undefined
+                          }
+                        >
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Info row */}
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-xl bg-white/5 px-4 py-3">
-                    <p className="text-gray-500 text-xs uppercase tracking-wider mb-0.5">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 mt-4 text-sm">
+                  <div className="rounded-lg bg-white/[0.03] px-3 py-2">
+                    <p className="text-gray-600 text-[10px] uppercase tracking-wider">
                       Unit price
                     </p>
-                    <p className="text-white font-bold">
+                    <p className="text-white font-bold text-sm">
                       {unitPrice.toLocaleString("vi-VN")} VND
                     </p>
                   </div>
-                  <div className="rounded-xl bg-white/5 px-4 py-3">
-                    <p className="text-gray-500 text-xs uppercase tracking-wider mb-0.5">
+                  <div className="rounded-lg bg-white/[0.03] px-3 py-2">
+                    <p className="text-gray-600 text-[10px] uppercase tracking-wider">
                       Availability
                     </p>
                     <p
-                      className={`font-bold ${
+                      className={`font-bold text-sm ${
                         !selectedAvail || selectedAvail.available > 10
-                          ? "text-green-400"
+                          ? "text-green-400/90"
                           : selectedAvail.available > 3
-                            ? "text-amber-400"
-                            : "text-red-400"
+                            ? "text-amber-400/90"
+                            : "text-red-400/90"
                       }`}
                     >
                       {selectedAvail ? `${selectedAvail.available} left` : "—"}
                     </p>
                   </div>
                 </div>
-                <p className="text-gray-600 text-xs mt-4 flex items-center gap-1.5">
-                  <Sparkles className="w-3 h-3" />
-                  Max {MAX_QUANTITY} tickets per order · seats assigned
-                  automatically.
-                </p>
               </div>
-            </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
 
-            {/* Order Summary — sticky sidebar on desktop */}
-            <div className="lg:col-span-2">
-              <div className="lg:sticky lg:top-24">
+        {/* Promo code — inline, compact */}
+        <AnimatePresence>
+          {selectedType && (
+            <motion.section
+              key="promo"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="mb-6 sm:mb-8"
+            >
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  placeholder="Promo code"
+                  className="flex-1 bg-white/[0.03] border border-white/8 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/25 transition-colors uppercase placeholder:text-gray-700 placeholder:normal-case"
+                  disabled={isValidatingPromo}
+                />
+                <button
+                  onClick={handleApplyPromoCode}
+                  disabled={!promoCode.trim() || isValidatingPromo}
+                  className="px-5 py-3 bg-white/8 active:bg-white/15 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-30 active:scale-95"
+                >
+                  {isValidatingPromo ? "..." : "Apply"}
+                </button>
+              </div>
+              {promoError && (
+                <p className="text-red-400/90 text-xs mt-2">{promoError}</p>
+              )}
+              {discountInfo && (
+                <div className="flex justify-between items-center mt-2 text-green-400/90 text-sm">
+                  <span className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5" />
+                    {discountInfo.name}
+                  </span>
+                  <span className="font-bold">
+                    −{discountInfo.amount.toLocaleString()} VND
+                  </span>
+                </div>
+              )}
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        {/* Desktop sticky order summary sidebar */}
+        <AnimatePresence>
+          {selectedType && (
+            <motion.aside
+              key="summary"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="hidden lg:block"
+            >
+              <div className="sticky top-24">
                 <div
-                  className="rounded-3xl p-6 sm:p-7 border relative overflow-hidden"
+                  className="rounded-2xl p-6 border relative overflow-hidden"
                   style={{
-                    borderColor: `${selectedType.color}40`,
-                    background: `linear-gradient(160deg, ${selectedType.color}12 0%, rgba(0,0,0,0.7) 70%)`,
-                    boxShadow: `0 20px 60px -20px ${selectedType.color}50`,
+                    borderColor: `${selectedType.color}30`,
+                    background: `linear-gradient(160deg, ${selectedType.color}10 0%, rgba(8,8,10,0.8) 70%)`,
                   }}
                 >
-                  {/* glow accent */}
                   <div
-                    className="absolute -top-20 -right-20 w-40 h-40 rounded-full blur-3xl pointer-events-none"
-                    style={{ backgroundColor: `${selectedType.color}30` }}
+                    className="absolute -top-16 -right-16 w-32 h-32 rounded-full blur-3xl pointer-events-none"
+                    style={{ backgroundColor: `${selectedType.color}25` }}
                   />
 
-                  <h3 className="relative text-lg font-black text-white uppercase tracking-tight mb-5 flex items-center gap-2">
+                  <h3 className="relative text-base font-black text-white uppercase tracking-tight mb-4 flex items-center gap-2">
                     <span
-                      className="w-1 h-5 rounded-full"
+                      className="w-1 h-4 rounded-full"
                       style={{ backgroundColor: selectedType.color }}
                     />
                     Order Summary
                   </h3>
 
-                  {/* Line items */}
-                  <div className="relative space-y-3 mb-5">
+                  <div className="relative space-y-3 mb-4">
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-400">
+                      <span className="text-gray-500">
                         {selectedType.name} × {quantity}
                       </span>
                       <span className="text-white font-semibold">
                         {rawTotal.toLocaleString("vi-VN")} VND
                       </span>
                     </div>
-
-                    {/* Promo code */}
-                    <div className="pt-3 border-t border-white/5">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={promoCode}
-                          onChange={(e) =>
-                            setPromoCode(e.target.value.toUpperCase())
-                          }
-                          placeholder="Promo code"
-                          className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors uppercase placeholder:text-gray-600"
-                          disabled={isValidatingPromo}
-                        />
-                        <button
-                          onClick={handleApplyPromoCode}
-                          disabled={!promoCode.trim() || isValidatingPromo}
-                          className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
-                        >
-                          {isValidatingPromo ? "..." : "Apply"}
-                        </button>
-                      </div>
-                      {promoError && (
-                        <p className="text-red-400 text-xs mt-1.5">
-                          {promoError}
-                        </p>
-                      )}
-                    </div>
-
                     {discountInfo && (
-                      <div className="flex justify-between items-center text-green-400 text-sm">
-                        <span className="flex flex-col">
-                          <span>Discount</span>
-                          <span className="text-xs opacity-70">
-                            ({discountInfo.name})
-                          </span>
-                        </span>
+                      <div className="flex justify-between items-center text-green-400/90 text-sm">
+                        <span>Discount</span>
                         <span className="font-semibold">
                           −{discountInfo.amount.toLocaleString()} VND
                         </span>
@@ -774,49 +928,47 @@ export default function TicketClassPage({
                     )}
                   </div>
 
-                  {/* Total */}
                   <div
-                    className="relative flex justify-between items-end p-4 rounded-2xl mb-5"
+                    className="relative flex justify-between items-end p-4 rounded-xl mb-5"
                     style={{
-                      background: `linear-gradient(90deg, ${selectedType.color}25, transparent)`,
+                      background: `linear-gradient(90deg, ${selectedType.color}20, transparent)`,
                     }}
                   >
-                    <span className="text-base font-bold text-white uppercase tracking-wide">
+                    <span className="text-sm font-bold text-white uppercase tracking-wide">
                       Total
                     </span>
                     <div className="text-right">
                       <span
-                        className="text-3xl font-black"
+                        className="text-2xl font-black"
                         style={{ color: selectedType.color }}
                       >
                         {total.toLocaleString("vi-VN")}
                       </span>
-                      <span className="text-sm font-bold text-gray-400 ml-1">
+                      <span className="text-xs font-bold text-gray-500 ml-1">
                         VND
                       </span>
                     </div>
                   </div>
 
-                  {/* Checkout button */}
                   <button
                     onClick={handleCheckout}
                     disabled={isCheckingOut || quantity < 1}
-                    className={`relative w-full py-4 px-6 rounded-2xl font-black text-white uppercase tracking-wider flex items-center justify-center gap-3 transition-all duration-300 overflow-hidden group ${
+                    className={`relative w-full py-4 px-6 rounded-xl font-black text-white uppercase tracking-wider flex items-center justify-center gap-3 transition-all duration-200 overflow-hidden group ${
                       isCheckingOut
-                        ? "bg-gray-700 cursor-not-allowed opacity-60"
-                        : "hover-lift active:scale-[0.98]"
+                        ? "bg-gray-800 cursor-not-allowed opacity-60"
+                        : "active:scale-[0.98]"
                     }`}
                     style={
                       !isCheckingOut
                         ? {
                             background: `linear-gradient(135deg, ${selectedType.color}, ${selectedType.color}dd)`,
-                            boxShadow: `0 12px 40px -8px ${selectedType.color}90`,
+                            boxShadow: `0 12px 36px -10px ${selectedType.color}80`,
                           }
                         : undefined
                     }
                   >
                     {!isCheckingOut && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                     )}
                     {isCheckingOut ? (
                       <>
@@ -831,67 +983,81 @@ export default function TicketClassPage({
                     )}
                   </button>
 
-                  {/* Trust badges */}
-                  <div className="relative flex items-center justify-center gap-4 mt-4 text-[10px] text-gray-600 uppercase tracking-wider">
+                  <div className="relative flex items-center justify-center gap-4 mt-4 text-[10px] text-gray-700 uppercase tracking-wider">
                     <span className="flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Secure payment
+                      <ShieldCheck className="w-3 h-3" /> Secure payment
                     </span>
                     <span className="flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Instant confirmation
+                      <Zap className="w-3 h-3" /> Auto seat assignment
                     </span>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            </motion.aside>
+          )}
+        </AnimatePresence>
 
-        {/* Mobile sticky bottom bar — appears when a tier is selected */}
-        {selectedType && (
-          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 animate-fade-in-up">
-            <div
-              className="mx-3 mb-3 rounded-2xl p-4 border shadow-2xl backdrop-blur-xl"
-              style={{
-                borderColor: `${selectedType.color}40`,
-                background: "rgba(10,10,10,0.85)",
+        {/* Mobile sticky bottom bar — compact, thumb-reachable */}
+        <AnimatePresence>
+          {selectedType && (
+            <motion.div
+              key="mobile-bar"
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              transition={{
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 30,
               }}
+              className="lg:hidden fixed bottom-0 left-0 right-0 z-40"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-gray-400 text-xs uppercase tracking-wider truncate">
-                    {selectedType.name} × {quantity}
-                    {discountInfo &&
-                      ` · −${discountInfo.amount.toLocaleString()}`}
-                  </p>
-                  <p
-                    className="text-xl font-black"
-                    style={{ color: selectedType.color }}
+              <div
+                className="mx-3 mb-3 rounded-2xl px-4 py-3 border shadow-2xl backdrop-blur-xl"
+                style={{
+                  borderColor: `${selectedType.color}30`,
+                  background: "rgba(8,8,10,0.92)",
+                }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-gray-600 text-[10px] uppercase tracking-wider truncate">
+                      {selectedType.name} × {quantity}
+                      {discountInfo &&
+                        ` · −${discountInfo.amount.toLocaleString()}`}
+                    </p>
+                    <p
+                      className="text-lg font-black leading-tight"
+                      style={{ color: selectedType.color }}
+                    >
+                      {total.toLocaleString("vi-VN")}{" "}
+                      <span className="text-xs text-gray-500">VND</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCheckout}
+                    disabled={isCheckingOut || quantity < 1}
+                    className="shrink-0 px-5 py-3 rounded-xl font-black text-white uppercase tracking-wider text-sm flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                    style={{
+                      background: `linear-gradient(135deg, ${selectedType.color}, ${selectedType.color}dd)`,
+                      boxShadow: `0 8px 24px -8px ${selectedType.color}90`,
+                    }}
                   >
-                    {total.toLocaleString("vi-VN")} VND
-                  </p>
+                    {isCheckingOut ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Checkout
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
                 </div>
-                <button
-                  onClick={handleCheckout}
-                  disabled={isCheckingOut || quantity < 1}
-                  className="shrink-0 px-5 py-3 rounded-xl font-black text-white uppercase tracking-wider text-sm flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
-                  style={{
-                    background: `linear-gradient(135deg, ${selectedType.color}, ${selectedType.color}dd)`,
-                  }}
-                >
-                  {isCheckingOut ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      Checkout
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
               </div>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
+    </AuroraBackground>
   );
 }
