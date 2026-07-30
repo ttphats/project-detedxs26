@@ -19,6 +19,7 @@ interface SeatProps {
   color?: string; // Custom color from ticket types
   onSelect?: (id: string) => void;
   showType?: boolean; // Show VIP/STD badge
+  compact?: boolean; // Read-only overview: hide seat number, no hover, no title
 }
 
 export default function Seat({
@@ -33,6 +34,7 @@ export default function Seat({
   color,
   onSelect,
   showType = false,
+  compact = false,
 }: SeatProps) {
   const handleClick = () => {
     // Can select available seats or deselect locked_by_me seats
@@ -52,7 +54,11 @@ export default function Seat({
 
   // Get colors from shared config based on seat type
   const availableColors = isSeatDisabled
-    ? { back: "from-gray-700 to-gray-800", cushion: "from-gray-600 to-gray-700", text: "text-gray-500" }
+    ? {
+        back: "from-gray-700 to-gray-800",
+        cushion: "from-gray-600 to-gray-700",
+        text: "text-gray-500",
+      }
     : SEAT_COLORS[seatType as keyof typeof SEAT_COLORS] || SEAT_COLORS.STANDARD;
   const selectedColors = SELECTED_SEAT_COLORS;
   const soldColors = SOLD_SEAT_COLORS;
@@ -106,13 +112,15 @@ export default function Seat({
   return (
     <button
       onClick={handleClick}
-      disabled={isDisabled}
+      disabled={isDisabled || compact}
       className={`relative mobile-seat sm:w-8 sm:h-9 flex flex-col items-center justify-center transition-all duration-200 group mobile-tap-feedback ${
-        isDisabled
-          ? "cursor-not-allowed opacity-50"
-          : "cursor-pointer hover:brightness-110"
+        compact
+          ? "cursor-default"
+          : isDisabled
+            ? "cursor-not-allowed opacity-50"
+            : "cursor-pointer hover:brightness-110"
       }`}
-      title={getTitleText()}
+      title={compact ? undefined : getTitleText()}
     >
       {/* Seat back (top part) */}
       <div
@@ -129,12 +137,14 @@ export default function Seat({
       >
         {/* Shine effect */}
         <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-md" />
-        {/* Seat number */}
-        <span
-          className={`relative text-[10px] sm:text-[8px] font-bold ${isDisabled ? "text-gray-200" : "text-white"}`}
-        >
-          {seatNumber || `${row}${number}`}
-        </span>
+        {/* Seat number — hidden in compact (overview) mode */}
+        {!compact && (
+          <span
+            className={`relative text-[10px] sm:text-[8px] font-bold ${isDisabled ? "text-gray-200" : "text-white"}`}
+          >
+            {seatNumber || `${row}${number}`}
+          </span>
+        )}
       </div>
 
       {/* Seat cushion (bottom part) */}
@@ -185,9 +195,14 @@ interface TicketType {
 
 interface SeatLegendProps {
   ticketTypes?: TicketType[];
+  /** simple = only show tier colors (for overview mode, no Selected/Reserved/Sold) */
+  simple?: boolean;
 }
 
-export function SeatLegend({ ticketTypes = [] }: SeatLegendProps) {
+export function SeatLegend({
+  ticketTypes = [],
+  simple = false,
+}: SeatLegendProps) {
   const selectedColors = SELECTED_SEAT_COLORS;
   const soldColors = SOLD_SEAT_COLORS;
   const lockedColors = LOCKED_SEAT_COLORS;
@@ -212,37 +227,42 @@ export function SeatLegend({ ticketTypes = [] }: SeatLegendProps) {
         );
       })}
 
-      {/* Selected */}
-      <div className="flex items-center gap-2">
-        <div
-          className={`w-6 h-6 rounded-md bg-gradient-to-b ${selectedColors.back} ring-2 ring-red-400 shadow-lg ${selectedColors.glow}`}
-        />
-        <span className="text-sm text-gray-300">Selected</span>
-      </div>
-      {/* Locked by others */}
-      <div className="flex items-center gap-2">
-        <div
-          className={`w-6 h-6 rounded-md bg-gradient-to-b ${lockedColors.back} relative`}
-        >
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-4 h-0.5 bg-gray-400/80 rotate-45" />
-            <div className="w-4 h-0.5 bg-gray-400/80 -rotate-45 absolute" />
+      {/* Status legend — hidden in simple (overview) mode */}
+      {!simple && (
+        <>
+          {/* Selected */}
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-6 h-6 rounded-md bg-gradient-to-b ${selectedColors.back} ring-2 ring-red-400 shadow-lg ${selectedColors.glow}`}
+            />
+            <span className="text-sm text-gray-300">Selected</span>
           </div>
-        </div>
-        <span className="text-sm text-gray-300">Reserved</span>
-      </div>
-      {/* Sold */}
-      <div className="flex items-center gap-2">
-        <div
-          className={`w-6 h-6 rounded-md bg-gradient-to-b ${soldColors.back} relative`}
-        >
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-4 h-0.5 bg-gray-400/80 rotate-45" />
-            <div className="w-4 h-0.5 bg-gray-400/80 -rotate-45 absolute" />
+          {/* Locked by others */}
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-6 h-6 rounded-md bg-gradient-to-b ${lockedColors.back} relative`}
+            >
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-4 h-0.5 bg-gray-400/80 rotate-45" />
+                <div className="w-4 h-0.5 bg-gray-400/80 -rotate-45 absolute" />
+              </div>
+            </div>
+            <span className="text-sm text-gray-300">Reserved</span>
           </div>
-        </div>
-        <span className="text-sm text-gray-300">Sold</span>
-      </div>
+          {/* Sold */}
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-6 h-6 rounded-md bg-gradient-to-b ${soldColors.back} relative`}
+            >
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-4 h-0.5 bg-gray-400/80 rotate-45" />
+                <div className="w-4 h-0.5 bg-gray-400/80 -rotate-45 absolute" />
+              </div>
+            </div>
+            <span className="text-sm text-gray-300">Sold</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
