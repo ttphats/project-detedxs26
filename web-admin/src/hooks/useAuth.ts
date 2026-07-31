@@ -59,10 +59,21 @@ export function useAuthState() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-      const data = await res.json();
 
-      if (data.success && data.data) {
-        const { token: newToken, user: newUser } = data.data;
+      const raw = await res.text();
+      let data: { success?: boolean; data?: { token: string; user: unknown }; error?: string } | null = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        console.error("[LOGIN] Non-JSON response:", res.status, raw.slice(0, 200));
+        return false;
+      }
+
+      if (data?.success && data.data) {
+        const { token: newToken, user: newUser } = data.data as {
+          token: string;
+          user: typeof user;
+        };
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(newUser));
         setToken(newToken);
@@ -70,7 +81,8 @@ export function useAuthState() {
         return true;
       }
       return false;
-    } catch {
+    } catch (err) {
+      console.error("[LOGIN] Failed:", err);
       return false;
     }
   }, []);

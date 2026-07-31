@@ -1,19 +1,13 @@
 import type {NextConfig} from 'next'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
-
+/**
+ * Do NOT rewrite /api/* to an external HTTPS backend here.
+ * Next's built-in rewrite proxy fails on self-signed / MITM cert chains
+ * ("Internal Server Error" plain text). All /api traffic is proxied by
+ * `src/app/api/[...path]/route.ts` which can relax TLS in development.
+ */
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
-  async rewrites() {
-    return [
-      // Proxy all /api/* requests to backend
-      {
-        source: '/api/:path*',
-        destination: `${BACKEND_URL}/:path*`,
-      },
-    ]
-  },
 }
 
 export default nextConfig

@@ -151,7 +151,11 @@ export default function TicketClassPage({
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-  /** Derive rough availability from seatMap when dedicated endpoint is missing (e.g. older prod). */
+  /**
+   * Availability for ticket-class page:
+   * derive from event payload seatMap only.
+   * Do NOT call /ticket-availability (missing on older/prod APIs → Network 404).
+   */
   const deriveAvailabilityFromSeatMap = useCallback(
     (
       ticketTypes: TicketType[],
@@ -188,7 +192,7 @@ export default function TicketClassPage({
           sold: 0,
           locked: 0,
         };
-        // If seat map has no seats for this type, treat as open (unknown) so cart still works
+        // No seats mapped to this type → treat as open so cart still works
         const available = c.total > 0 ? c.available : 99;
         return {
           ticketTypeId: tt.id,
@@ -206,45 +210,6 @@ export default function TicketClassPage({
       });
     },
     [],
-  );
-
-  const fetchAvailability = useCallback(
-    async (fallbackTypes?: TicketType[], seatMap?: unknown) => {
-      try {
-        const res = await fetch(`${apiUrl}/events/${id}/ticket-availability`, {
-          cache: "no-store",
-        });
-        // Older prod deploys may not have this route yet
-        if (res.status === 404) {
-          if (fallbackTypes) {
-            setAvailability(
-              deriveAvailabilityFromSeatMap(
-                fallbackTypes,
-                seatMap as Parameters<typeof deriveAvailabilityFromSeatMap>[1],
-              ),
-            );
-          }
-          return;
-        }
-        if (!res.ok) {
-          console.warn("[AVAIL] HTTP", res.status);
-          return;
-        }
-        const data = await res.json();
-        if (data.success) setAvailability(data.data || []);
-      } catch (err) {
-        console.warn("[AVAIL] Failed (non-blocking):", err);
-        if (fallbackTypes) {
-          setAvailability(
-            deriveAvailabilityFromSeatMap(
-              fallbackTypes,
-              seatMap as Parameters<typeof deriveAvailabilityFromSeatMap>[1],
-            ),
-          );
-        }
-      }
-    },
-    [apiUrl, id, deriveAvailabilityFromSeatMap],
   );
 
   useEffect(() => {
@@ -266,7 +231,23 @@ export default function TicketClassPage({
           return;
         }
         const ev = data.data;
-        const ticketTypes = ev.ticketTypes || [];
+        const ticketTypes = (ev.ticketTypes || []).map(
+          (
+            tt: TicketType & {
+              imageUrl?: string | null;
+              image_url?: string | null;
+            },
+          ) => {
+            const rawImg =
+              (typeof tt.imageUrl === "string" && tt.imageUrl.trim()) ||
+              (typeof tt.image_url === "string" && tt.image_url.trim()) ||
+              null;
+            return {
+              ...tt,
+              imageUrl: rawImg,
+            };
+          },
+        );
         setEvent({
           id: ev.id,
           name: ev.name,
@@ -276,19 +257,9 @@ export default function TicketClassPage({
           date: ev.date,
           time: ev.time,
           venue: ev.venue,
-          ticketTypes: ticketTypes.map(
-            (
-              tt: TicketType & {
-                imageUrl?: string | null;
-                image_url?: string | null;
-              },
-            ) => ({
-              ...tt,
-              imageUrl: tt.imageUrl ?? tt.image_url ?? null,
-            }),
-          ),
+          ticketTypes,
         });
-        await fetchAvailability(ticketTypes, ev.seatMap);
+        setAvailability(deriveAvailabilityFromSeatMap(ticketTypes, ev.seatMap));
       } catch (err) {
         console.error(err);
         setError("An error occurred while loading data");
@@ -297,13 +268,7 @@ export default function TicketClassPage({
       }
     };
     load();
-  }, [id, sessionId, apiUrl, fetchAvailability]);
-
-  useEffect(() => {
-    if (!id || loading) return;
-    const interval = setInterval(fetchAvailability, 10000);
-    return () => clearInterval(interval);
-  }, [id, loading, fetchAvailability]);
+  }, [id, sessionId, apiUrl, deriveAvailabilityFromSeatMap]);
 
   const cartItems = useMemo(() => {
     if (!event) return [];
@@ -454,7 +419,6 @@ export default function TicketClassPage({
           : "Failed to proceed to checkout. Please try again.",
       );
       setIsCheckingOut(false);
-      fetchAvailability();
     }
   };
 
@@ -563,19 +527,35 @@ export default function TicketClassPage({
                       style={
                         tt.imageUrl
                           ? {
-                              backgroundImage: `linear-gradient(135deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 100%), url(${tt.imageUrl})`,
-                              backgroundSize: "cover",
-                              backgroundPosition: "center",
+                              backgroundColor: "#0a0a0c",
                               boxShadow:
                                 "0 8px 28px -10px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.08)",
                             }
                           : cardStyle(tt.level, accent)
                       }
                     >
-                      {!tt.imageUrl && (
+                      {tt.imageUrl ? (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={tt.imageUrl}
+                            alt=""
+                            aria-hidden
+                            className="absolute inset-0 z-0 w-full h-full object-cover"
+                            onError={(e) => {
+                              // If remote image fails, hide broken layer (card keeps dark base)
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                          <div
+                            aria-hidden
+                            className="absolute inset-0 z-[1] bg-gradient-to-br from-black/60 via-black/35 to-black/20 pointer-events-none"
+                          />
+                        </>
+                      ) : (
                         <div
                           aria-hidden
-                          className="absolute right-6 top-1/2 -translate-y-1/2 text-[72px] sm:text-[88px] font-black leading-none opacity-[0.07] pointer-events-none"
+                          className="absolute right-6 top-1/2 -translate-y-1/2 text-[72px] sm:text-[88px] font-black leading-none opacity-[0.07] pointer-events-none z-0"
                           style={{ color: accent }}
                         >
                           x
@@ -583,7 +563,7 @@ export default function TicketClassPage({
                       )}
                       <div
                         aria-hidden
-                        className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-[2px] opacity-50"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 z-[2] flex flex-col gap-[2px] opacity-50"
                       >
                         {Array.from({ length: 18 }).map((_, i) => (
                           <div
@@ -596,7 +576,7 @@ export default function TicketClassPage({
                           />
                         ))}
                       </div>
-                      <div className="relative z-[1] mb-4">
+                      <div className="relative z-[2] mb-4">
                         <Image
                           src="/logo.png"
                           alt="TEDx"
@@ -605,11 +585,11 @@ export default function TicketClassPage({
                           className="h-5 w-auto object-contain opacity-90 drop-shadow"
                         />
                       </div>
-                      <h2 className="relative z-[1] text-2xl sm:text-[28px] font-black text-white leading-none tracking-tight mb-1.5 pr-10 drop-shadow">
+                      <h2 className="relative z-[2] text-2xl sm:text-[28px] font-black text-white leading-none tracking-tight mb-1.5 pr-10 drop-shadow">
                         {tt.name}
                       </h2>
                       <p
-                        className="relative z-[1] text-lg sm:text-xl font-bold mb-3 drop-shadow"
+                        className="relative z-[2] text-lg sm:text-xl font-bold mb-3 drop-shadow"
                         style={{ color: tt.imageUrl ? "#fff" : accent }}
                       >
                         {formatPrice(Number(tt.price))}{" "}
@@ -618,12 +598,12 @@ export default function TicketClassPage({
                         </span>
                       </p>
                       {(tt.subtitle || dateLabel) && (
-                        <p className="relative z-[1] text-[11px] sm:text-xs text-white/70 pr-8 drop-shadow">
+                        <p className="relative z-[2] text-[11px] sm:text-xs text-white/70 pr-8 drop-shadow">
                           {tt.subtitle || dateLabel}
                         </p>
                       )}
                       {isSoldOut && (
-                        <div className="absolute top-3 left-0 bg-[#e62b1e] text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rotate-[-8deg] shadow-lg">
+                        <div className="absolute top-3 left-0 z-[2] bg-[#e62b1e] text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rotate-[-8deg] shadow-lg">
                           Sold Out
                         </div>
                       )}
