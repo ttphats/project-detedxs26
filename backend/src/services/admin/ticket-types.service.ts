@@ -12,6 +12,7 @@ interface TicketType extends RowDataPacket {
   price: number;
   color: string;
   icon: string;
+  image_url: string | null;
   max_quantity: number | null;
   sort_order: number;
   event_name: string;
@@ -27,11 +28,41 @@ interface SeatCount extends RowDataPacket {
   count: number;
 }
 
+let imageColumnEnsured = false;
+
+/** Ensure ticket_types.image_url exists (idempotent). */
+export async function ensureTicketTypeImageColumn() {
+  if (imageColumnEnsured) return;
+  const pool = getPool();
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'ticket_types'
+         AND COLUMN_NAME = 'image_url'`
+    );
+    if (!rows.length) {
+      await pool.query(
+        `ALTER TABLE ticket_types
+         ADD COLUMN image_url VARCHAR(500) NULL DEFAULT NULL AFTER icon`
+      );
+      console.log('[ticket-types] Added column image_url');
+    }
+    imageColumnEnsured = true;
+  } catch (err) {
+    console.error('[ticket-types] ensure image_url failed:', err);
+    // Don't block forever — retry next call
+    imageColumnEnsured = false;
+    throw err;
+  }
+}
+
 /**
  * List all ticket types
  */
 export async function listTicketTypes(eventId?: string) {
   const pool = getPool();
+  await ensureTicketTypeImageColumn();
 
   let sql = `
     SELECT tt.*, e.name as event_name
@@ -68,14 +99,16 @@ export async function createTicketType(data: {
   level?: number;
   color?: string;
   icon?: string;
+  image_url?: string | null;
   max_quantity?: number;
   sort_order?: number;
 }) {
   const pool = getPool();
+  await ensureTicketTypeImageColumn();
   const id = randomUUID();
   await pool.query(
-    `INSERT INTO ticket_types (id, event_id, name, description, subtitle, benefits, price, level, color, icon, max_quantity, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ticket_types (id, event_id, name, description, subtitle, benefits, price, level, color, icon, image_url, max_quantity, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       data.event_id,
@@ -87,6 +120,7 @@ export async function createTicketType(data: {
       data.level || 1, // Default to level 1 if not provided
       data.color || '#10b981',
       data.icon || '🎫',
+      data.image_url || null,
       data.max_quantity || null,
       data.sort_order || 0
     ]
@@ -107,11 +141,13 @@ export async function updateTicketType(id: string, data: {
   level?: number;
   color?: string;
   icon?: string;
+  image_url?: string | null;
   max_quantity?: number;
   sort_order?: number;
   is_active?: boolean;
 }) {
   const pool = getPool();
+  await ensureTicketTypeImageColumn();
   const updates: string[] = [];
   const params: any[] = [];
 
@@ -146,6 +182,10 @@ export async function updateTicketType(id: string, data: {
   if (data.icon !== undefined) {
     updates.push('icon = ?');
     params.push(data.icon);
+  }
+  if (data.image_url !== undefined) {
+    updates.push('image_url = ?');
+    params.push(data.image_url || null);
   }
   if (data.max_quantity !== undefined) {
     updates.push('max_quantity = ?');

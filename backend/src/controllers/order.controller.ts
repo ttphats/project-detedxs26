@@ -22,32 +22,48 @@ export async function createPendingOrder(
 }
 
 // POST /orders/create-pending-by-type
-// Ticket-class-only booking: user selects ticket type + quantity,
-// backend auto-assigns available seats. No seat map needed.
+// Ticket-class booking: multi-type cart OR single type + quantity.
+// Backend auto-assigns available seats. No seat map needed.
 export async function createPendingOrderByType(
   request: FastifyRequest<{
     Body: {
       eventId: string
-      ticketTypeId: string
-      quantity: number
       sessionId: string
       promoCode?: string
+      // Multi-type cart (preferred)
+      items?: Array<{ticketTypeId: string; quantity: number}>
+      // Legacy single-type (backward compatible)
+      ticketTypeId?: string
+      quantity?: number
     }
   }>,
   reply: FastifyReply
 ) {
-  const {eventId, ticketTypeId, quantity, sessionId, promoCode} = request.body
+  const {eventId, sessionId, promoCode, items, ticketTypeId, quantity} = request.body
 
-  if (!eventId || !ticketTypeId || !sessionId || !quantity) {
-    throw new BadRequestError('Missing required fields: eventId, ticketTypeId, quantity, sessionId')
+  if (!eventId || !sessionId) {
+    throw new BadRequestError('Missing required fields: eventId, sessionId')
+  }
+
+  // Normalize to items[] — multi-type cart or legacy single type
+  let normalizedItems: Array<{ticketTypeId: string; quantity: number}> = []
+  if (items && Array.isArray(items) && items.length > 0) {
+    normalizedItems = items
+      .filter((i) => i?.ticketTypeId && Number(i.quantity) > 0)
+      .map((i) => ({ticketTypeId: i.ticketTypeId, quantity: Math.floor(Number(i.quantity))}))
+  } else if (ticketTypeId && quantity) {
+    normalizedItems = [{ticketTypeId, quantity: Math.floor(Number(quantity))}]
+  }
+
+  if (normalizedItems.length === 0) {
+    throw new BadRequestError('Cart is empty. Provide items[] or ticketTypeId + quantity.')
   }
 
   const result = await orderService.createPendingOrderByTicketType({
     eventId,
-    ticketTypeId,
-    quantity,
     sessionId,
     promoCode,
+    items: normalizedItems,
   })
 
   return reply.send(successResponse(result))

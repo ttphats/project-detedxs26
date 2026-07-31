@@ -12,8 +12,11 @@ interface CreateTicketTypeBody {
   level?: number;
   color?: string;
   icon?: string;
+  /** Optional card background image URL (Cloudinary). Null/omit = CSS default. */
+  image_url?: string | null;
   max_quantity?: number;
   sort_order?: number;
+  is_active?: boolean;
 }
 
 /**
