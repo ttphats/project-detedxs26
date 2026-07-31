@@ -201,32 +201,50 @@ export default function TicketTypesPage() {
         image_url: imageUrl || null,
       };
 
-      if (editingId) {
-        await fetch(`/api/admin/ticket-types/${editingId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
-        });
-        message.success("Cập nhật thành công");
-      } else {
-        await fetch("/api/admin/ticket-types", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
-        });
-        message.success("Tạo mới thành công");
+      const res = editingId
+        ? await fetch(`/api/admin/ticket-types/${editingId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/admin/ticket-types", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+
+      const raw = await res.text();
+      let data: { success?: boolean; error?: string } = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        message.error(
+          `Lưu thất bại (HTTP ${res.status}). Backend có thể chưa hỗ trợ image_url.`,
+        );
+        return;
       }
+
+      if (!res.ok || !data.success) {
+        message.error(
+          data.error ||
+            `Lưu thất bại (HTTP ${res.status}). Kiểm tra cột image_url / deploy backend.`,
+        );
+        return;
+      }
+
+      message.success(editingId ? "Cập nhật thành công" : "Tạo mới thành công");
       setIsModalOpen(false);
       resetModalState();
       fetchData(selectedEvent);
     } catch (error) {
-      message.error("Có lỗi xảy ra");
+      console.error(error);
+      message.error("Có lỗi xảy ra khi lưu loại vé");
     }
   };
 

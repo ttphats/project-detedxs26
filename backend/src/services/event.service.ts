@@ -77,6 +77,14 @@ export async function getEventById(eventId: string, sessionId?: string) {
     throw new NotFoundError('Event not found')
   }
 
+  // Ensure card image column exists (idempotent) so public API can return imageUrl
+  try {
+    const {ensureTicketTypeImageColumn} = await import('./admin/ticket-types.service.js')
+    await ensureTicketTypeImageColumn()
+  } catch (err) {
+    console.warn('[EVENTS] ensureTicketTypeImageColumn skipped:', err)
+  }
+
   // Get ticket types (image_url optional — safe if column missing until migration)
   let ticketTypes: Array<{
     id: string
@@ -184,18 +192,26 @@ export async function getEventById(eventId: string, sessionId?: string) {
     status: event.status,
     maxCapacity: event.max_capacity,
     availableSeats: event.available_seats,
-    ticketTypes: ticketTypes.map((tt) => ({
-      id: tt.id,
-      name: tt.name,
-      subtitle: tt.subtitle,
-      description: tt.description,
-      price: tt.price,
-      benefits: tt.benefits ? JSON.parse(tt.benefits) : [],
-      level: tt.level,
-      color: tt.color,
-      icon: tt.icon || null,
-      imageUrl: tt.image_url || null,
-    })),
+    ticketTypes: ticketTypes.map((tt) => {
+      const imageUrl =
+        typeof tt.image_url === 'string' && tt.image_url.trim()
+          ? tt.image_url.trim()
+          : null
+      return {
+        id: tt.id,
+        name: tt.name,
+        subtitle: tt.subtitle,
+        description: tt.description,
+        price: tt.price,
+        benefits: tt.benefits ? JSON.parse(tt.benefits) : [],
+        level: tt.level,
+        color: tt.color,
+        icon: tt.icon || null,
+        imageUrl,
+        // snake_case alias for older clients / proxies
+        image_url: imageUrl,
+      }
+    }),
     seatMap,
   }
 }
