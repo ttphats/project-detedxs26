@@ -77,8 +77,8 @@ export async function getEventById(eventId: string, sessionId?: string) {
     throw new NotFoundError('Event not found')
   }
 
-  // Get ticket types
-  const ticketTypes = await query<{
+  // Get ticket types (image_url optional — safe if column missing until migration)
+  let ticketTypes: Array<{
     id: string
     name: string
     subtitle: string | null
@@ -87,10 +87,23 @@ export async function getEventById(eventId: string, sessionId?: string) {
     benefits: string | null
     level: number
     color: string
-  }>(
-    'SELECT id, name, subtitle, description, price, benefits, level, color FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY level ASC',
-    [eventId]
-  )
+    icon?: string | null
+    image_url?: string | null
+  }> = []
+  try {
+    ticketTypes = await query(
+      `SELECT id, name, subtitle, description, price, benefits, level, color, icon, image_url
+       FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY level ASC`,
+      [eventId]
+    )
+  } catch {
+    // Fallback when image_url column not yet migrated
+    ticketTypes = await query(
+      `SELECT id, name, subtitle, description, price, benefits, level, color, icon
+       FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY level ASC`,
+      [eventId]
+    )
+  }
 
   // Get seats grouped by row with lock information
   const seats = await query<{
@@ -180,6 +193,8 @@ export async function getEventById(eventId: string, sessionId?: string) {
       benefits: tt.benefits ? JSON.parse(tt.benefits) : [],
       level: tt.level,
       color: tt.color,
+      icon: tt.icon || null,
+      imageUrl: tt.image_url || null,
     })),
     seatMap,
   }

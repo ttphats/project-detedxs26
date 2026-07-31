@@ -1,28 +1,25 @@
-"use client";
+﻿"use client";
 
-import { use, useState, useEffect, useCallback } from "react";
+import { use, useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
-  ArrowRight,
   Check,
-  Star,
-  Ticket,
   Loader2,
   Minus,
   Plus,
+  Trash2,
+  ShoppingCart,
   ShieldCheck,
   Zap,
-  Monitor,
+  ChevronUp,
+  X,
 } from "lucide-react";
 import { Button } from "@/components";
-import SpotlightCard from "@/components/ui/SpotlightCard";
-import AuroraBackground from "@/components/ui/AuroraBackground";
-import SeatOverview from "@/components/ui/SeatOverview";
 
-// Generate or get session ID for locking (same key as seat flow so locks interop)
 function getSessionId(): string {
   if (typeof window === "undefined") return "";
   let sessionId = sessionStorage.getItem("seat_session_id");
@@ -43,6 +40,8 @@ interface TicketType {
   color: string;
   level: number;
   icon?: string | null;
+  /** Optional custom card image; null/undefined → CSS gradient default */
+  imageUrl?: string | null;
 }
 
 interface TicketAvailability {
@@ -69,28 +68,44 @@ interface EventData {
   time: string;
   venue: string;
   ticketTypes: TicketType[];
-  seatMap: SeatRow[];
 }
 
-interface SeatType {
+interface CartLine {
   id: string;
-  row: string;
-  number: number;
-  seatNumber?: string;
-  section?: string | null;
-  status: "available" | "sold" | "locked" | "locked_by_me";
-  ticketTypeId?: string | null;
-  seatType?: string;
-  level?: number;
+  name: string;
   price: number;
+  qty: number;
+  lineTotal: number;
+  available: number;
+  color: string;
 }
 
-interface SeatRow {
-  row: string;
-  seats: SeatType[];
+const MAX_QTY_PER_TYPE = 10;
+const MAX_TOTAL = 20;
+
+function cardStyle(level: number, color: string): React.CSSProperties {
+  const c = color || "#e62b1e";
+  if (level >= 3) {
+    return {
+      background: `linear-gradient(135deg, #1a0505 0%, #3d0a0a 40%, ${c}55 100%)`,
+      boxShadow: `0 8px 32px -8px ${c}60, inset 0 1px 0 rgba(255,255,255,0.08)`,
+    };
+  }
+  if (level === 2) {
+    return {
+      background: `linear-gradient(135deg, #120808 0%, #2a0c0c 45%, ${c}40 100%)`,
+      boxShadow: `0 8px 28px -10px ${c}50, inset 0 1px 0 rgba(255,255,255,0.06)`,
+    };
+  }
+  return {
+    background: `linear-gradient(135deg, #0c0c0e 0%, #1a0a0a 50%, ${c}30 100%)`,
+    boxShadow: `0 6px 24px -10px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05)`,
+  };
 }
 
-const MAX_QUANTITY = 10;
+function formatPrice(n: number) {
+  return Math.round(n).toLocaleString("vi-VN");
+}
 
 export default function TicketClassPage({
   params,
@@ -102,12 +117,7 @@ export default function TicketClassPage({
   const [availability, setAvailability] = useState<TicketAvailability[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Selected ticket type + quantity
-  const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState<number>(1);
-
-  // Promo
+  const [cart, setCart] = useState<Record<string, number>>({});
   const [promoCode, setPromoCode] = useState("");
   const [discountInfo, setDiscountInfo] = useState<{
     name: string;
@@ -115,31 +125,127 @@ export default function TicketClassPage({
   } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [isValidatingPromo, setIsValidatingPromo] = useState(false);
-
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [sessionId, setSessionId] = useState<string>("");
+  const [sessionId, setSessionId] = useState("");
+  /** Mobile cart bottom-sheet open state */
+  const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => {
     setSessionId(getSessionId());
   }, []);
 
+  // Close mobile sheet when cart becomes empty
+  useEffect(() => {
+    if (Object.keys(cart).length === 0) setCartOpen(false);
+  }, [cart]);
+
+  // Lock body scroll while mobile cart sheet is open
+  useEffect(() => {
+    if (!cartOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [cartOpen]);
+
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-  // Fetch event + availability
-  const fetchAvailability = useCallback(async () => {
-    try {
-      const res = await fetch(`${apiUrl}/events/${id}/ticket-availability`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (data.success) {
-        setAvailability(data.data || []);
+  /** Derive rough availability from seatMap when dedicated endpoint is missing (e.g. older prod). */
+  const deriveAvailabilityFromSeatMap = useCallback(
+    (
+      ticketTypes: TicketType[],
+      seatMap:
+        | Array<{
+            seats?: Array<{ status?: string; ticketTypeId?: string | null }>;
+          }>
+        | undefined,
+    ): TicketAvailability[] => {
+      if (!ticketTypes.length) return [];
+      const counts = new Map<
+        string,
+        { total: number; available: number; sold: number; locked: number }
+      >();
+      for (const tt of ticketTypes) {
+        counts.set(tt.id, { total: 0, available: 0, sold: 0, locked: 0 });
       }
-    } catch (err) {
-      console.error("[AVAIL] Failed:", err);
-    }
-  }, [apiUrl, id]);
+      for (const row of seatMap || []) {
+        for (const seat of row.seats || []) {
+          const tid = seat.ticketTypeId;
+          if (!tid || !counts.has(tid)) continue;
+          const c = counts.get(tid)!;
+          c.total += 1;
+          const st = (seat.status || "").toLowerCase();
+          if (st === "available" || st === "locked_by_me") c.available += 1;
+          else if (st === "sold" || st === "reserved") c.sold += 1;
+          else if (st === "locked") c.locked += 1;
+        }
+      }
+      return ticketTypes.map((tt) => {
+        const c = counts.get(tt.id) || {
+          total: 0,
+          available: 99,
+          sold: 0,
+          locked: 0,
+        };
+        // If seat map has no seats for this type, treat as open (unknown) so cart still works
+        const available = c.total > 0 ? c.available : 99;
+        return {
+          ticketTypeId: tt.id,
+          name: tt.name,
+          level: tt.level,
+          color: tt.color,
+          price: Number(tt.price),
+          maxQuantity: null,
+          totalSeats: c.total,
+          sold: c.sold,
+          reserved: 0,
+          locked: c.locked,
+          available,
+        };
+      });
+    },
+    [],
+  );
+
+  const fetchAvailability = useCallback(
+    async (fallbackTypes?: TicketType[], seatMap?: unknown) => {
+      try {
+        const res = await fetch(`${apiUrl}/events/${id}/ticket-availability`, {
+          cache: "no-store",
+        });
+        // Older prod deploys may not have this route yet
+        if (res.status === 404) {
+          if (fallbackTypes) {
+            setAvailability(
+              deriveAvailabilityFromSeatMap(
+                fallbackTypes,
+                seatMap as Parameters<typeof deriveAvailabilityFromSeatMap>[1],
+              ),
+            );
+          }
+          return;
+        }
+        if (!res.ok) {
+          console.warn("[AVAIL] HTTP", res.status);
+          return;
+        }
+        const data = await res.json();
+        if (data.success) setAvailability(data.data || []);
+      } catch (err) {
+        console.warn("[AVAIL] Failed (non-blocking):", err);
+        if (fallbackTypes) {
+          setAvailability(
+            deriveAvailabilityFromSeatMap(
+              fallbackTypes,
+              seatMap as Parameters<typeof deriveAvailabilityFromSeatMap>[1],
+            ),
+          );
+        }
+      }
+    },
+    [apiUrl, id, deriveAvailabilityFromSeatMap],
+  );
 
   useEffect(() => {
     if (!sessionId) return;
@@ -152,11 +258,15 @@ export default function TicketClassPage({
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (!data.success) {
-          setError("Failed to load event data.");
+        if (!data.success || !data.data) {
+          setError(
+            data.error ||
+              "Failed to load event data. Server or database may be unavailable.",
+          );
           return;
         }
         const ev = data.data;
+        const ticketTypes = ev.ticketTypes || [];
         setEvent({
           id: ev.id,
           name: ev.name,
@@ -166,10 +276,19 @@ export default function TicketClassPage({
           date: ev.date,
           time: ev.time,
           venue: ev.venue,
-          ticketTypes: ev.ticketTypes || [],
-          seatMap: ev.seatMap || [],
+          ticketTypes: ticketTypes.map(
+            (
+              tt: TicketType & {
+                imageUrl?: string | null;
+                image_url?: string | null;
+              },
+            ) => ({
+              ...tt,
+              imageUrl: tt.imageUrl ?? tt.image_url ?? null,
+            }),
+          ),
         });
-        await fetchAvailability();
+        await fetchAvailability(ticketTypes, ev.seatMap);
       } catch (err) {
         console.error(err);
         setError("An error occurred while loading data");
@@ -180,66 +299,86 @@ export default function TicketClassPage({
     load();
   }, [id, sessionId, apiUrl, fetchAvailability]);
 
-  // Poll availability every 10s to keep "X vé còn lại" fresh
   useEffect(() => {
     if (!id || loading) return;
     const interval = setInterval(fetchAvailability, 10000);
     return () => clearInterval(interval);
   }, [id, loading, fetchAvailability]);
 
-  const selectedType =
-    event?.ticketTypes.find((t) => t.id === selectedTypeId) || null;
-  const selectedAvail =
-    availability.find((a) => a.ticketTypeId === selectedTypeId) || null;
-  const maxAllowed = Math.min(MAX_QUANTITY, selectedAvail?.available ?? 0);
-  const unitPrice = selectedType ? Number(selectedType.price) : 0;
-  const rawTotal = unitPrice * quantity;
+  const cartItems = useMemo(() => {
+    if (!event) return [];
+    return event.ticketTypes
+      .filter((tt) => (cart[tt.id] || 0) > 0)
+      .map((tt) => {
+        const qty = cart[tt.id] || 0;
+        const avail = availability.find((a) => a.ticketTypeId === tt.id);
+        return {
+          ...tt,
+          qty,
+          lineTotal: Number(tt.price) * qty,
+          available: avail?.available ?? 0,
+        };
+      });
+  }, [event, cart, availability]);
+
+  const cartCount = cartItems.reduce((s, i) => s + i.qty, 0);
+  const rawTotal = cartItems.reduce((s, i) => s + i.lineTotal, 0);
   const total = Math.max(0, rawTotal - (discountInfo?.amount || 0));
 
-  const handleSelectType = (typeId: string) => {
-    if (selectedTypeId === typeId) return;
-    setSelectedTypeId(typeId);
-    setQuantity(1);
+  const getMaxFor = (typeId: string) => {
+    const avail = availability.find((a) => a.ticketTypeId === typeId);
+    // Unknown availability (endpoint missing) → allow up to per-type max
+    const available = avail?.available ?? MAX_QTY_PER_TYPE;
+    const current = cart[typeId] || 0;
+    const others = cartCount - current;
+    const roomTotal = Math.max(0, MAX_TOTAL - others);
+    return Math.min(MAX_QTY_PER_TYPE, available, roomTotal);
+  };
+
+  const setQty = (typeId: string, qty: number) => {
+    const max = getMaxFor(typeId);
+    const next = Math.max(0, Math.min(qty, max));
+    setCart((prev) => {
+      if (next === 0) {
+        const { [typeId]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [typeId]: next };
+    });
     setDiscountInfo(null);
-    setPromoCode("");
     setPromoError(null);
   };
 
-  const handleQuantityChange = (delta: number) => {
-    setQuantity((prev) => {
-      const next = prev + delta;
-      if (next < 1) return 1;
-      if (maxAllowed > 0 && next > maxAllowed) return maxAllowed;
-      if (next > MAX_QUANTITY) return MAX_QUANTITY;
-      return next;
+  const bumpQty = (typeId: string, delta: number) => {
+    setQty(typeId, (cart[typeId] || 0) + delta);
+  };
+
+  const removeFromCart = (typeId: string) => {
+    setCart((prev) => {
+      const { [typeId]: _, ...rest } = prev;
+      return rest;
     });
     setDiscountInfo(null);
-    setPromoCode("");
     setPromoError(null);
   };
 
   const handleApplyPromoCode = async () => {
-    if (!promoCode.trim() || !selectedTypeId) return;
-    if (quantity < 1) {
-      setPromoError("Please select a quantity first");
-      return;
-    }
+    if (!promoCode.trim() || cartItems.length === 0) return;
     setIsValidatingPromo(true);
     setPromoError(null);
     try {
-      // The promotions check endpoint expects seatIds; for the ticket-class flow
-      // we don't know seatIds yet, so we approximate by sending a synthetic payload.
-      // The backend calculateBestDiscount only needs { id, price, ticketTypeId }.
-      // We build pseudo-ticket items to evaluate the discount.
+      const seatIds: string[] = [];
+      for (const item of cartItems) {
+        for (let i = 0; i < item.qty; i++) {
+          seatIds.push(`pseudo_${item.id}_${i}`);
+        }
+      }
       const res = await fetch(`${apiUrl}/promotions/validate-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: id,
-          seatIds: Array.from(
-            { length: quantity },
-            (_, i) => `pseudo_${selectedTypeId}_${i}`,
-          ),
+          seatIds,
           promoCode: promoCode.trim(),
         }),
       });
@@ -266,14 +405,16 @@ export default function TicketClassPage({
   };
 
   const handleCheckout = async () => {
-    if (!selectedTypeId || !id || !sessionId) return;
-    if (quantity < 1) {
-      toast.error("Please select at least 1 ticket");
+    if (!id || !sessionId) return;
+    if (cartItems.length === 0) {
+      toast.error("Please add at least 1 ticket");
       return;
     }
-    if (selectedAvail && quantity > selectedAvail.available) {
-      toast.error(`Chỉ còn ${selectedAvail.available} vé loại này`);
-      return;
+    for (const item of cartItems) {
+      if (item.qty > item.available) {
+        toast.error(`Chỉ còn ${item.available} vé ${item.name}`);
+        return;
+      }
     }
     setIsCheckingOut(true);
     try {
@@ -282,10 +423,12 @@ export default function TicketClassPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: id,
-          ticketTypeId: selectedTypeId,
-          quantity,
           sessionId,
           promoCode: promoCode.trim() || undefined,
+          items: cartItems.map((i) => ({
+            ticketTypeId: i.id,
+            quantity: i.qty,
+          })),
         }),
       });
       if (!res.ok) {
@@ -294,24 +437,23 @@ export default function TicketClassPage({
         throw new Error("Failed to create order. Please try again.");
       }
       const data = await res.json();
-      if (!data.success) {
+      if (!data.success)
         throw new Error(data.error || "Failed to create order");
-      }
       if (!data.data?.orderNumber || !data.data?.accessToken) {
         throw new Error("Invalid server response");
       }
       sessionStorage.setItem("navigating_to_checkout", "true");
-      const checkoutUrl = `/checkout?event=${id}&order=${data.data.orderNumber}&token=${data.data.accessToken}`;
-      window.location.replace(checkoutUrl);
+      window.location.replace(
+        `/checkout?event=${id}&order=${data.data.orderNumber}&token=${data.data.accessToken}`,
+      );
     } catch (err: unknown) {
       console.error("[CHECKOUT] error:", err);
-      const message =
+      toast.error(
         err instanceof Error
           ? err.message
-          : "Failed to proceed to checkout. Please try again.";
-      toast.error(message);
+          : "Failed to proceed to checkout. Please try again.",
+      );
       setIsCheckingOut(false);
-      // Refresh availability in case seats ran out
       fetchAvailability();
     }
   };
@@ -320,8 +462,8 @@ export default function TicketClassPage({
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-red-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading data...</p>
+          <Loader2 className="w-12 h-12 text-[#e62b1e] animate-spin mx-auto mb-4" />
+          <p className="text-gray-400 text-sm">Loading tickets...</p>
         </div>
       </div>
     );
@@ -329,7 +471,7 @@ export default function TicketClassPage({
 
   if (error || !event) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center px-4">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">
             {error || "Event not found"}
@@ -342,722 +484,703 @@ export default function TicketClassPage({
     );
   }
 
-  // Derive a "tier rank" for badge logic: highest level = VIP/Most popular
-  const sortedByLevelDesc = [...(event.ticketTypes || [])].sort(
-    (a, b) => b.level - a.level,
-  );
-  const topTierId = sortedByLevelDesc[0]?.id;
-  const valueTierId = sortedByLevelDesc[sortedByLevelDesc.length - 1]?.id;
-
-  // Motion variants
-  const containerStagger = {
-    hidden: {},
-    show: {
-      transition: { staggerChildren: 0.08, delayChildren: 0.1 },
-    },
-  };
-  const cardItem = {
-    hidden: { opacity: 0, y: 24 },
-    show: {
-      opacity: 1,
-      y: 0,
-      transition: { type: "spring" as const, stiffness: 260, damping: 24 },
-    },
-  };
+  const dateLabel = [event.date, event.time].filter(Boolean).join(" · ");
 
   return (
-    <AuroraBackground className="min-h-screen bg-[#08080a] pt-20 sm:pt-24 pb-28 sm:pb-12">
+    // pb accounts for MobileBottomNav (~4.25rem) + cart sticky bar (~5rem)
+    <div className="min-h-screen bg-[#08080a] pt-20 sm:pt-24 pb-44 lg:pb-16">
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 opacity-40"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 50% at 20% 0%, rgba(230,43,30,0.12), transparent 60%), radial-gradient(ellipse 60% 40% at 90% 80%, rgba(230,43,30,0.06), transparent 50%)",
+        }}
+      />
+
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header — editorial poster style, TEDx */}
         <motion.header
-          initial={{ opacity: 0, y: -16 }}
+          initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="mb-8 sm:mb-12"
+          transition={{ duration: 0.45 }}
+          className="mb-6 sm:mb-10"
         >
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-gray-500 hover:text-white transition-colors mb-5 sm:mb-7 group py-2 -ml-1"
+            className="inline-flex items-center gap-1.5 text-gray-500 hover:text-white transition-colors mb-4 sm:mb-6 group py-2 -ml-1"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
             <span className="text-xs sm:text-sm font-medium tracking-wide">
               Home
             </span>
           </Link>
-          <div className="flex flex-col gap-3">
-            <span className="inline-flex w-fit items-center gap-2 px-3 py-1 rounded-full bg-[#e62b1e]/10 border border-[#e62b1e]/30 text-[#e62b1e] text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em]">
-              <span className="w-1.5 h-1.5 bg-[#e62b1e] rounded-full animate-pulse" />
-              Get Tickets
-            </span>
-            <h1 className="text-[32px] leading-[0.95] sm:text-6xl md:text-7xl font-black text-white tracking-tight uppercase">
-              Choose Your{" "}
-              <span className="text-[#e62b1e] italic">Experience</span>
-            </h1>
-            <p className="text-gray-500 text-sm sm:text-base max-w-md leading-relaxed">
-              Pick a ticket class &amp; quantity. Seats assigned automatically —
-              no seat map needed.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+              <span className="inline-flex w-fit items-center gap-2 px-3 py-1 rounded-full bg-[#e62b1e]/10 border border-[#e62b1e]/30 text-[#e62b1e] text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] mb-3">
+                <span className="w-1.5 h-1.5 bg-[#e62b1e] rounded-full animate-pulse" />
+                Get Tickets
+              </span>
+              <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight uppercase leading-[0.95]">
+                Tickets
+              </h1>
+              <p className="text-gray-500 text-sm sm:text-base mt-2 max-w-md">
+                {event.name}
+                {event.venue ? ` · ${event.venue}` : ""}
+              </p>
+            </div>
+            {dateLabel && (
+              <p className="text-gray-600 text-xs sm:text-sm font-medium tracking-wide uppercase">
+                {dateLabel}
+              </p>
+            )}
           </div>
         </motion.header>
 
-        {/* Tier cards — mobile: horizontal scroll snap, desktop: 3-col grid */}
-        <motion.section
-          variants={containerStagger}
-          initial="hidden"
-          animate="show"
-          className="flex gap-3 overflow-x-auto snap-x snap-mandatory sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0 mb-6 sm:mb-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          aria-label="Ticket classes"
-        >
-          {event.ticketTypes.map((tt) => {
-            const avail = availability.find((a) => a.ticketTypeId === tt.id);
-            const isSoldOut = avail ? avail.available <= 0 : false;
-            const isSelected = selectedTypeId === tt.id;
-            const isVIP = tt.name.toUpperCase().includes("VIP");
-            const isTopTier = tt.id === topTierId;
-            const isValueTier = tt.id === valueTierId;
-            const soldPct =
-              avail && avail.totalSeats > 0
-                ? Math.round(
-                    ((avail.sold + avail.reserved) / avail.totalSeats) * 100,
-                  )
-                : 0;
-            return (
-              <motion.div
-                key={tt.id}
-                variants={cardItem}
-                className="relative snap-center shrink-0 w-[80vw] sm:w-auto sm:shrink"
-              >
-                {/* Badge */}
-                <AnimatePresence>
-                  {isTopTier && !isSoldOut && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="absolute -top-3 left-5 z-20 px-3 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider rounded-full shadow-lg shadow-orange-500/30 whitespace-nowrap"
-                    >
-                      Popular
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                <AnimatePresence>
-                  {isValueTier && !isTopTier && !isSoldOut && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="absolute -top-3 left-5 z-20 px-3 py-0.5 bg-gradient-to-r from-emerald-400 to-teal-500 text-black text-[10px] font-black uppercase tracking-wider rounded-full shadow-lg shadow-emerald-500/30 whitespace-nowrap"
-                    >
-                      Best Value
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
+          {/* Ticket cards */}
+          <div className="lg:col-span-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
+              {event.ticketTypes.map((tt, idx) => {
+                const qty = cart[tt.id] || 0;
+                const avail = availability.find(
+                  (a) => a.ticketTypeId === tt.id,
+                );
+                const isSoldOut = avail ? avail.available <= 0 : false;
+                const maxAllowed = getMaxFor(tt.id);
+                const accent = tt.color || "#e62b1e";
 
-                <SpotlightCard
-                  glowColor={tt.color}
-                  className="rounded-2xl border h-full transition-all duration-200"
-                >
-                  <button
-                    onClick={() => !isSoldOut && handleSelectType(tt.id)}
-                    disabled={isSoldOut}
-                    className="block w-full h-full text-left relative active:scale-[0.98] transition-transform"
-                    style={{
-                      borderColor: isSelected
-                        ? tt.color
-                        : "rgba(255,255,255,0.08)",
-                      background: isSelected
-                        ? `linear-gradient(160deg, ${tt.color}18 0%, rgba(8,8,10,0.9) 65%)`
-                        : "linear-gradient(160deg, rgba(14,14,16,0.9) 0%, rgba(5,5,7,0.9) 100%)",
-                      boxShadow: isSelected
-                        ? `0 16px 48px -16px ${tt.color}70, 0 0 0 1px ${tt.color}30`
-                        : "0 8px 32px -12px rgba(0,0,0,0.6)",
-                    }}
+                return (
+                  <motion.div
+                    key={tt.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.06, duration: 0.4 }}
+                    className={`flex flex-col ${isSoldOut ? "opacity-50" : ""}`}
                   >
-                    {/* Top accent line */}
+                    {/* Physical ticket card — custom image OR CSS gradient default */}
                     <div
-                      className="absolute top-0 left-0 right-0 h-0.5"
-                      style={{
-                        background: `linear-gradient(90deg, ${tt.color}, ${tt.color}00)`,
-                      }}
-                    />
-                    {isSelected && (
-                      <motion.div
-                        layoutId="selected-check"
-                        className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center"
-                        style={{ backgroundColor: tt.color }}
-                        transition={{
-                          type: "spring",
-                          stiffness: 400,
-                          damping: 25,
-                        }}
-                      >
-                        <Check className="w-4 h-4 text-white" strokeWidth={3} />
-                      </motion.div>
-                    )}
-
-                    <div className="p-4 sm:p-6">
-                      {/* Icon + name */}
-                      <div className="flex items-center gap-2.5 sm:gap-3 mb-4">
+                      className="relative overflow-hidden rounded-xl p-5 sm:p-6 min-h-[148px] sm:min-h-[168px] select-none"
+                      style={
+                        tt.imageUrl
+                          ? {
+                              backgroundImage: `linear-gradient(135deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 100%), url(${tt.imageUrl})`,
+                              backgroundSize: "cover",
+                              backgroundPosition: "center",
+                              boxShadow:
+                                "0 8px 28px -10px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.08)",
+                            }
+                          : cardStyle(tt.level, accent)
+                      }
+                    >
+                      {!tt.imageUrl && (
                         <div
-                          className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0"
-                          style={{
-                            background: `linear-gradient(135deg, ${tt.color}, ${tt.color}bb)`,
-                          }}
+                          aria-hidden
+                          className="absolute right-6 top-1/2 -translate-y-1/2 text-[72px] sm:text-[88px] font-black leading-none opacity-[0.07] pointer-events-none"
+                          style={{ color: accent }}
                         >
-                          {isVIP ? (
-                            <Star className="w-5 h-5 text-white" fill="white" />
-                          ) : (
-                            <Ticket className="w-5 h-5 text-white" />
-                          )}
+                          x
                         </div>
-                        <div className="min-w-0">
-                          <h3
-                            className="font-black text-base sm:text-xl uppercase tracking-tight truncate"
-                            style={{ color: tt.color }}
-                          >
-                            {tt.name}
-                          </h3>
-                          {tt.subtitle && (
-                            <p className="text-gray-600 text-[10px] sm:text-xs truncate">
-                              {tt.subtitle}
-                            </p>
-                          )}
-                        </div>
+                      )}
+                      <div
+                        aria-hidden
+                        className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-[2px] opacity-50"
+                      >
+                        {Array.from({ length: 18 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className="bg-white/80"
+                            style={{
+                              width: i % 3 === 0 ? 22 : i % 2 === 0 ? 16 : 20,
+                              height: 1.5,
+                            }}
+                          />
+                        ))}
                       </div>
-
-                      {/* Price */}
-                      <div className="mb-4">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-2xl sm:text-3xl font-black text-white">
-                            {Math.round(Number(tt.price)).toLocaleString(
-                              "vi-VN",
-                            )}
-                          </span>
-                          <span className="text-xs font-bold text-gray-500">
-                            VND
-                          </span>
-                        </div>
-                        <p className="text-gray-600 text-[10px] sm:text-xs mt-0.5">
-                          per ticket · fees included
+                      <div className="relative z-[1] mb-4">
+                        <Image
+                          src="/logo.png"
+                          alt="TEDx"
+                          width={72}
+                          height={24}
+                          className="h-5 w-auto object-contain opacity-90 drop-shadow"
+                        />
+                      </div>
+                      <h2 className="relative z-[1] text-2xl sm:text-[28px] font-black text-white leading-none tracking-tight mb-1.5 pr-10 drop-shadow">
+                        {tt.name}
+                      </h2>
+                      <p
+                        className="relative z-[1] text-lg sm:text-xl font-bold mb-3 drop-shadow"
+                        style={{ color: tt.imageUrl ? "#fff" : accent }}
+                      >
+                        {formatPrice(Number(tt.price))}{" "}
+                        <span className="text-xs text-white/50 font-semibold">
+                          VND
+                        </span>
+                      </p>
+                      {(tt.subtitle || dateLabel) && (
+                        <p className="relative z-[1] text-[11px] sm:text-xs text-white/70 pr-8 drop-shadow">
+                          {tt.subtitle || dateLabel}
                         </p>
-                      </div>
+                      )}
+                      {isSoldOut && (
+                        <div className="absolute top-3 left-0 bg-[#e62b1e] text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rotate-[-8deg] shadow-lg">
+                          Sold Out
+                        </div>
+                      )}
+                    </div>
 
-                      {/* Benefits */}
+                    {/* Benefits + stepper */}
+                    <div className="pt-4 pb-1 flex-1 flex flex-col">
                       {tt.benefits && tt.benefits.length > 0 && (
-                        <ul className="space-y-2 mb-4">
+                        <ul className="space-y-2 mb-5">
                           {tt.benefits.slice(0, 4).map((b, i) => (
                             <li
                               key={i}
-                              className="flex items-start gap-2 text-xs sm:text-sm text-gray-400"
+                              className="flex items-start gap-2.5 text-xs sm:text-sm text-gray-400"
                             >
-                              <span
-                                className="shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center"
-                                style={{ backgroundColor: `${tt.color}20` }}
-                              >
-                                <Check
-                                  className="w-2 h-2"
-                                  style={{ color: tt.color }}
-                                  strokeWidth={4}
-                                />
-                              </span>
+                              <Check
+                                className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                                style={{ color: accent }}
+                                strokeWidth={3}
+                              />
                               <span className="leading-snug">{b}</span>
                             </li>
                           ))}
                         </ul>
                       )}
-
-                      {/* Availability */}
-                      {avail && (
-                        <div className="pt-3 border-t border-white/5">
-                          {isSoldOut ? (
-                            <span className="text-red-400/80 font-bold text-xs uppercase tracking-wider">
-                              Sold Out
-                            </span>
-                          ) : (
-                            <>
-                              <div className="flex items-center justify-between mb-1.5">
-                                <span
-                                  className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${
-                                    avail.available > 10
-                                      ? "text-green-400/90"
-                                      : avail.available > 3
-                                        ? "text-amber-400/90"
-                                        : "text-red-400/90"
-                                  }`}
-                                >
-                                  {avail.available <= 5
-                                    ? `Only ${avail.available} left`
-                                    : `${avail.available} available`}
-                                </span>
-                                <span className="text-gray-700 text-[10px]">
-                                  {soldPct}% sold
-                                </span>
-                              </div>
-                              <div className="h-1 rounded-full bg-white/5 overflow-hidden">
-                                <motion.div
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${soldPct}%` }}
-                                  transition={{
-                                    duration: 0.8,
-                                    ease: "easeOut",
-                                  }}
-                                  className="h-full rounded-full"
-                                  style={{
-                                    background: `linear-gradient(90deg, ${tt.color}, ${tt.color}80)`,
-                                  }}
-                                />
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                </SpotlightCard>
-              </motion.div>
-            );
-          })}
-        </motion.section>
-
-        {/* Mobile scroll hint */}
-        <p className="sm:hidden text-center text-gray-700 text-[10px] -mt-3 mb-6">
-          ← Swipe to see all tiers →
-        </p>
-
-        {/* Seat map — read-only overview, highlights the selected tier zone */}
-        {event.seatMap && event.seatMap.length > 0 && (
-          <motion.section
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="mb-8 sm:mb-10"
-            aria-label="Venue seat map"
-          >
-            <div className="rounded-2xl border border-white/[0.06] bg-gradient-to-b from-white/[0.02] to-transparent p-4 sm:p-6 md:p-8 relative overflow-hidden">
-              {/* Section header */}
-              <div className="flex items-center justify-between mb-4 sm:mb-6">
-                <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <span className="w-1 h-4 bg-[#e62b1e] rounded-full" />
-                  Venue Overview
-                </h2>
-                {selectedType && (
-                  <motion.span
-                    key={selectedType.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider"
-                    style={{
-                      backgroundColor: `${selectedType.color}1a`,
-                      color: selectedType.color,
-                    }}
-                  >
-                    {selectedType.name} zone highlighted
-                  </motion.span>
-                )}
-              </div>
-
-              {/* Stage */}
-              <div className="mb-6 sm:mb-8 relative">
-                <div className="absolute inset-0 bg-[#e62b1e]/20 blur-2xl rounded-full transform scale-y-50" />
-                <div className="relative bg-gradient-to-r from-[#e62b1e] via-red-600 to-[#e62b1e] text-white py-2.5 sm:py-4 px-4 sm:px-8 rounded-lg text-center flex items-center justify-center gap-2 shadow-lg shadow-red-500/30 border border-[#e62b1e]/40">
-                  <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="font-black uppercase tracking-widest text-xs sm:text-base">
-                    Stage
-                  </span>
-                </div>
-              </div>
-
-              {/* Venue overview — read-only, uses same Seat component as
-                  the legacy seat page (compact mode: no number, no click) */}
-              <SeatOverview
-                rows={event.seatMap}
-                tiers={event.ticketTypes.map((tt) => ({
-                  id: tt.id,
-                  name: tt.name,
-                  level: tt.level,
-                  color: tt.color,
-                }))}
-                highlightedTierId={selectedTypeId}
-              />
-
-              {/* Note */}
-              <p className="text-center text-gray-600 text-[10px] sm:text-xs mt-4 flex items-center justify-center gap-1.5">
-                <Zap className="w-3 h-3" />
-                Seats are assigned automatically based on your selected class —
-                no need to pick individual seats.
-              </p>
-            </div>
-          </motion.section>
-        )}
-
-        {/* Quantity selector — always visible when a tier is selected */}
-        <AnimatePresence>
-          {selectedType && (
-            <motion.section
-              key="quantity"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-              className="overflow-hidden mb-6 sm:mb-8"
-              aria-label="Quantity"
-            >
-              <div
-                className="rounded-2xl border p-4 sm:p-6"
-                style={{
-                  borderColor: "rgba(255,255,255,0.06)",
-                  background:
-                    "linear-gradient(160deg, rgba(14,14,16,0.6), rgba(5,5,7,0.6))",
-                }}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
-                    <span
-                      className="w-1 h-4 rounded-full"
-                      style={{ backgroundColor: selectedType.color }}
-                    />
-                    Quantity
-                  </h3>
-                  <span
-                    className="text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider"
-                    style={{
-                      backgroundColor: `${selectedType.color}1a`,
-                      color: selectedType.color,
-                    }}
-                  >
-                    {selectedType.name}
-                  </span>
-                </div>
-
-                {/* Stepper + quick chips in one row on mobile */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-                  {/* Stepper */}
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    <button
-                      onClick={() => handleQuantityChange(-1)}
-                      disabled={quantity <= 1}
-                      className="w-12 h-12 sm:w-11 sm:h-11 rounded-xl bg-white/5 active:bg-white/15 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed active:scale-90"
-                      aria-label="Decrease quantity"
-                    >
-                      <Minus className="w-5 h-5" />
-                    </button>
-                    <div className="text-center w-12">
-                      <div
-                        className="text-3xl sm:text-4xl font-black text-white leading-none"
-                        style={{
-                          textShadow: `0 0 24px ${selectedType.color}50`,
-                        }}
-                      >
-                        {quantity}
-                      </div>
-                      <div className="text-[9px] text-gray-600 uppercase tracking-widest mt-1">
-                        {quantity === 1 ? "ticket" : "tickets"}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleQuantityChange(1)}
-                      disabled={maxAllowed > 0 && quantity >= maxAllowed}
-                      className="w-12 h-12 sm:w-11 sm:h-11 rounded-xl bg-white/5 active:bg-white/15 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed active:scale-90"
-                      aria-label="Increase quantity"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Quick chips */}
-                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                    {[1, 2, 3, 4, 5].map((n) => {
-                      const capped =
-                        maxAllowed > 0 ? Math.min(n, maxAllowed) : n;
-                      const active = quantity === capped;
-                      return (
-                        <button
-                          key={n}
-                          onClick={() => {
-                            setQuantity(capped);
-                            setDiscountInfo(null);
-                            setPromoCode("");
-                            setPromoError(null);
-                          }}
-                          disabled={maxAllowed > 0 && n > maxAllowed}
-                          className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg text-xs sm:text-sm font-bold transition-all active:scale-90 ${
-                            active
-                              ? "text-white"
-                              : "bg-white/5 text-gray-500 active:bg-white/10"
-                          } disabled:opacity-20 disabled:cursor-not-allowed`}
-                          style={
-                            active
-                              ? {
-                                  backgroundColor: selectedType.color,
-                                  boxShadow: `0 4px 14px -4px ${selectedType.color}80`,
-                                }
-                              : undefined
-                          }
+                      {avail && !isSoldOut && (
+                        <p
+                          className={`text-[11px] font-medium mb-3 ${
+                            avail.available > 10
+                              ? "text-emerald-400/70"
+                              : avail.available > 3
+                                ? "text-amber-400/75"
+                                : "text-red-400/80"
+                          }`}
                         >
-                          {n}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Info row */}
-                <div className="grid grid-cols-2 gap-2 sm:gap-3 mt-4 text-sm">
-                  <div className="rounded-lg bg-white/[0.03] px-3 py-2">
-                    <p className="text-gray-600 text-[10px] uppercase tracking-wider">
-                      Unit price
-                    </p>
-                    <p className="text-white font-bold text-sm">
-                      {unitPrice.toLocaleString("vi-VN")} VND
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-white/[0.03] px-3 py-2">
-                    <p className="text-gray-600 text-[10px] uppercase tracking-wider">
-                      Availability
-                    </p>
-                    <p
-                      className={`font-bold text-sm ${
-                        !selectedAvail || selectedAvail.available > 10
-                          ? "text-green-400/90"
-                          : selectedAvail.available > 3
-                            ? "text-amber-400/90"
-                            : "text-red-400/90"
-                      }`}
-                    >
-                      {selectedAvail ? `${selectedAvail.available} left` : "—"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
-
-        {/* Promo code — inline, compact */}
-        <AnimatePresence>
-          {selectedType && (
-            <motion.section
-              key="promo"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="mb-6 sm:mb-8"
-            >
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                  placeholder="Promo code"
-                  className="flex-1 bg-white/[0.03] border border-white/8 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/25 transition-colors uppercase placeholder:text-gray-700 placeholder:normal-case"
-                  disabled={isValidatingPromo}
-                />
-                <button
-                  onClick={handleApplyPromoCode}
-                  disabled={!promoCode.trim() || isValidatingPromo}
-                  className="px-5 py-3 bg-white/8 active:bg-white/15 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-30 active:scale-95"
-                >
-                  {isValidatingPromo ? "..." : "Apply"}
-                </button>
-              </div>
-              {promoError && (
-                <p className="text-red-400/90 text-xs mt-2">{promoError}</p>
-              )}
-              {discountInfo && (
-                <div className="flex justify-between items-center mt-2 text-green-400/90 text-sm">
-                  <span className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5" />
-                    {discountInfo.name}
-                  </span>
-                  <span className="font-bold">
-                    −{discountInfo.amount.toLocaleString()} VND
-                  </span>
-                </div>
-              )}
-            </motion.section>
-          )}
-        </AnimatePresence>
-
-        {/* Desktop sticky order summary sidebar */}
-        <AnimatePresence>
-          {selectedType && (
-            <motion.aside
-              key="summary"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-              className="hidden lg:block"
-            >
-              <div className="sticky top-24">
-                <div
-                  className="rounded-2xl p-6 border relative overflow-hidden"
-                  style={{
-                    borderColor: `${selectedType.color}30`,
-                    background: `linear-gradient(160deg, ${selectedType.color}10 0%, rgba(8,8,10,0.8) 70%)`,
-                  }}
-                >
-                  <div
-                    className="absolute -top-16 -right-16 w-32 h-32 rounded-full blur-3xl pointer-events-none"
-                    style={{ backgroundColor: `${selectedType.color}25` }}
-                  />
-
-                  <h3 className="relative text-base font-black text-white uppercase tracking-tight mb-4 flex items-center gap-2">
-                    <span
-                      className="w-1 h-4 rounded-full"
-                      style={{ backgroundColor: selectedType.color }}
-                    />
-                    Order Summary
-                  </h3>
-
-                  <div className="relative space-y-3 mb-4">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-500">
-                        {selectedType.name} × {quantity}
-                      </span>
-                      <span className="text-white font-semibold">
-                        {rawTotal.toLocaleString("vi-VN")} VND
-                      </span>
-                    </div>
-                    {discountInfo && (
-                      <div className="flex justify-between items-center text-green-400/90 text-sm">
-                        <span>Discount</span>
-                        <span className="font-semibold">
-                          −{discountInfo.amount.toLocaleString()} VND
-                        </span>
+                          {avail.available <= 5
+                            ? `Only ${avail.available} left`
+                            : `${avail.available} available`}
+                        </p>
+                      )}
+                      <div className="mt-auto flex items-center justify-center">
+                        <div className="inline-flex items-center rounded-xl border border-white/[0.1] bg-white/[0.03] overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => bumpQty(tt.id, -1)}
+                            disabled={qty <= 0 || isSoldOut}
+                            aria-label={`Decrease ${tt.name}`}
+                            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center text-white/85 active:bg-white/[0.06] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Minus className="w-4 h-4" strokeWidth={2.5} />
+                          </button>
+                          <div className="w-12 sm:w-14 h-10 sm:h-11 flex items-center justify-center border-x border-white/[0.1] text-white text-base sm:text-lg font-semibold tabular-nums">
+                            {qty}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => bumpQty(tt.id, 1)}
+                            disabled={isSoldOut || qty >= maxAllowed}
+                            aria-label={`Increase ${tt.name}`}
+                            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center text-white/85 active:bg-white/[0.06] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Plus className="w-4 h-4" strokeWidth={2.5} />
+                          </button>
+                        </div>
                       </div>
-                    )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Cart sidebar — desktop only */}
+          <aside className="hidden lg:block lg:col-span-4">
+            <div className="lg:sticky lg:top-24">
+              <CartPanel
+                cartItems={cartItems}
+                cartCount={cartCount}
+                rawTotal={rawTotal}
+                total={total}
+                discountInfo={discountInfo}
+                promoCode={promoCode}
+                setPromoCode={setPromoCode}
+                promoError={promoError}
+                isValidatingPromo={isValidatingPromo}
+                onApplyPromo={handleApplyPromoCode}
+                onRemove={removeFromCart}
+                onCheckout={handleCheckout}
+                isCheckingOut={isCheckingOut}
+              />
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      {/* ── Mobile sticky cart dock (above bottom nav) ── */}
+      <AnimatePresence>
+        {cartCount > 0 && !cartOpen && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 380, damping: 34 }}
+            className="lg:hidden fixed left-0 right-0 z-[60] pointer-events-none"
+            style={{
+              bottom: "calc(4.25rem + env(safe-area-inset-bottom, 0px))",
+            }}
+          >
+            <div className="pointer-events-auto mx-3 mb-1.5 rounded-2xl border border-white/[0.08] bg-[#111113]/96 backdrop-blur-2xl overflow-hidden shadow-[0_8px_32px_-8px_rgba(0,0,0,0.75)]">
+              <div className="flex items-stretch">
+                {/* Left: open cart details */}
+                <button
+                  type="button"
+                  onClick={() => setCartOpen(true)}
+                  className="min-w-0 flex-1 flex items-center gap-3 px-3.5 py-3 text-left active:bg-white/[0.03] transition-colors"
+                  aria-label="View cart details"
+                >
+                  <div className="relative shrink-0 w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center">
+                    <ShoppingCart className="w-4 h-4 text-white/80" />
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#e62b1e] text-[10px] font-bold text-white flex items-center justify-center tabular-nums leading-none">
+                      {cartCount}
+                    </span>
                   </div>
 
-                  <div
-                    className="relative flex justify-between items-end p-4 rounded-xl mb-5"
-                    style={{
-                      background: `linear-gradient(90deg, ${selectedType.color}20, transparent)`,
-                    }}
-                  >
-                    <span className="text-sm font-bold text-white uppercase tracking-wide">
-                      Total
-                    </span>
-                    <div className="text-right">
-                      <span
-                        className="text-2xl font-black"
-                        style={{ color: selectedType.color }}
-                      >
-                        {total.toLocaleString("vi-VN")}
-                      </span>
-                      <span className="text-xs font-bold text-gray-500 ml-1">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] text-gray-500 font-medium leading-none mb-1">
+                      {cartCount} ticket{cartCount > 1 ? "s" : ""}
+                      <span className="text-gray-700 mx-1.5">·</span>
+                      <span className="text-gray-400">View cart</span>
+                    </p>
+                    <p className="text-[17px] font-semibold text-white leading-none tabular-nums tracking-tight">
+                      {formatPrice(total)}
+                      <span className="ml-1 text-[11px] font-medium text-gray-500">
                         VND
                       </span>
-                    </div>
+                    </p>
+                    {discountInfo && (
+                      <p className="text-[10px] text-emerald-400/90 mt-1 font-medium">
+                        −{formatPrice(discountInfo.amount)} discount
+                      </p>
+                    )}
                   </div>
 
+                  <ChevronUp className="w-4 h-4 text-gray-600 shrink-0" />
+                </button>
+
+                {/* Divider */}
+                <div className="w-px self-stretch bg-white/[0.06] my-2.5" />
+
+                {/* Right: primary CTA */}
+                <button
+                  type="button"
+                  onClick={handleCheckout}
+                  disabled={isCheckingOut}
+                  className="shrink-0 self-center mx-2.5 h-11 px-4 rounded-xl text-[13px] font-semibold text-white bg-[#e62b1e] active:bg-[#c41e12] active:scale-[0.98] transition-all disabled:opacity-45 min-w-[6.75rem] flex items-center justify-center gap-2"
+                >
+                  {isCheckingOut ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Checkout"
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Mobile cart bottom sheet */}
+      <AnimatePresence>
+        {cartOpen && cartCount > 0 && (
+          <motion.div
+            className="lg:hidden fixed inset-0 z-[70] flex flex-col justify-end"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            <button
+              type="button"
+              aria-label="Close cart"
+              className="absolute inset-0 bg-black/70"
+              onClick={() => setCartOpen(false)}
+            />
+
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Your cart"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 400, damping: 38 }}
+              className="relative z-10 flex flex-col max-h-[min(86dvh,620px)] rounded-t-[1.35rem] border-t border-x border-white/[0.08] bg-[#111113] shadow-2xl"
+              style={{
+                paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
+              }}
+            >
+              {/* Handle + header */}
+              <div className="shrink-0 px-4 pt-2.5 pb-3 border-b border-white/[0.06]">
+                <div className="flex justify-center mb-3">
+                  <span className="w-9 h-1 rounded-full bg-white/15" />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-[15px] font-semibold text-white tracking-tight">
+                      Your cart
+                    </h3>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {cartCount} ticket{cartCount > 1 ? "s" : ""} selected
+                    </p>
+                  </div>
                   <button
-                    onClick={handleCheckout}
-                    disabled={isCheckingOut || quantity < 1}
-                    className={`relative w-full py-4 px-6 rounded-xl font-black text-white uppercase tracking-wider flex items-center justify-center gap-3 transition-all duration-200 overflow-hidden group ${
-                      isCheckingOut
-                        ? "bg-gray-800 cursor-not-allowed opacity-60"
-                        : "active:scale-[0.98]"
-                    }`}
-                    style={
-                      !isCheckingOut
-                        ? {
-                            background: `linear-gradient(135deg, ${selectedType.color}, ${selectedType.color}dd)`,
-                            boxShadow: `0 12px 36px -10px ${selectedType.color}80`,
-                          }
-                        : undefined
-                    }
+                    type="button"
+                    onClick={() => setCartOpen(false)}
+                    className="w-9 h-9 rounded-full bg-white/[0.05] border border-white/[0.06] flex items-center justify-center text-gray-400 active:bg-white/10 active:text-white"
+                    aria-label="Close"
                   >
-                    {!isCheckingOut && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                    )}
-                    {isCheckingOut ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span className="relative">Processing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="relative">Proceed to Checkout</span>
-                        <ArrowRight className="relative w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                      </>
-                    )}
+                    <X className="w-4 h-4" />
                   </button>
-
-                  <div className="relative flex items-center justify-center gap-4 mt-4 text-[10px] text-gray-700 uppercase tracking-wider">
-                    <span className="flex items-center gap-1">
-                      <ShieldCheck className="w-3 h-3" /> Secure payment
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Zap className="w-3 h-3" /> Auto seat assignment
-                    </span>
-                  </div>
                 </div>
               </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
 
-        {/* Mobile sticky bottom bar — compact, thumb-reachable */}
-        <AnimatePresence>
-          {selectedType && (
-            <motion.div
-              key="mobile-bar"
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              transition={{
-                type: "spring" as const,
-                stiffness: 300,
-                damping: 30,
-              }}
-              className="lg:hidden fixed bottom-0 left-0 right-0 z-40"
-            >
-              <div
-                className="mx-3 mb-3 rounded-2xl px-4 py-3 border shadow-2xl backdrop-blur-xl"
-                style={{
-                  borderColor: `${selectedType.color}30`,
-                  background: "rgba(8,8,10,0.92)",
-                }}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-gray-600 text-[10px] uppercase tracking-wider truncate">
-                      {selectedType.name} × {quantity}
-                      {discountInfo &&
-                        ` · −${discountInfo.amount.toLocaleString()}`}
-                    </p>
-                    <p
-                      className="text-lg font-black leading-tight"
-                      style={{ color: selectedType.color }}
+              {/* Lines */}
+              <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-1 min-h-0">
+                <AnimatePresence initial={false}>
+                  {cartItems.map((item) => (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="py-3.5 border-b border-white/[0.05]"
                     >
-                      {total.toLocaleString("vi-VN")}{" "}
-                      <span className="text-xs text-gray-500">VND</span>
-                    </p>
+                      <div className="flex items-start justify-between gap-3 mb-2.5">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white leading-tight truncate">
+                            {item.name}
+                          </p>
+                          <p className="text-[11px] text-gray-500 mt-0.5 tabular-nums">
+                            {formatPrice(Number(item.price))} VND each
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-semibold text-white tabular-nums">
+                            {formatPrice(item.lineTotal)}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => removeFromCart(item.id)}
+                            className="text-[11px] text-gray-500 active:text-[#e62b1e] mt-1 inline-flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Quiet qty control */}
+                      <div className="inline-flex items-center rounded-lg border border-white/[0.08] bg-white/[0.03] overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => bumpQty(item.id, -1)}
+                          aria-label={`Decrease ${item.name}`}
+                          className="w-9 h-9 flex items-center justify-center text-white/80 active:bg-white/[0.06]"
+                        >
+                          <Minus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                        </button>
+                        <span className="w-10 h-9 flex items-center justify-center text-sm font-semibold text-white tabular-nums border-x border-white/[0.08]">
+                          {item.qty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => bumpQty(item.id, 1)}
+                          disabled={item.qty >= getMaxFor(item.id)}
+                          aria-label={`Increase ${item.name}`}
+                          className="w-9 h-9 flex items-center justify-center text-white/80 active:bg-white/[0.06] disabled:opacity-30"
+                        >
+                          <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+
+                {/* Promo */}
+                <div className="pt-4 pb-2">
+                  <p className="text-[11px] text-gray-500 font-medium mb-2">
+                    Promo code
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) =>
+                        setPromoCode(e.target.value.toUpperCase())
+                      }
+                      placeholder="Enter code"
+                      disabled={isValidatingPromo}
+                      className="flex-1 min-w-0 bg-white/[0.03] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-white/20 transition-colors uppercase placeholder:text-gray-600 placeholder:normal-case"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyPromoCode}
+                      disabled={!promoCode.trim() || isValidatingPromo}
+                      className="px-4 py-2.5 bg-white/[0.06] border border-white/[0.08] active:bg-white/10 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-30 min-w-[4.5rem]"
+                    >
+                      {isValidatingPromo ? "..." : "Apply"}
+                    </button>
                   </div>
-                  <button
-                    onClick={handleCheckout}
-                    disabled={isCheckingOut || quantity < 1}
-                    className="shrink-0 px-5 py-3 rounded-xl font-black text-white uppercase tracking-wider text-sm flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                    style={{
-                      background: `linear-gradient(135deg, ${selectedType.color}, ${selectedType.color}dd)`,
-                      boxShadow: `0 8px 24px -8px ${selectedType.color}90`,
-                    }}
-                  >
-                    {isCheckingOut ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        Checkout
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
+                  {promoError && (
+                    <p className="text-red-400/90 text-xs mt-2">{promoError}</p>
+                  )}
+                  {discountInfo && (
+                    <div className="flex justify-between items-center mt-2.5 text-emerald-400/90 text-sm">
+                      <span className="flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" />
+                        {discountInfo.name}
+                      </span>
+                      <span className="font-medium tabular-nums">
+                        −{formatPrice(discountInfo.amount)}
+                      </span>
+                    </div>
+                  )}
                 </div>
+              </div>
+
+              {/* Footer */}
+              <div className="shrink-0 px-4 pt-3 pb-2 border-t border-white/[0.06] space-y-3 bg-[#111113]">
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-[11px] text-gray-500 font-medium">
+                      Total
+                    </p>
+                    {discountInfo && (
+                      <p className="text-[11px] text-gray-600 line-through tabular-nums mt-0.5">
+                        {formatPrice(rawTotal)} VND
+                      </p>
+                    )}
+                  </div>
+                  <p className="text-[22px] font-semibold text-white tabular-nums leading-none tracking-tight">
+                    {formatPrice(total)}
+                    <span className="ml-1 text-xs font-medium text-gray-500">
+                      VND
+                    </span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCheckout}
+                  disabled={isCheckingOut || cartCount < 1}
+                  className="w-full min-h-[3rem] rounded-xl font-semibold text-white text-[15px] flex items-center justify-center gap-2 bg-[#e62b1e] active:bg-[#c41e12] active:scale-[0.99] disabled:opacity-40 transition-all"
+                >
+                  {isCheckingOut ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    "Continue to checkout"
+                  )}
+                </button>
+                <p className="text-center text-[10px] text-gray-600 pb-0.5 flex items-center justify-center gap-3">
+                  <span className="inline-flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" /> Secure payment
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Zap className="w-3 h-3" /> Auto seat assign
+                  </span>
+                </p>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function CartPanel({
+  cartItems,
+  cartCount,
+  rawTotal,
+  total,
+  discountInfo,
+  promoCode,
+  setPromoCode,
+  promoError,
+  isValidatingPromo,
+  onApplyPromo,
+  onRemove,
+  onCheckout,
+  isCheckingOut,
+}: {
+  cartItems: CartLine[];
+  cartCount: number;
+  rawTotal: number;
+  total: number;
+  discountInfo: { name: string; amount: number } | null;
+  promoCode: string;
+  setPromoCode: (v: string) => void;
+  promoError: string | null;
+  isValidatingPromo: boolean;
+  onApplyPromo: () => void;
+  onRemove: (id: string) => void;
+  onCheckout: () => void;
+  isCheckingOut: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-gradient-to-b from-white/[0.03] to-transparent p-5 sm:p-6">
+      <h3 className="text-xl font-black text-white tracking-tight mb-5 flex items-center gap-2">
+        <span className="w-1 h-5 bg-[#e62b1e] rounded-full" />
+        Cart
+        {cartCount > 0 && (
+          <span className="ml-auto text-xs font-bold text-[#e62b1e] bg-[#e62b1e]/10 px-2 py-0.5 rounded-full">
+            {cartCount}
+          </span>
+        )}
+      </h3>
+
+      {cartItems.length === 0 ? (
+        <div className="py-10 text-center">
+          <ShoppingCart className="w-8 h-8 text-gray-700 mx-auto mb-3" />
+          <p className="text-gray-600 text-sm">Your cart is empty</p>
+          <p className="text-gray-700 text-xs mt-1">
+            Use + / − on a ticket to add
+          </p>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <AnimatePresence initial={false}>
+            {cartItems.map((item) => (
+              <motion.div
+                key={item.id}
+                layout
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="flex items-start justify-between gap-3 py-3.5 border-b border-white/[0.06]"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-white leading-tight">
+                    {item.name}{" "}
+                    <span className="text-[#e62b1e] font-semibold">
+                      (x{item.qty})
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="text-gray-400">
+                      {formatPrice(Number(item.price))}
+                    </span>
+                    <span className="mx-2 text-gray-700">·</span>
+                    <span>
+                      {item.available > 0
+                        ? `${item.available} available`
+                        : "Sold out"}
+                    </span>
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-bold text-white tabular-nums">
+                    {formatPrice(item.lineTotal)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(item.id)}
+                    className="text-[11px] text-gray-600 hover:text-[#e62b1e] transition-colors mt-0.5 inline-flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Delete
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {cartItems.length > 0 && (
+        <div className="mb-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={promoCode}
+              onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+              placeholder="Promo code"
+              disabled={isValidatingPromo}
+              className="flex-1 min-w-0 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-[#e62b1e]/50 transition-colors uppercase placeholder:text-gray-700 placeholder:normal-case"
+            />
+            <button
+              type="button"
+              onClick={onApplyPromo}
+              disabled={!promoCode.trim() || isValidatingPromo}
+              className="px-3.5 py-2.5 bg-white/8 hover:bg-white/12 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-30 active:scale-95"
+            >
+              {isValidatingPromo ? "..." : "Apply"}
+            </button>
+          </div>
+          {promoError && (
+            <p className="text-red-400/90 text-[11px] mt-1.5">{promoError}</p>
           )}
-        </AnimatePresence>
+          {discountInfo && (
+            <div className="flex justify-between items-center mt-2 text-green-400/90 text-xs">
+              <span className="flex items-center gap-1">
+                <Check className="w-3 h-3" />
+                {discountInfo.name}
+              </span>
+              <span className="font-bold">
+                −{formatPrice(discountInfo.amount)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between py-4 border-t border-white/[0.08]">
+        <h4 className="text-lg font-black text-white">Total</h4>
+        <div className="text-right">
+          {discountInfo && (
+            <p className="text-xs text-gray-600 line-through tabular-nums">
+              {formatPrice(rawTotal)}
+            </p>
+          )}
+          <p className="text-xl font-black text-white tabular-nums">
+            {formatPrice(total)}{" "}
+            <span className="text-xs text-gray-500 font-bold">VND</span>
+          </p>
+        </div>
       </div>
-    </AuroraBackground>
+
+      <button
+        type="button"
+        onClick={onCheckout}
+        disabled={isCheckingOut || cartCount < 1}
+        className="relative w-full py-3.5 px-6 rounded-xl font-black text-white uppercase tracking-[0.15em] text-sm flex items-center justify-center gap-2 bg-[#e62b1e] hover:bg-[#c41e12] transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#e62b1e] shadow-lg shadow-[#e62b1e]/25 overflow-hidden group"
+      >
+        {!isCheckingOut && cartCount > 0 && (
+          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+        )}
+        {isCheckingOut ? (
+          <>
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Processing...
+          </>
+        ) : (
+          "Buy Now"
+        )}
+      </button>
+
+      <div className="flex items-center justify-center gap-4 mt-4 text-[10px] text-gray-700 uppercase tracking-wider">
+        <span className="flex items-center gap-1">
+          <ShieldCheck className="w-3 h-3" /> Secure
+        </span>
+        <span className="flex items-center gap-1">
+          <Zap className="w-3 h-3" /> Auto seat assign
+        </span>
+      </div>
+    </div>
   );
 }
