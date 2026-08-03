@@ -857,8 +857,9 @@ export async function createPendingOrderByTicketType(
       })
 
       const aliasPlaceholders = seatTypeAliases.map(() => '?').join(',') || "''"
-      // Early Bird: only take seats not already reserved to other typed bookings via locks
-      // Prefer untagged seats in shared pool
+      // Early Bird may share LEVEL_2 seats already tagged as Standard in DB.
+      // Allow alias seat_type match even when ticket_type_id is set to another type
+      // (inventory probe already enforced exclusive capacity).
       const candidateSeats = await query<{
         id: string
         seat_number: string
@@ -869,13 +870,11 @@ export async function createPendingOrderByTicketType(
          WHERE event_id = ? AND status = 'AVAILABLE'
            AND (
              ticket_type_id = ?
-             OR (
-               (ticket_type_id IS NULL OR ticket_type_id = '')
-               AND UPPER(REPLACE(REPLACE(seat_type, ' ', '_'), '-', '_')) IN (${aliasPlaceholders})
-             )
+             OR UPPER(REPLACE(REPLACE(seat_type, ' ', '_'), '-', '_')) IN (${aliasPlaceholders})
            )
          ORDER BY
            CASE WHEN ticket_type_id = ? THEN 0 ELSE 1 END,
+           CASE WHEN ticket_type_id IS NULL OR ticket_type_id = '' THEN 0 ELSE 1 END,
            ${isEarlyBirdType(ticketType) ? 'seat_number DESC,' : ''}
            row ASC,
            seat_number ASC

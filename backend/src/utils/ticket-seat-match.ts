@@ -223,7 +223,7 @@ export function allocateTicketInventory(
     claimFromPools(tt.id, aliases, tt.max_quantity)
   }
 
-  // 2) Early Bird carves shared general pool up to max_quantity
+  // 2) Early Bird carves unassigned shared general pool up to max_quantity
   for (const tt of earlyBirds) {
     claimFromPools(tt.id, seatTypeAliasesForTicketType(tt), tt.max_quantity)
   }
@@ -231,6 +231,42 @@ export function allocateTicketInventory(
   // 3) Standard / remaining claim leftover LEVEL_2
   for (const tt of others) {
     claimFromPools(tt.id, seatTypeAliasesForTicketType(tt), tt.max_quantity)
+  }
+
+  // 4) If Early Bird still empty but Standard holds LEVEL_2 inventory
+  //    (common when seats.ticket_type_id is pre-tagged Standard), carve available.
+  const standardLike = others.filter((t) => {
+    const n = normalizeSeatKey(t.name)
+    return (
+      n.includes('STANDARD') ||
+      n.includes('REGULAR') ||
+      n.includes('GENERAL') ||
+      Number(t.level) === 2
+    )
+  })
+
+  for (const eb of earlyBirds) {
+    const dest = result.get(eb.id)!
+    const maxQ =
+      eb.max_quantity == null || !Number.isFinite(Number(eb.max_quantity))
+        ? 20
+        : Number(eb.max_quantity)
+    let need = Math.max(
+      0,
+      maxQ - (dest.available + dest.sold + dest.reserved),
+    )
+    if (need <= 0) continue
+
+    for (const std of standardLike) {
+      if (need <= 0) break
+      const src = result.get(std.id)!
+      // Only take free available seats (not sold/reserved)
+      const take = Math.min(need, Math.max(0, src.available - src.locked))
+      if (take <= 0) continue
+      src.available -= take
+      dest.available += take
+      need -= take
+    }
   }
 
   return ticketTypes.map((tt) => {
