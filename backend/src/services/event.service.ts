@@ -1,6 +1,7 @@
 import {query, queryOne} from '../db/mysql.js'
 import {NotFoundError} from '../utils/errors.js'
 import {Event} from '../types/index.js'
+import {seatMatchesTicketType} from '../utils/ticket-seat-match.js'
 
 function formatTime(date: Date): string {
   if (!date) return ''
@@ -378,14 +379,22 @@ export async function getTicketAvailability(eventId: string) {
   )
 
   return ticketTypes.map((tt) => {
-    // Match stats: by ticket_type_id, or by seat_type LEVEL_<level>
+    // Match: ticket_type_id OR seat_type aliases (LEVEL_n, ECONOMY, VIP, …)
     const matchStat = (row: {ticket_type_id: string | null; seat_type: string}) =>
-      row.ticket_type_id === tt.id || row.seat_type === `LEVEL_${tt.level}`
+      seatMatchesTicketType(row, tt)
 
-    const sold = seatStats.filter((s) => matchStat(s) && s.status === 'SOLD').reduce((sum, s) => sum + s.count, 0)
-    const reserved = seatStats.filter((s) => matchStat(s) && s.status === 'RESERVED').reduce((sum, s) => sum + s.count, 0)
-    const availableSeats = seatStats.filter((s) => matchStat(s) && s.status === 'AVAILABLE').reduce((sum, s) => sum + s.count, 0)
-    const locked = lockedByType.filter((l) => matchStat(l)).reduce((sum, l) => sum + l.count, 0)
+    const sold = seatStats
+      .filter((s) => matchStat(s) && s.status === 'SOLD')
+      .reduce((sum, s) => sum + Number(s.count), 0)
+    const reserved = seatStats
+      .filter((s) => matchStat(s) && s.status === 'RESERVED')
+      .reduce((sum, s) => sum + Number(s.count), 0)
+    const availableSeats = seatStats
+      .filter((s) => matchStat(s) && s.status === 'AVAILABLE')
+      .reduce((sum, s) => sum + Number(s.count), 0)
+    const locked = lockedByType
+      .filter((l) => matchStat(l))
+      .reduce((sum, l) => sum + Number(l.count), 0)
 
     const totalSeats = sold + reserved + availableSeats
     const available = Math.max(0, availableSeats - locked)
@@ -501,7 +510,7 @@ export async function getEventTickets(eventIdOrSlug: string) {
 
   const ticketTypes = ticketTypeRows.map((tt) => {
     const matchStat = (row: {ticket_type_id: string | null; seat_type: string}) =>
-      row.ticket_type_id === tt.id || row.seat_type === `LEVEL_${tt.level}`
+      seatMatchesTicketType(row, {id: tt.id, name: tt.name, level: tt.level})
 
     const sold = seatStats
       .filter((s) => matchStat(s) && s.status === 'SOLD')

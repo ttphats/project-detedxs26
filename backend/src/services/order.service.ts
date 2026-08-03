@@ -814,31 +814,14 @@ export async function createPendingOrderByTicketType(
         }
       }
 
-      // Match seats by:
-      //  1) seats.ticket_type_id = this type
-      //  2) seats.seat_type = LEVEL_<n>
-      //  3) seats.seat_type name alias (VIP / STANDARD / ECONOMY / EARLY_BIRD / DONOR…)
-      const nameKey = String(ticketType.name || '')
-        .trim()
-        .toUpperCase()
-        .replace(/\s+/g, '_')
-      const seatTypeAliases = Array.from(
-        new Set(
-          [
-            `LEVEL_${ticketType.level}`,
-            nameKey,
-            nameKey.replace(/_/g, ''),
-            // common legacy enums
-            ticketType.level >= 4 || nameKey.includes('VIP') ? 'VIP' : '',
-            nameKey.includes('DONOR') || nameKey.includes('SPONSOR') ? 'DONOR' : '',
-            nameKey.includes('EARLY') ? 'ECONOMY' : '',
-            nameKey.includes('STANDARD') || nameKey.includes('REGULAR') ? 'STANDARD' : '',
-            nameKey.includes('ECONOMY') || nameKey.includes('BASIC') ? 'ECONOMY' : '',
-          ].filter(Boolean)
-        )
-      )
+      // Match seats by ticket_type_id OR seat_type aliases (ECONOMY for Early Bird, etc.)
+      const {seatTypeAliasesForTicketType} = await import('../utils/ticket-seat-match.js')
+      const seatTypeAliases = seatTypeAliasesForTicketType({
+        name: ticketType.name,
+        level: ticketType.level,
+      })
 
-      const aliasPlaceholders = seatTypeAliases.map(() => '?').join(',')
+      const aliasPlaceholders = seatTypeAliases.map(() => '?').join(',') || "''"
       const candidateSeats = await query<{
         id: string
         seat_number: string
@@ -849,8 +832,7 @@ export async function createPendingOrderByTicketType(
          WHERE event_id = ? AND status = 'AVAILABLE'
            AND (
              ticket_type_id = ?
-             OR seat_type IN (${aliasPlaceholders})
-             OR UPPER(REPLACE(seat_type, ' ', '_')) IN (${aliasPlaceholders})
+             OR UPPER(REPLACE(REPLACE(seat_type, ' ', '_'), '-', '_')) IN (${aliasPlaceholders})
            )
          ORDER BY
            CASE WHEN ticket_type_id = ? THEN 0 ELSE 1 END,
@@ -860,7 +842,6 @@ export async function createPendingOrderByTicketType(
         [
           eventId,
           ticketTypeId,
-          ...seatTypeAliases,
           ...seatTypeAliases,
           ticketTypeId,
           Math.max(quantity * 5, 20),
