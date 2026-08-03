@@ -799,29 +799,66 @@ export async function createPendingOrderByTicketType(
       )
       if (!ticketType) throw new NotFoundError(`Ticket type not found: ${ticketTypeId}`)
 
-      if (ticketType.max_quantity !== null) {
-        const taken = await queryOne<{count: number}>(
-          `SELECT COUNT(*) as count FROM seats
-           WHERE event_id = ? AND ticket_type_id = ?
-             AND status IN ('SOLD','RESERVED')`,
-          [eventId, ticketTypeId]
+      // Prefer seats already tagged with this ticket_type_id; else seat_type aliases
+      // (Early Bird shares LEVEL_2 — max_quantity enforced after pick via inventory).
+      const {seatTypeAliasesForTicketType, allocateTicketInventory, isEarlyBirdType} =
+        await import('../utils/ticket-seat-match.js')
+
+      // Soft capacity check using exclusive inventory allocation
+      try {
+        const allTypes = await query<{
+          id: string
+          name: string
+          level: number
+          max_quantity: number | null
+        }>(
+          'SELECT id, name, level, max_quantity FROM ticket_types WHERE event_id = ? AND is_active = 1',
+          [eventId]
         )
-        const usedCount = taken?.count || 0
-        if (usedCount + quantity > ticketType.max_quantity) {
+        const seatStats = await query<{
+          ticket_type_id: string | null
+          seat_type: string
+          status: string
+          count: number
+        }>(
+          `SELECT ticket_type_id, seat_type, status, COUNT(*) as count
+           FROM seats WHERE event_id = ?
+           GROUP BY ticket_type_id, seat_type, status`,
+          [eventId]
+        )
+        const lockedRows = await query<{
+          ticket_type_id: string | null
+          seat_type: string
+          count: number
+        }>(
+          `SELECT s.ticket_type_id, s.seat_type, COUNT(*) as count
+           FROM seat_locks sl
+           JOIN seats s ON sl.seat_id = s.id
+           WHERE sl.event_id = ? AND sl.expires_at > NOW() AND s.status = 'AVAILABLE'
+           GROUP BY s.ticket_type_id, s.seat_type`,
+          [eventId]
+        )
+        const inv = allocateTicketInventory(allTypes, seatStats, lockedRows)
+        const mine = inv.find((x) => x.ticketTypeId === ticketTypeId)
+        if (mine && quantity > mine.available) {
           throw new BadRequestError(
-            `Chỉ còn ${Math.max(0, ticketType.max_quantity - usedCount)} vé loại "${ticketType.name}".`
+            `Không đủ vé loại "${ticketType.name}" còn trống (còn ${mine.available}).`
           )
         }
+      } catch (e) {
+        if (e instanceof BadRequestError) throw e
+        // inventory probe failed — continue with physical seat pick
+        console.warn('[CREATE PENDING BY TYPE] inventory probe skipped:', e)
       }
 
-      // Match seats by ticket_type_id OR seat_type aliases (ECONOMY for Early Bird, etc.)
-      const {seatTypeAliasesForTicketType} = await import('../utils/ticket-seat-match.js')
       const seatTypeAliases = seatTypeAliasesForTicketType({
         name: ticketType.name,
         level: ticketType.level,
       })
 
       const aliasPlaceholders = seatTypeAliases.map(() => '?').join(',') || "''"
+      // Early Bird: only take seats not already reserved to other typed bookings via locks
+      // Prefer untagged seats in shared pool
       const candidateSeats = await query<{
         id: string
         seat_number: string
@@ -832,10 +869,14 @@ export async function createPendingOrderByTicketType(
          WHERE event_id = ? AND status = 'AVAILABLE'
            AND (
              ticket_type_id = ?
-             OR UPPER(REPLACE(REPLACE(seat_type, ' ', '_'), '-', '_')) IN (${aliasPlaceholders})
+             OR (
+               (ticket_type_id IS NULL OR ticket_type_id = '')
+               AND UPPER(REPLACE(REPLACE(seat_type, ' ', '_'), '-', '_')) IN (${aliasPlaceholders})
+             )
            )
          ORDER BY
            CASE WHEN ticket_type_id = ? THEN 0 ELSE 1 END,
+           ${isEarlyBirdType(ticketType) ? 'seat_number DESC,' : ''}
            row ASC,
            seat_number ASC
          LIMIT ?`,
@@ -844,7 +885,7 @@ export async function createPendingOrderByTicketType(
           ticketTypeId,
           ...seatTypeAliases,
           ticketTypeId,
-          Math.max(quantity * 5, 20),
+          Math.max(quantity * 8, 40),
         ]
       )
 
