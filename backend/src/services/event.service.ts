@@ -1,7 +1,7 @@
 import {query, queryOne} from '../db/mysql.js'
 import {NotFoundError} from '../utils/errors.js'
 import {Event} from '../types/index.js'
-import {seatMatchesTicketType} from '../utils/ticket-seat-match.js'
+import {allocateTicketInventory} from '../utils/ticket-seat-match.js'
 
 function formatTime(date: Date): string {
   if (!date) return ''
@@ -378,27 +378,26 @@ export async function getTicketAvailability(eventId: string) {
     [realEventId]
   )
 
+  const allocated = allocateTicketInventory(
+    ticketTypes.map((tt) => ({
+      id: tt.id,
+      name: tt.name,
+      level: tt.level,
+      max_quantity: tt.max_quantity,
+    })),
+    seatStats,
+    lockedByType,
+  )
+  const byId = new Map(allocated.map((a) => [a.ticketTypeId, a]))
+
   return ticketTypes.map((tt) => {
-    // Match: ticket_type_id OR seat_type aliases (LEVEL_n, ECONOMY, VIP, …)
-    const matchStat = (row: {ticket_type_id: string | null; seat_type: string}) =>
-      seatMatchesTicketType(row, tt)
-
-    const sold = seatStats
-      .filter((s) => matchStat(s) && s.status === 'SOLD')
-      .reduce((sum, s) => sum + Number(s.count), 0)
-    const reserved = seatStats
-      .filter((s) => matchStat(s) && s.status === 'RESERVED')
-      .reduce((sum, s) => sum + Number(s.count), 0)
-    const availableSeats = seatStats
-      .filter((s) => matchStat(s) && s.status === 'AVAILABLE')
-      .reduce((sum, s) => sum + Number(s.count), 0)
-    const locked = lockedByType
-      .filter((l) => matchStat(l))
-      .reduce((sum, l) => sum + Number(l.count), 0)
-
-    const totalSeats = sold + reserved + availableSeats
-    const available = Math.max(0, availableSeats - locked)
-
+    const a = byId.get(tt.id) || {
+      totalSeats: 0,
+      sold: 0,
+      reserved: 0,
+      locked: 0,
+      available: 0,
+    }
     return {
       ticketTypeId: tt.id,
       name: tt.name,
@@ -406,11 +405,11 @@ export async function getTicketAvailability(eventId: string) {
       color: tt.color,
       price: Number(tt.price),
       maxQuantity: tt.max_quantity,
-      totalSeats,
-      sold,
-      reserved,
-      locked,
-      available,
+      totalSeats: a.totalSeats,
+      sold: a.sold,
+      reserved: a.reserved,
+      locked: a.locked,
+      available: a.available,
     }
   })
 }
@@ -508,29 +507,27 @@ export async function getEventTickets(eventIdOrSlug: string) {
     [realEventId]
   )
 
+  const allocated = allocateTicketInventory(
+    ticketTypeRows.map((tt) => ({
+      id: tt.id,
+      name: tt.name,
+      level: Number(tt.level) || 1,
+      max_quantity: tt.max_quantity,
+    })),
+    seatStats,
+    lockedByType,
+  )
+  const availById = new Map(allocated.map((a) => [a.ticketTypeId, a]))
+
   const ticketTypes = ticketTypeRows.map((tt) => {
-    const matchStat = (row: {ticket_type_id: string | null; seat_type: string}) =>
-      seatMatchesTicketType(row, {id: tt.id, name: tt.name, level: tt.level})
-
-    const sold = seatStats
-      .filter((s) => matchStat(s) && s.status === 'SOLD')
-      .reduce((sum, s) => sum + Number(s.count), 0)
-    const reserved = seatStats
-      .filter((s) => matchStat(s) && s.status === 'RESERVED')
-      .reduce((sum, s) => sum + Number(s.count), 0)
-    const availableSeats = seatStats
-      .filter((s) => matchStat(s) && s.status === 'AVAILABLE')
-      .reduce((sum, s) => sum + Number(s.count), 0)
-    const locked = lockedByType
-      .filter((l) => matchStat(l))
-      .reduce((sum, l) => sum + Number(l.count), 0)
-
-    const totalSeats = sold + reserved + availableSeats
-    // If no seats mapped to this type yet, treat as open inventory (cap later by max_quantity)
-    const rawAvailable = totalSeats > 0 ? Math.max(0, availableSeats - locked) : 99
+    const a = availById.get(tt.id) || {
+      totalSeats: 0,
+      sold: 0,
+      reserved: 0,
+      locked: 0,
+      available: 0,
+    }
     const maxQ = tt.max_quantity != null ? Number(tt.max_quantity) : null
-    const available =
-      maxQ != null ? Math.min(rawAvailable, Math.max(0, maxQ - sold - reserved)) : rawAvailable
 
     const imageUrl =
       typeof tt.image_url === 'string' && tt.image_url.trim() ? tt.image_url.trim() : null
@@ -559,13 +556,12 @@ export async function getEventTickets(eventIdOrSlug: string) {
       image_url: imageUrl,
       maxQuantity: maxQ,
       sortOrder: Number(tt.sort_order) || 0,
-      // availability baked in so client needs one request
       availability: {
-        totalSeats,
-        sold,
-        reserved,
-        locked,
-        available,
+        totalSeats: a.totalSeats,
+        sold: a.sold,
+        reserved: a.reserved,
+        locked: a.locked,
+        available: a.available,
       },
     }
   })
