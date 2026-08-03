@@ -50,6 +50,10 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /events/:eventId/ticket-availability - Available seats per ticket type (ticket-class flow)
   fastify.get('/events/:eventId/ticket-availability', eventController.getTicketAvailability)
 
+  // GET /events/:eventId/tickets - Ticket-class page payload (NO seatMap)
+  // Event meta + ticket types (imageUrl) + availability baked in
+  fastify.get('/events/:eventId/tickets', eventController.getEventTickets)
+
   // =====================================
   // SEAT ROUTES
   // =====================================

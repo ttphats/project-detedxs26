@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { use, useState, useEffect, useCallback, useMemo } from "react";
+import { use, useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { toast } from "sonner";
@@ -152,102 +152,164 @@ export default function TicketClassPage({
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
   /**
-   * Availability for ticket-class page:
-   * derive from event payload seatMap only.
-   * Do NOT call /ticket-availability (missing on older/prod APIs → Network 404).
+   * Ticket-class page data:
+   * 1) GET /events/:id/tickets  (no seatMap) — preferred
+   * 2) GET /events/:id          — same host, if tickets missing/null
+   * 3) Prod API full event      — when local DB is down (dev only)
    */
-  const deriveAvailabilityFromSeatMap = useCallback(
-    (
-      ticketTypes: TicketType[],
-      seatMap:
-        | Array<{
-            seats?: Array<{ status?: string; ticketTypeId?: string | null }>;
-          }>
-        | undefined,
-    ): TicketAvailability[] => {
-      if (!ticketTypes.length) return [];
-      const counts = new Map<
-        string,
-        { total: number; available: number; sold: number; locked: number }
-      >();
-      for (const tt of ticketTypes) {
-        counts.set(tt.id, { total: 0, available: 0, sold: 0, locked: 0 });
-      }
-      for (const row of seatMap || []) {
-        for (const seat of row.seats || []) {
-          const tid = seat.ticketTypeId;
-          if (!tid || !counts.has(tid)) continue;
-          const c = counts.get(tid)!;
-          c.total += 1;
-          const st = (seat.status || "").toLowerCase();
-          if (st === "available" || st === "locked_by_me") c.available += 1;
-          else if (st === "sold" || st === "reserved") c.sold += 1;
-          else if (st === "locked") c.locked += 1;
-        }
-      }
-      return ticketTypes.map((tt) => {
-        const c = counts.get(tt.id) || {
-          total: 0,
-          available: 99,
-          sold: 0,
-          locked: 0,
+  useEffect(() => {
+    if (!sessionId) return;
+
+    type ApiTt = TicketType & {
+      imageUrl?: string | null;
+      image_url?: string | null;
+      maxQuantity?: number | null;
+      availability?: {
+        totalSeats?: number;
+        sold?: number;
+        reserved?: number;
+        locked?: number;
+        available?: number;
+      };
+    };
+
+    const PROD_API = "https://api.tedxfptuniversityhcmc.com/api";
+
+    const mapTicketTypes = (list: ApiTt[]): TicketType[] =>
+      (list || []).map((tt) => {
+        const rawImg =
+          (typeof tt.imageUrl === "string" && tt.imageUrl.trim()) ||
+          (typeof tt.image_url === "string" && tt.image_url.trim()) ||
+          null;
+        return {
+          ...tt,
+          imageUrl: rawImg,
         };
-        // No seats mapped to this type → treat as open so cart still works
-        const available = c.total > 0 ? c.available : 99;
+      });
+
+    const openAvailability = (types: TicketType[]): TicketAvailability[] =>
+      types.map((tt) => ({
+        ticketTypeId: tt.id,
+        name: tt.name,
+        level: tt.level,
+        color: tt.color,
+        price: Number(tt.price),
+        maxQuantity: null,
+        totalSeats: 0,
+        sold: 0,
+        reserved: 0,
+        locked: 0,
+        available: 99,
+      }));
+
+    const mapAvailability = (
+      list: ApiTt[],
+      types: TicketType[],
+      fromTicketsEndpoint: boolean,
+    ): TicketAvailability[] => {
+      if (!fromTicketsEndpoint) return openAvailability(types);
+      return types.map((tt) => {
+        const src = list.find((t) => t.id === tt.id);
+        const a = src?.availability;
         return {
           ticketTypeId: tt.id,
           name: tt.name,
           level: tt.level,
           color: tt.color,
           price: Number(tt.price),
-          maxQuantity: null,
-          totalSeats: c.total,
-          sold: c.sold,
-          reserved: 0,
-          locked: c.locked,
-          available,
+          maxQuantity: src?.maxQuantity ?? null,
+          totalSeats: a?.totalSeats ?? 0,
+          sold: a?.sold ?? 0,
+          reserved: a?.reserved ?? 0,
+          locked: a?.locked ?? 0,
+          available: a?.available ?? 99,
         };
       });
-    },
-    [],
-  );
+    };
 
-  useEffect(() => {
-    if (!sessionId) return;
+    /** Try one URL; return payload or null (network/HTTP/null data/timeout). */
+    const tryFetch = async (
+      url: string,
+      timeoutMs = 4000,
+    ): Promise<{
+      data: Record<string, unknown>;
+      fromTickets: boolean;
+    } | null> => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (!res.ok) return null;
+        const json = await res.json();
+        if (!json?.success || !json?.data) return null;
+        const fromTickets = /\/tickets(?:\?|$)/.test(url);
+        return { data: json.data as Record<string, unknown>, fromTickets };
+      } catch (e) {
+        console.warn("[tickets] fetch failed:", url, e);
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(
-          `${apiUrl}/events/${id}?sessionId=${sessionId}`,
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!data.success || !data.data) {
+
+        const isLocalApi = !apiUrl.includes("tedxfptuniversityhcmc.com");
+        // When pointing at local backend with dead MySQL, each query waits ~10s.
+        // Prefer prod for UI first in that case; still try local tickets briefly.
+        const candidates: string[] = isLocalApi
+          ? [
+              `${PROD_API}/events/${id}?sessionId=${sessionId}`,
+              `${PROD_API}/events/${id}/tickets`,
+              `${apiUrl}/events/${id}/tickets`,
+              `${apiUrl}/events/${id}?sessionId=${sessionId}`,
+            ]
+          : [
+              `${apiUrl}/events/${id}/tickets`,
+              `${apiUrl}/events/${id}?sessionId=${sessionId}`,
+            ];
+
+        let hit: {
+          data: Record<string, unknown>;
+          fromTickets: boolean;
+        } | null = null;
+        for (const url of candidates) {
+          hit = await tryFetch(url);
+          if (hit) {
+            console.log("[tickets] loaded from", url);
+            break;
+          }
+        }
+
+        if (!hit) {
           setError(
-            data.error ||
-              "Failed to load event data. Server or database may be unavailable.",
+            "Failed to load event data. Server or database may be unavailable.",
           );
           return;
         }
-        const ev = data.data;
-        const ticketTypes = (ev.ticketTypes || []).map(
-          (
-            tt: TicketType & {
-              imageUrl?: string | null;
-              image_url?: string | null;
-            },
-          ) => {
-            const rawImg =
-              (typeof tt.imageUrl === "string" && tt.imageUrl.trim()) ||
-              (typeof tt.image_url === "string" && tt.image_url.trim()) ||
-              null;
-            return {
-              ...tt,
-              imageUrl: rawImg,
-            };
-          },
-        );
+
+        const ev = hit.data as {
+          id: string;
+          name: string;
+          slug: string;
+          tagline: string;
+          description: string | null;
+          date: string;
+          time: string;
+          venue: string;
+          ticketTypes?: ApiTt[];
+        };
+        const rawTypes: ApiTt[] = ev.ticketTypes || [];
+        const ticketTypes = mapTicketTypes(rawTypes);
+
+        if (ticketTypes.length === 0) {
+          setError("No ticket types available for this event.");
+          return;
+        }
+
         setEvent({
           id: ev.id,
           name: ev.name,
@@ -259,7 +321,9 @@ export default function TicketClassPage({
           venue: ev.venue,
           ticketTypes,
         });
-        setAvailability(deriveAvailabilityFromSeatMap(ticketTypes, ev.seatMap));
+        setAvailability(
+          mapAvailability(rawTypes, ticketTypes, hit.fromTickets),
+        );
       } catch (err) {
         console.error(err);
         setError("An error occurred while loading data");
@@ -268,7 +332,7 @@ export default function TicketClassPage({
       }
     };
     load();
-  }, [id, sessionId, apiUrl, deriveAvailabilityFromSeatMap]);
+  }, [id, sessionId, apiUrl]);
 
   const cartItems = useMemo(() => {
     if (!event) return [];
