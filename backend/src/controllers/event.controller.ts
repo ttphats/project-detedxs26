@@ -108,3 +108,19 @@ export async function getTicketAvailability(
   }
 }
 
+// GET /events/:eventId/tickets
+// Ticket-class page: event meta + ticket types (imageUrl) + availability. NO seatMap.
+export async function getEventTickets(
+  request: FastifyRequest<{ Params: { eventId: string } }>,
+  reply: FastifyReply
+) {
+  const { eventId } = request.params;
+
+  try {
+    const data = await eventService.getEventTickets(eventId);
+    return reply.send(successResponse(data));
+  } catch (err) {
+    return dbFail(reply, `getEventTickets(${eventId})`, null)(err);
+  }
+}
+
