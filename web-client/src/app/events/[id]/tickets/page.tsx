@@ -460,20 +460,38 @@ export default function TicketClassPage({
           })),
         }),
       });
-      if (!res.ok) {
-        const errText = await res.text();
-        console.error("[CHECKOUT] Server error:", res.status, errText);
-        throw new Error("Failed to create order. Please try again.");
+      const raw = await res.text();
+      let data: {
+        success?: boolean;
+        error?: string;
+        message?: string;
+        data?: { orderNumber?: string; accessToken?: string };
+      } = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        console.error("[CHECKOUT] Non-JSON response:", res.status, raw);
+        throw new Error(
+          res.ok
+            ? "Invalid server response"
+            : `Failed to create order (HTTP ${res.status}).`,
+        );
       }
-      const data = await res.json();
-      if (!data.success)
-        throw new Error(data.error || "Failed to create order");
+      if (!res.ok || !data.success) {
+        console.error("[CHECKOUT] Server error:", res.status, data);
+        throw new Error(
+          data.error ||
+            data.message ||
+            `Failed to create order (HTTP ${res.status}).`,
+        );
+      }
       if (!data.data?.orderNumber || !data.data?.accessToken) {
-        throw new Error("Invalid server response");
+        throw new Error("Invalid server response: missing order token");
       }
       sessionStorage.setItem("navigating_to_checkout", "true");
+      // Full navigation so checkout loads order params cleanly (mobile-safe)
       window.location.replace(
-        `/checkout?event=${id}&order=${data.data.orderNumber}&token=${data.data.accessToken}`,
+        `/checkout?event=${encodeURIComponent(id)}&order=${encodeURIComponent(data.data.orderNumber)}&token=${encodeURIComponent(data.data.accessToken)}`,
       );
     } catch (err: unknown) {
       console.error("[CHECKOUT] error:", err);

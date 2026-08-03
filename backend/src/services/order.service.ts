@@ -814,6 +814,31 @@ export async function createPendingOrderByTicketType(
         }
       }
 
+      // Match seats by:
+      //  1) seats.ticket_type_id = this type
+      //  2) seats.seat_type = LEVEL_<n>
+      //  3) seats.seat_type name alias (VIP / STANDARD / ECONOMY / EARLY_BIRD / DONOR…)
+      const nameKey = String(ticketType.name || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '_')
+      const seatTypeAliases = Array.from(
+        new Set(
+          [
+            `LEVEL_${ticketType.level}`,
+            nameKey,
+            nameKey.replace(/_/g, ''),
+            // common legacy enums
+            ticketType.level >= 4 || nameKey.includes('VIP') ? 'VIP' : '',
+            nameKey.includes('DONOR') || nameKey.includes('SPONSOR') ? 'DONOR' : '',
+            nameKey.includes('EARLY') ? 'ECONOMY' : '',
+            nameKey.includes('STANDARD') || nameKey.includes('REGULAR') ? 'STANDARD' : '',
+            nameKey.includes('ECONOMY') || nameKey.includes('BASIC') ? 'ECONOMY' : '',
+          ].filter(Boolean)
+        )
+      )
+
+      const aliasPlaceholders = seatTypeAliases.map(() => '?').join(',')
       const candidateSeats = await query<{
         id: string
         seat_number: string
@@ -822,10 +847,24 @@ export async function createPendingOrderByTicketType(
       }>(
         `SELECT id, seat_number, seat_type, price FROM seats
          WHERE event_id = ? AND status = 'AVAILABLE'
-           AND (ticket_type_id = ? OR seat_type = ?)
-         ORDER BY row ASC, seat_number ASC
+           AND (
+             ticket_type_id = ?
+             OR seat_type IN (${aliasPlaceholders})
+             OR UPPER(REPLACE(seat_type, ' ', '_')) IN (${aliasPlaceholders})
+           )
+         ORDER BY
+           CASE WHEN ticket_type_id = ? THEN 0 ELSE 1 END,
+           row ASC,
+           seat_number ASC
          LIMIT ?`,
-        [eventId, ticketTypeId, `LEVEL_${ticketType.level}`, quantity * 3]
+        [
+          eventId,
+          ticketTypeId,
+          ...seatTypeAliases,
+          ...seatTypeAliases,
+          ticketTypeId,
+          Math.max(quantity * 5, 20),
+        ]
       )
 
       if (candidateSeats.length < quantity) {
@@ -878,7 +917,7 @@ export async function createPendingOrderByTicketType(
 
     const seatIds = allPicked.map((s) => s.id)
 
-    // Lock all seats
+    // Lock all seats (Redis + seat_locks). Schema may not have ticket_type_id on seat_locks.
     for (const seat of allPicked) {
       await redis.set(
         `seat:${eventId}:${seat.id}`,
@@ -886,19 +925,29 @@ export async function createPendingOrderByTicketType(
         'EX',
         TICKET_CLASS_LOCK_SECONDS
       )
-      await execute(
-        `INSERT INTO seat_locks (id, seat_id, event_id, session_id, ticket_type_id, expires_at, created_at)
-         VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())
-         ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), ticket_type_id = VALUES(ticket_type_id), expires_at = VALUES(expires_at)`,
-        [
-          generateUUID(),
-          seat.id,
-          eventId,
-          sessionId,
-          seat.ticketTypeId,
-          TICKET_CLASS_LOCK_MINUTES,
-        ]
-      )
+      try {
+        await execute(
+          `INSERT INTO seat_locks (id, seat_id, event_id, session_id, ticket_type_id, expires_at, created_at)
+           VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())
+           ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), ticket_type_id = VALUES(ticket_type_id), expires_at = VALUES(expires_at)`,
+          [
+            generateUUID(),
+            seat.id,
+            eventId,
+            sessionId,
+            seat.ticketTypeId,
+            TICKET_CLASS_LOCK_MINUTES,
+          ]
+        )
+      } catch {
+        // Fallback when seat_locks.ticket_type_id column is missing
+        await execute(
+          `INSERT INTO seat_locks (id, seat_id, event_id, session_id, expires_at, created_at)
+           VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())
+           ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), expires_at = VALUES(expires_at)`,
+          [generateUUID(), seat.id, eventId, sessionId, TICKET_CLASS_LOCK_MINUTES]
+        )
+      }
     }
 
     const discount = await promotionsService.calculateBestDiscount({

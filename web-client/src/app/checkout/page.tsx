@@ -84,118 +84,148 @@ function CheckoutContent() {
     seatIds: seatIds.length,
   });
 
-  // Fetch order data to get accurate expiration time
+  // Load order (+ event) in one path so checkout never flashes "Order Not Found"
+  // after ticket-class create-pending-by-type (order has seats; no seatMap needed).
   useEffect(() => {
-    const fetchOrder = async () => {
-      // If no order number, this is old flow (direct from seats page without creating order)
-      // Just load event data instead
+    let cancelled = false;
+
+    const apiUrl =
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+    const applyEventFromOrder = (od: {
+      eventId?: string;
+      eventName?: string;
+      event?: {
+        id?: string;
+        name?: string;
+        venue?: string;
+        eventDate?: string;
+      };
+    }) => {
+      if (od?.event?.id || od?.eventName) {
+        setEvent({
+          id: od.event?.id || od.eventId || eventId || "",
+          name: od.event?.name || od.eventName || "Event",
+          venue: od.event?.venue || "",
+          eventDate: od.event?.eventDate,
+          date: od.event?.eventDate,
+          seatMap: [],
+        });
+        return true;
+      }
+      return false;
+    };
+
+    const load = async () => {
+      setLoading(true);
+      setOrderError(null);
+
+      // Legacy seat flow: no pending order yet — load event only
       if (!orderNumber || !accessToken) {
         console.log("[CHECKOUT] No order number - using legacy flow");
-        setLoading(false);
+        if (eventId) {
+          try {
+            const res = await fetch(`${apiUrl}/events/${eventId}`);
+            const data = await res.json();
+            if (!cancelled && data.success && data.data) {
+              setEvent(data.data);
+            }
+          } catch (err) {
+            console.error("Error fetching event:", err);
+          }
+        }
+        if (!cancelled) setLoading(false);
         return;
       }
 
       try {
         console.log("[CHECKOUT] Fetching order:", orderNumber);
-        const apiUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
         const res = await fetch(
-          `${apiUrl}/orders/${orderNumber}?token=${accessToken}`,
+          `${apiUrl}/orders/${orderNumber}?token=${encodeURIComponent(accessToken)}`,
         );
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);
         }
         const data = await res.json();
 
-        if (data.success) {
-          // Navigation Guard: if order is no longer PENDING, redirect away
-          if (data.data.status !== "PENDING") {
-            console.log("[CHECKOUT] Order is not PENDING, redirecting...");
-            router.replace(
-              `/order-waiting?order=${orderNumber}&token=${accessToken}`,
-            );
-            return;
-          }
-          setOrderData(data.data);
-          setOrderCode(data.data.orderNumber);
-
-          // Set initial countdown based on actual time remaining
-          setTimeLeft(data.data.timeRemaining);
-
-          // Pre-fill customer info if already exists
-          if (data.data.customerName) {
-            setFormData({
-              name: data.data.customerName,
-              email: data.data.customerEmail,
-              phone: data.data.customerPhone,
-            });
-          }
-
-          // Check if already expired
-          if (data.data.timeRemaining <= 0) {
-            setIsExpired(true);
-          }
-
-          console.log("[CHECKOUT] Order loaded:", {
-            orderNumber: data.data.orderNumber,
-            status: data.data.status,
-            timeRemaining: data.data.timeRemaining,
-            expiresAt: data.data.expiresAt,
-          });
-        } else {
-          console.error("Failed to fetch order:", data.error);
-          setOrderError(data.error || "Unable to load order details");
+        if (!data.success || !data.data) {
+          throw new Error(data.error || "Unable to load order details");
         }
+
+        if (cancelled) return;
+
+        // Navigation Guard: if order is no longer PENDING, redirect away
+        if (data.data.status !== "PENDING") {
+          console.log("[CHECKOUT] Order is not PENDING, redirecting...");
+          router.replace(
+            `/order-waiting?order=${orderNumber}&token=${accessToken}`,
+          );
+          return;
+        }
+
+        setOrderData(data.data);
+        setOrderCode(data.data.orderNumber);
+        setTimeLeft(
+          typeof data.data.timeRemaining === "number"
+            ? data.data.timeRemaining
+            : COUNTDOWN_DURATION,
+        );
+
+        if (data.data.customerName) {
+          setFormData({
+            name: data.data.customerName || "",
+            email: data.data.customerEmail || "",
+            phone: data.data.customerPhone || "",
+          });
+        }
+
+        if ((data.data.timeRemaining ?? 1) <= 0) {
+          setIsExpired(true);
+        }
+
+        // Set event immediately from order payload (ticket-class has no seatMap)
+        if (!applyEventFromOrder(data.data) && eventId) {
+          try {
+            const er = await fetch(`${apiUrl}/events/${eventId}`);
+            const ed = await er.json();
+            if (!cancelled && ed.success && ed.data) {
+              setEvent({
+                id: ed.data.id,
+                name: ed.data.name,
+                venue: ed.data.venue,
+                eventDate: ed.data.date || ed.data.eventDate,
+                date: ed.data.date || ed.data.eventDate,
+                seatMap: [],
+              });
+            }
+          } catch (err) {
+            console.error("Error fetching event fallback:", err);
+          }
+        }
+
+        console.log("[CHECKOUT] Order loaded:", {
+          orderNumber: data.data.orderNumber,
+          status: data.data.status,
+          seats: data.data.seats?.length ?? data.data.items?.length ?? 0,
+          timeRemaining: data.data.timeRemaining,
+        });
       } catch (err) {
         console.error("Error fetching order:", err);
-        setOrderError("Error loading order details");
+        if (!cancelled) {
+          setOrderError(
+            err instanceof Error ? err.message : "Error loading order details",
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchOrder();
-  }, [orderNumber, accessToken]);
-
-  // Fetch event data from API (fallback if order doesn't have event info)
-  useEffect(() => {
-    const fetchEvent = async () => {
-      if (!eventId) return;
-
-      // Use event info from order response if available
-      if (orderData?.event) {
-        setEvent({
-          id: orderData.event.id,
-          name: orderData.event.name,
-          venue: orderData.event.venue,
-          eventDate: orderData.event.eventDate,
-          date: orderData.event.eventDate,
-          seatMap: [],
-        });
-        return;
-      }
-
-      try {
-        const apiUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-        const res = await fetch(`${apiUrl}/events/${eventId}`);
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        const data = await res.json();
-
-        if (data.success) {
-          setEvent(data.data);
-        } else {
-          console.error("Failed to fetch event:", data.error);
-        }
-      } catch (err) {
-        console.error("Error fetching event:", err);
-      }
+    load();
+    return () => {
+      cancelled = true;
     };
-
-    fetchEvent();
-  }, [eventId, orderData]);
+  }, [orderNumber, accessToken, eventId, router]);
 
   // Countdown timer effect
   useEffect(() => {
@@ -224,27 +254,48 @@ function CheckoutContent() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Get selected seats from order data (preferred) or event data (fallback)
-  const selectedSeats: Seat[] = orderData?.seats
-    ? orderData.seats.map((s: any) => ({
-        id: s.seatId,
+  // Seats from pending order (ticket-class + seat-map flows) or legacy seatIds
+  const selectedSeats: Seat[] = (() => {
+    if (orderData?.seats?.length) {
+      return orderData.seats.map((s: any) => ({
+        id: s.seatId || s.id,
         seatNumber: s.seatNumber,
-        row: s.row,
-        number: parseInt(s.seatNumber.replace(/\D/g, "")) || 0,
-        section: s.section,
+        row: s.row || String(s.seatNumber || "").replace(/[0-9]/g, "") || "?",
+        number:
+          parseInt(String(s.seatNumber || "").replace(/\D/g, ""), 10) || 0,
+        section: s.section || "",
+        status: "RESERVED",
+        ticketTypeId: s.ticketTypeId || "",
+        seatType: s.seatType || "",
+        price: Number(s.price) || 0,
+      }));
+    }
+    // Some payloads only return items[]
+    if (orderData?.items?.length) {
+      return orderData.items.map((s: any, idx: number) => ({
+        id: s.seatId || s.id || `item-${idx}`,
+        seatNumber: s.seatNumber,
+        row: String(s.seatNumber || "").replace(/[0-9]/g, "") || "?",
+        number:
+          parseInt(String(s.seatNumber || "").replace(/\D/g, ""), 10) || 0,
+        section: "",
         status: "RESERVED",
         ticketTypeId: "",
-        seatType: s.seatType,
-        price: s.price,
-      }))
-    : event
-      ? event.seatMap
-          .flatMap((row) => row.seats)
-          .filter((seat) => seatIds.includes(seat.id))
-      : [];
+        seatType: s.seatType || "",
+        price: Number(s.price) || 0,
+      }));
+    }
+    if (event?.seatMap?.length && seatIds.length) {
+      return event.seatMap
+        .flatMap((row) => row.seats)
+        .filter((seat) => seatIds.includes(seat.id));
+    }
+    return [];
+  })();
   const totalPrice =
-    orderData?.totalAmount ||
-    selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
+    orderData?.totalAmount != null
+      ? Number(orderData.totalAmount)
+      : selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
   const transferContent = `Ticket payment order ${orderCode}`;
 
   const formatENDate = (dateStr: string) => {
@@ -338,18 +389,44 @@ function CheckoutContent() {
     );
   }
 
-  if (!event || selectedSeats.length === 0) {
+  // Ticket-class: event + seats come from order; seat-map legacy still needs both.
+  const hasOrderSeats = selectedSeats.length > 0;
+  const hasEventMeta = !!(event?.id || event?.name || orderData?.eventName);
+  if (orderError && !hasOrderSeats) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center glass-panel p-8 rounded-2xl">
+      <div className="min-h-screen bg-black flex items-center justify-center px-4">
+        <div className="text-center glass-panel p-8 rounded-2xl max-w-md">
+          <h1 className="text-2xl font-bold text-white mb-3">
+            Unable to load order
+          </h1>
+          <p className="text-gray-400 text-sm mb-6">{orderError}</p>
+          <Link
+            href={eventId ? `/events/${eventId}/tickets` : "/"}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl transition-colors"
+          >
+            Back to tickets
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasOrderSeats || !hasEventMeta) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center px-4">
+        <div className="text-center glass-panel p-8 rounded-2xl max-w-md">
           <h1 className="text-2xl font-bold text-white mb-4">
             Order Not Found
           </h1>
+          <p className="text-gray-500 text-sm mb-6">
+            Missing order seats or event info. Please start again from the
+            ticket page.
+          </p>
           <Link
-            href="/"
+            href={eventId ? `/events/${eventId}/tickets` : "/"}
             className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl transition-colors"
           >
-            Back to Home
+            Back to tickets
           </Link>
         </div>
       </div>
@@ -698,9 +775,16 @@ function CheckoutContent() {
                 </h2>
 
                 <div className="mb-4 pb-4 border-b border-white/10">
-                  <p className="font-semibold text-white">{event.name}</p>
+                  <p className="font-semibold text-white">
+                    {event?.name || orderData?.eventName || "Event"}
+                  </p>
                   <p className="text-sm text-gray-400">
-                    {formatENDate(event.eventDate || event.date || "")}
+                    {formatENDate(
+                      event?.eventDate ||
+                        event?.date ||
+                        orderData?.event?.eventDate ||
+                        "",
+                    )}
                   </p>
                 </div>
 
