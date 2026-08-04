@@ -397,6 +397,55 @@ export async function resendTicketEmail(
   const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
   const ticketUrl = generateTicketUrl(order.orderNumber, accessToken)
 
+  // Ensure per-ticket units exist before email
+  let ticketUnits: Array<{
+    ticketCode: string
+    qrCodeUrl: string
+    typeName: string
+    seatNumber?: string
+    price: number
+    index: number
+  }> = []
+  const {buildTicketLines, formatTicketLinesSummary, humanizeSeatType} = await import(
+    '../../utils/ticket-lines.js'
+  )
+  try {
+    const {ensureTicketUnitsForOrder} = await import('../../utils/ticket-unit.js')
+    const {query} = await import('../../db/mysql.js')
+    await ensureTicketUnitsForOrder(orderId)
+    const rows = await query<{
+      ticket_code: string
+      qr_code_url: string
+      seat_number: string
+      seat_type: string
+      price: number
+      ticket_type_name: string | null
+    }>(
+      `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
+              tt.name AS ticket_type_name
+       FROM order_items oi
+       LEFT JOIN seats s ON s.id = oi.seat_id
+       LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+       WHERE oi.order_id = ?
+       ORDER BY oi.created_at ASC`,
+      [orderId],
+    )
+    ticketUnits = rows
+      .filter((r) => r.ticket_code && r.qr_code_url)
+      .map((r, i) => ({
+        ticketCode: r.ticket_code,
+        qrCodeUrl: r.qr_code_url,
+        typeName:
+          (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
+          humanizeSeatType(r.seat_type),
+        seatNumber: r.seat_number,
+        price: Number(r.price),
+        index: i + 1,
+      }))
+  } catch (e) {
+    console.error('[RESEND EMAIL] ticket units:', e)
+  }
+
   // Format date
   const eventDate = new Date(order.event.eventDate)
   const formattedDate = eventDate.toLocaleDateString('vi-VN', {
@@ -409,14 +458,24 @@ export async function resendTicketEmail(
     hour: '2-digit',
     minute: '2-digit',
   })
-
-  // Format seats for email template (string format)
-  const seatsList = order.orderItems
-    .map(
-      (item: any) =>
-        `${item.seat?.seatNumber || item.seatNumber} (${item.seat?.seatType || item.seatType})`
-    )
-    .join(', ')
+  const ticketLines = buildTicketLines(
+    order.orderItems.map((item: any) => ({
+      seatNumber: item.seat?.seatNumber || item.seatNumber,
+      seatType: item.seat?.seatType || item.seatType,
+      price: item.price,
+      ticketTypeId: item.seat?.ticketTypeId || null,
+      ticketTypeName: item.seat?.ticketType?.name || null,
+    })),
+  )
+  const seatsList =
+    ticketLines.length > 0
+      ? formatTicketLinesSummary(ticketLines)
+      : order.orderItems
+          .map(
+            (item: any) =>
+              `${item.seat?.seatNumber || item.seatNumber} (${item.seat?.seatType || item.seatType})`,
+          )
+          .join(', ')
 
   // Send email with allowDuplicate to bypass anti-spam
   const emailResult = await sendEmailByPurpose({
@@ -433,7 +492,10 @@ export async function resendTicketEmail(
       eventVenue: order.event.venue,
       eventAddress: order.event.venue,
       orderNumber: order.orderNumber,
-      seats: seatsList, // ✅ String: "A1 (VIP), A2 (Standard)"
+      seats: seatsList,
+      ticketLines,
+      ticketUnits,
+      ticketCount: ticketUnits.length || order.orderItems.length,
       totalAmount: Number(order.totalAmount),
       qrCodeUrl,
       ticketUrl,

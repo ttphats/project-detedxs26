@@ -63,6 +63,18 @@ import {
 } from "lucide-react";
 import { formatVNDate, formatVNTime } from "@/lib/date-utils";
 
+interface TicketUnit {
+  id?: string;
+  index: number;
+  ticketCode: string | null;
+  qrCodeUrl: string | null;
+  typeName: string;
+  seatNumber?: string;
+  price: number;
+  checkedIn?: boolean;
+  checkedInAt?: string | null;
+}
+
 interface TicketData {
   orderNumber: string;
   status: string;
@@ -73,6 +85,15 @@ interface TicketData {
   checkedInAt: string | null;
   qrCodeUrl: string | null;
   canDownload: boolean;
+  bookingMode?: "TICKET_CLASS" | "SEAT_MAP";
+  ticketLines?: Array<{
+    name: string;
+    unitPrice: number;
+    quantity: number;
+    lineTotal: number;
+  }>;
+  ticketUnits?: TicketUnit[];
+  checkInProgress?: { total: number; checkedIn: number; pending: number };
   event: {
     id: string;
     name: string;
@@ -477,60 +498,116 @@ export default function TicketPage({
                 </div>
               </div>
 
-              {/* Seats Grid */}
+              {/* Ticket units (model B) or seats grid */}
               <div className="mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Ticket className="w-4 h-4 text-gray-500" />
-                  <span className="text-xs text-gray-500 uppercase tracking-wide">
-                    {t("seat")}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {ticket.seats.map((seat, index) => (
-                    <div
-                      key={index}
-                      className={`relative group px-4 py-3 rounded-xl border transition-all ${
-                        seat.seatType === "VIP"
-                          ? "bg-gradient-to-br from-amber-500/20 to-orange-600/20 border-amber-500/30"
-                          : seat.seatType === "PREMIUM"
-                            ? "bg-gradient-to-br from-purple-500/20 to-pink-600/20 border-purple-500/30"
-                            : "bg-white/5 border-white/10"
-                      }`}
-                    >
-                      {seat.seatType === "VIP" && (
-                        <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400" />
-                      )}
-                      <p className="text-lg font-bold text-white">
-                        {seat.seatNumber}
-                      </p>
-                      <p className="text-xs text-gray-400">{seat.seatType}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* QR Code Section */}
-              {ticket.canDownload && ticket.qrCodeUrl && (
-                <div className="mb-6 flex flex-col items-center">
-                  <div className="flex items-center gap-2 mb-3">
-                    <QrCode className="w-4 h-4 text-gray-500" />
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Ticket className="w-4 h-4 text-gray-500" />
                     <span className="text-xs text-gray-500 uppercase tracking-wide">
-                      {t("checkinCode")}
+                      {ticket.ticketUnits?.length ? "Tickets" : t("seat")}
                     </span>
                   </div>
-                  <div className="bg-white rounded-lg p-4 flex items-center justify-center">
-                    <img
-                      src={ticket.qrCodeUrl}
-                      alt="QR Code"
-                      className="w-48 h-48 object-contain"
-                      style={{ imageRendering: "crisp-edges" }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    {t("scanInstruction")}
-                  </p>
+                  {ticket.checkInProgress && (
+                    <span className="text-[11px] text-gray-500 tabular-nums">
+                      {ticket.checkInProgress.checkedIn}/
+                      {ticket.checkInProgress.total} checked in
+                    </span>
+                  )}
                 </div>
-              )}
+
+                {ticket.ticketUnits && ticket.ticketUnits.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {ticket.ticketUnits.map((unit) => (
+                      <div
+                        key={unit.id || unit.ticketCode || unit.index}
+                        className={`rounded-xl border p-3 ${
+                          unit.checkedIn
+                            ? "border-emerald-500/30 bg-emerald-500/5"
+                            : "border-white/10 bg-white/[0.03]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white truncate">
+                              {unit.typeName}
+                            </p>
+                            <p className="text-[11px] text-gray-500 font-mono">
+                              {unit.ticketCode || `#${unit.index}`}
+                            </p>
+                          </div>
+                          {ticket.canDownload && (
+                            <span
+                              className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                unit.checkedIn
+                                  ? "bg-emerald-500/20 text-emerald-300"
+                                  : "bg-white/10 text-gray-400"
+                              }`}
+                            >
+                              {unit.checkedIn ? "In" : "Ready"}
+                            </span>
+                          )}
+                        </div>
+                        {ticket.canDownload && unit.qrCodeUrl && (
+                          <div className="bg-white rounded-lg p-2 flex justify-center">
+                            <img
+                              src={unit.qrCodeUrl}
+                              alt={unit.ticketCode || "QR"}
+                              className="w-36 h-36 object-contain"
+                              style={{ imageRendering: "crisp-edges" }}
+                            />
+                          </div>
+                        )}
+                        <p className="text-[11px] text-gray-500 mt-2 text-center tabular-nums">
+                          {Number(unit.price).toLocaleString("en-US")} VND
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {ticket.seats.map((seat, index) => (
+                      <div
+                        key={index}
+                        className={`relative px-4 py-3 rounded-xl border ${
+                          seat.seatType === "VIP"
+                            ? "bg-gradient-to-br from-amber-500/20 to-orange-600/20 border-amber-500/30"
+                            : "bg-white/5 border-white/10"
+                        }`}
+                      >
+                        {seat.seatType === "VIP" && (
+                          <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400" />
+                        )}
+                        <p className="text-lg font-bold text-white">
+                          {seat.seatNumber}
+                        </p>
+                        <p className="text-xs text-gray-400">{seat.seatType}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Legacy single QR only if no units */}
+              {ticket.canDownload &&
+                ticket.qrCodeUrl &&
+                !(ticket.ticketUnits && ticket.ticketUnits.length > 0) && (
+                  <div className="mb-6 flex flex-col items-center">
+                    <div className="flex items-center gap-2 mb-3">
+                      <QrCode className="w-4 h-4 text-gray-500" />
+                      <span className="text-xs text-gray-500 uppercase tracking-wide">
+                        {t("checkinCode")}
+                      </span>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 flex items-center justify-center">
+                      <img
+                        src={ticket.qrCodeUrl}
+                        alt="QR Code"
+                        className="w-48 h-48 object-contain"
+                        style={{ imageRendering: "crisp-edges" }}
+                      />
+                    </div>
+                  </div>
+                )}
 
               {/* Check-in Status */}
               {ticket.checkedIn && (
