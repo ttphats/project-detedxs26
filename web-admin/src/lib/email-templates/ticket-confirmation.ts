@@ -249,8 +249,11 @@ export function generateTicketConfirmationEmail(data: TicketEmailData): string {
               <p style="margin: 20px 0 0 0; font-size: 12px; color: #000000;">
                 Xem vé online: <a href="${data.ticketUrl}" style="color: #ea251a; text-decoration: underline;">Nhấn vào đây</a>
               </p>
-              <p style="margin: 8px 0 0 0; font-size: 11px; color: #000000;">
-                Lưu ý: Link tải PDF và xem vé sử dụng chung mã xác thực, vui lòng không chia sẻ.
+              <p style="margin: 8px 0 0 0; font-size: 11px; color: #000000; word-break: break-all;">
+                Lưu link: <a href="${data.ticketUrl}" style="color: #ea251a;">${data.ticketUrl}</a>
+              </p>
+              <p style="margin: 8px 0 0 0; font-size: 11px; color: #333333;">
+                Link vé <strong>không hết hạn theo thời gian</strong> — lưu bookmark hoặc copy URL để mở lại bất cứ lúc nào. Không chia sẻ link (ai có link xem được vé).
               </p>
             </td>
           </tr>

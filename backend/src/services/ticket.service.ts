@@ -133,13 +133,60 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
     [order.event_id]
   );
 
-  // Get order items (seats)
-  const [seats] = await pool.query<OrderItem[]>(
-    `SELECT id, seat_number, seat_type, price FROM order_items WHERE order_id = ?`,
-    [order.id]
+  // Get order items + optional ticket type (inventory flow)
+  const [seats] = await pool.query<
+    (OrderItem & {
+      ticket_type_id: string | null;
+      ticket_type_name: string | null;
+    })[]
+  >(
+    `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
+            s.ticket_type_id AS ticket_type_id,
+            tt.name AS ticket_type_name
+     FROM order_items oi
+     LEFT JOIN seats s ON oi.seat_id = s.id
+     LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
+     WHERE oi.order_id = ?`,
+    [order.id],
   );
 
   const event = events[0];
+
+  // Group into ticket lines for ticket-class UI / email
+  const lineMap = new Map<
+    string,
+    {
+      ticketTypeId: string | null;
+      name: string;
+      unitPrice: number;
+      quantity: number;
+      lineTotal: number;
+    }
+  >();
+  for (const seat of seats) {
+    const unitPrice = Number(seat.price);
+    const name =
+      (seat.ticket_type_name && String(seat.ticket_type_name).trim()) ||
+      humanizeSeatType(seat.seat_type);
+    const key = `${seat.ticket_type_id || 'none'}|${name}|${unitPrice}`;
+    const cur = lineMap.get(key);
+    if (cur) {
+      cur.quantity += 1;
+      cur.lineTotal += unitPrice;
+    } else {
+      lineMap.set(key, {
+        ticketTypeId: seat.ticket_type_id || null,
+        name,
+        unitPrice,
+        quantity: 1,
+        lineTotal: unitPrice,
+      });
+    }
+  }
+  const ticketLines = Array.from(lineMap.values());
+  const isTicketClass = seats.some(
+    (s) => !!s.ticket_type_id || !!s.ticket_type_name,
+  );
 
   return {
     data: {
@@ -152,22 +199,42 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
       checkedInAt: order.checked_in_at,
       qrCodeUrl: order.status === 'PAID' ? order.qr_code_url : null,
       canDownload: order.status === 'PAID',
-      event: event ? {
-        id: event.id,
-        name: event.name,
-        venue: event.venue,
-        eventDate: event.event_date,
-        startTime: event.start_time,
-        doorsOpenTime: event.doors_open_time,
-        bannerImageUrl: event.banner_image_url,
-        thumbnailUrl: event.thumbnail_url,
-      } : null,
-      seats: seats.map((seat: OrderItem) => ({
+      // Permanent link auth: token is hash-only (does NOT expire by time)
+      tokenNeverExpires: true,
+      bookingMode: isTicketClass ? 'TICKET_CLASS' : 'SEAT_MAP',
+      ticketLines,
+      event: event
+        ? {
+            id: event.id,
+            name: event.name,
+            venue: event.venue,
+            eventDate: event.event_date,
+            startTime: event.start_time,
+            doorsOpenTime: event.doors_open_time,
+            bannerImageUrl: event.banner_image_url,
+            thumbnailUrl: event.thumbnail_url,
+          }
+        : null,
+      // Keep seats for seat-map flow
+      seats: seats.map((seat) => ({
         seatNumber: seat.seat_number,
         seatType: seat.seat_type,
         price: Number(seat.price),
+        ticketTypeId: seat.ticket_type_id || null,
+        ticketTypeName: seat.ticket_type_name || null,
       })),
     },
   };
+}
+
+function humanizeSeatType(seatType: string | null | undefined): string {
+  const s = String(seatType || '').toUpperCase();
+  if (!s) return 'Ticket';
+  if (s.includes('VIP')) return 'VIP';
+  if (s.includes('DONOR')) return 'Donor';
+  if (s.includes('ECONOMY') || s.includes('EARLY')) return 'Early Bird';
+  if (s.includes('STANDARD') || s.includes('LEVEL_2')) return 'Standard';
+  if (s.startsWith('LEVEL_')) return s.replace('LEVEL_', 'Level ');
+  return s;
 }
 
