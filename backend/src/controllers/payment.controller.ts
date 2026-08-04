@@ -171,17 +171,40 @@ async function processPaymentConfirmation(
         })
       }
 
-      // Generate QR code and ticket URL
+      // Generate order-level QR + permanent ticket URL
       const qrCodeUrl = await qrcodeService.generateTicketQRCode(order.orderNumber, order.eventId)
       const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
+
+      // Per-ticket unique codes + QR (model B) — must finish before email
+      try {
+        const {ensureTicketUnitsForOrder} = await import('../utils/ticket-unit.js')
+        await ensureTicketUnitsForOrder(order.id)
+      } catch (e) {
+        console.error('[PAYMENT] ensureTicketUnitsForOrder failed:', e)
+      }
 
       // Send email (fire and forget)
       const eventDate = new Date(order.event.eventDate)
 
-      // Format seats for email template
-      const seatsList = order.orderItems
-        .map((item: any) => `${item.seatNumber} (${item.seatType})`)
-        .join(', ')
+      // Inventory ticket lines (type × qty) for email — keep seat string for seat-map templates
+      const {buildTicketLines, formatTicketLinesSummary} = await import(
+        '../utils/ticket-lines.js'
+      )
+      const ticketLines = buildTicketLines(
+        order.orderItems.map((item: any) => ({
+          seatNumber: item.seatNumber,
+          seatType: item.seatType,
+          price: item.price,
+          ticketTypeId: item.seat?.ticketTypeId || item.ticketTypeId || null,
+          ticketTypeName: item.seat?.ticketType?.name || item.ticketTypeName || null,
+        })),
+      )
+      const seatsList =
+        ticketLines.length > 0
+          ? formatTicketLinesSummary(ticketLines)
+          : order.orderItems
+              .map((item: any) => `${item.seatNumber} (${item.seatType})`)
+              .join(', ')
 
       // Format date and time
       const formattedDate = eventDate.toLocaleDateString('vi-VN', {
@@ -195,10 +218,8 @@ async function processPaymentConfirmation(
         minute: '2-digit',
       })
 
-      // Debug: Log ticketUrl to verify token is present
       console.log('[EMAIL] Sending ticket email with URL:', ticketUrl)
-      console.log('[EMAIL] Access token length:', accessToken.length)
-      console.log('[EMAIL] CODE VERSION: 2026-05-09-v2 - TOKEN GENERATION ACTIVE')
+      console.log('[EMAIL] ticketLines:', formatTicketLinesSummary(ticketLines))
 
       sendEmailByPurpose({
         purpose: 'TICKET_CONFIRMED',
@@ -214,7 +235,14 @@ async function processPaymentConfirmation(
           eventVenue: order.event.venue,
           eventAddress: order.event.venue,
           orderNumber: order.orderNumber,
-          seats: seatsList, // String: "A1 (VIP), A2 (VIP)"
+          // String summary for DB templates: "Early Bird × 2, Standard × 1"
+          seats: seatsList,
+          // Structured list for HTML template that supports ticketLines
+          ticketLines,
+          bookingMode: ticketLines.some((l) => l.ticketTypeId)
+            ? 'TICKET_CLASS'
+            : 'SEAT_MAP',
+          ticketCount: order.orderItems.length,
           totalAmount: Number(order.totalAmount),
           qrCodeUrl,
           ticketUrl,

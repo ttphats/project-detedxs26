@@ -158,7 +158,7 @@ export async function confirmPayment(
         console.log('[CONFIRM PAYMENT] Generated new access token')
       }
 
-      // Generate QR code
+      // Order-level QR (legacy display / wallet entry)
       const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
 
       // Update order to PAID
@@ -172,6 +172,15 @@ export async function confirmPayment(
           qrCodeUrl,
         },
       })
+
+      // Per-ticket units (model B): unique TKT-xxx + QR each order_item
+      try {
+        const {ensureTicketUnitsForOrder} = await import('../../utils/ticket-unit.js')
+        await ensureTicketUnitsForOrder(orderId)
+        console.log('[CONFIRM PAYMENT] Per-ticket QR units ready')
+      } catch (e) {
+        console.error('[CONFIRM PAYMENT] ensureTicketUnitsForOrder failed:', e)
+      }
 
       // Update payment
       if (order.payment) {
