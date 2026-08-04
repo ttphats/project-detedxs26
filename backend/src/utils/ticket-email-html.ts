@@ -132,9 +132,8 @@ export function buildTicketConfirmationEmailHtml(data: TicketConfirmEmailInput):
       <a href="${esc(pdfUrl)}" style="display:inline-block;background:#fff;color:#000;padding:14px 28px;font-size:13px;font-weight:900;text-decoration:none;letter-spacing:2px;border-radius:4px;border:2px solid #ea251a;margin:0 6px 8px;">📄 TẢI PDF</a>
     </td></tr>
     <tr><td style="padding:8px 12px 32px;font-size:11px;color:#444;line-height:1.5;text-align:center;">
-      Lưu link vé (không hết hạn theo thời gian):<br/>
-      <a href="${esc(data.ticketUrl)}" style="color:#ea251a;word-break:break-all;">${esc(data.ticketUrl)}</a><br/><br/>
-      Mỗi mã <strong>TKT-…</strong> / QR chỉ check-in <strong>1 lần</strong>. Không chia sẻ QR nếu chưa muốn người khác vào hộ.
+      Link vé: <a href="${esc(data.ticketUrl)}" style="color:#ea251a;word-break:break-all;">${esc(data.ticketUrl)}</a><br/><br/>
+      Mỗi mã <strong>TKT-…</strong> / QR chỉ check-in <strong>1 lần</strong>. Không chia sẻ QR.
     </td></tr>
   </table>
 </td></tr></table>
