@@ -17,10 +17,21 @@ import {
   MapPin,
   AlertTriangle,
   Shield,
+  Copy,
+  Link2,
+  ExternalLink,
 } from "lucide-react";
 
 // Polling interval in milliseconds
 const POLL_INTERVAL = 5000;
+
+interface TicketLine {
+  ticketTypeId: string | null;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+}
 
 interface TicketData {
   orderNumber: string;
@@ -32,6 +43,9 @@ interface TicketData {
   checkedInAt: string | null;
   qrCodeUrl: string | null;
   canDownload: boolean;
+  bookingMode?: "TICKET_CLASS" | "SEAT_MAP";
+  ticketLines?: TicketLine[];
+  tokenNeverExpires?: boolean;
   event: {
     id: string;
     name: string;
@@ -46,6 +60,8 @@ interface TicketData {
     seatNumber: string;
     seatType: string;
     price: number;
+    ticketTypeId?: string | null;
+    ticketTypeName?: string | null;
   }[];
 }
 
@@ -60,6 +76,7 @@ function OrderWaitingContent() {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Fetch ticket status from backend
   const fetchTicketStatus = useCallback(async () => {
@@ -68,9 +85,7 @@ function OrderWaitingContent() {
     try {
       const apiUrl =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      const res = await fetch(
-        `${apiUrl}/ticket/${orderNumber}?token=${token}`,
-      );
+      const res = await fetch(`${apiUrl}/ticket/${orderNumber}?token=${token}`);
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
       }
@@ -141,6 +156,25 @@ function OrderWaitingContent() {
     }).format(amount);
   };
 
+  const ticketUrl =
+    typeof window !== "undefined" && orderNumber && token
+      ? `${window.location.origin}/ticket/${orderNumber}?token=${token}`
+      : "";
+
+  // Permanent ticket link — access token is hash-verified and does NOT expire by time
+  const handleCopyLink = async () => {
+    if (!ticketUrl) return;
+    try {
+      await navigator.clipboard.writeText(ticketUrl);
+      setCopied(true);
+      toast.success("Ticket link copied — save it to reopen anytime");
+      setTimeout(() => setCopied(false), 2500);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+      toast.error("Could not copy link");
+    }
+  };
+
   // Download ticket as PDF
   const handleDownload = async () => {
     if (!ticket) return;
@@ -174,6 +208,35 @@ function OrderWaitingContent() {
     }
   };
 
+  const isTicketClass =
+    ticket?.bookingMode === "TICKET_CLASS" ||
+    (Array.isArray(ticket?.ticketLines) && ticket!.ticketLines!.length > 0);
+
+  const ticketLines: TicketLine[] = (() => {
+    if (!ticket) return [];
+    if (ticket.ticketLines?.length) return ticket.ticketLines;
+    // Fallback group seats
+    const map = new Map<string, TicketLine>();
+    for (const s of ticket.seats || []) {
+      const name = s.ticketTypeName || s.seatType || "Ticket";
+      const key = `${s.ticketTypeId || ""}|${name}|${s.price}`;
+      const cur = map.get(key);
+      if (cur) {
+        cur.quantity += 1;
+        cur.lineTotal += s.price;
+      } else {
+        map.set(key, {
+          ticketTypeId: s.ticketTypeId || null,
+          name,
+          unitPrice: s.price,
+          quantity: 1,
+          lineTotal: s.price,
+        });
+      }
+    }
+    return Array.from(map.values());
+  })();
+
   // Missing params
   if (!orderNumber || !token) {
     return (
@@ -182,9 +245,7 @@ function OrderWaitingContent() {
           <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
             <Shield className="w-10 h-10 text-red-500" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-3">
-            Invalid Access
-          </h1>
+          <h1 className="text-2xl font-bold text-white mb-3">Invalid Access</h1>
           <p className="text-gray-400 mb-6">
             Missing order information. Please return to the checkout page.
           </p>
@@ -294,21 +355,38 @@ function OrderWaitingContent() {
             </p>
           </div>
 
-          {/* Warning - Save/Download */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-2xl backdrop-blur-sm">
+          {/* Save ticket link — token does NOT expire by time */}
+          <div className="mb-6 p-4 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/15 to-orange-500/10 backdrop-blur-sm">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
-                <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+                <Link2 className="w-5 h-5 text-amber-400" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-semibold text-amber-300 mb-1">
-                  Important Notice
+                  Save your ticket link
                 </h3>
-                <p className="text-sm text-amber-100/90 leading-relaxed">
-                  Please <strong>download your ticket now</strong>. If you leave
-                  this page, you will not be able to access this ticket again.
-                  The ticket has also been sent to your email.
+                <p className="text-sm text-amber-100/85 leading-relaxed mb-3">
+                  Copy and bookmark this URL to open your e-ticket anytime. The
+                  access token <strong>does not expire</strong> — only keep it
+                  private. A copy was also sent to your email.
                 </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-black/40 border border-white/10 font-mono text-[11px] text-gray-400 truncate">
+                    {ticketUrl}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#e62b1e] hover:bg-[#c41e12] text-white text-sm font-bold shrink-0 transition-colors"
+                  >
+                    {copied ? (
+                      <CheckCircle className="w-4 h-4" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                    {copied ? "Copied" : "Copy URL"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -423,45 +501,77 @@ function OrderWaitingContent() {
                     <span className="font-mono bg-white/5 px-2 py-1 rounded">
                       #{ticket.orderNumber}
                     </span>
-                    <span>{ticket.seats.length} tickets</span>
+                    <span>
+                      {isTicketClass
+                        ? `${ticketLines.reduce((s, l) => s + l.quantity, 0)} tickets`
+                        : `${ticket.seats.length} tickets`}
+                    </span>
                   </div>
                 </div>
 
-                {/* Seats Grid */}
+                {/* Inventory lines (ticket-class) or seats (seat-map) */}
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
                     <Ticket className="w-4 h-4 text-gray-500" />
                     <span className="text-xs text-gray-500 uppercase tracking-wide">
-                      Seat
+                      {isTicketClass ? "Tickets" : "Seats"}
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {ticket.seats.map((seat, index) => (
-                      <div
-                        key={index}
-                        className={`relative group px-4 py-3 rounded-xl border transition-all ${
-                          seat.seatType === "VIP"
-                            ? "bg-gradient-to-br from-amber-500/20 to-orange-600/20 border-amber-500/30"
-                            : seat.seatType === "PREMIUM"
-                              ? "bg-gradient-to-br from-purple-500/20 to-pink-600/20 border-purple-500/30"
+                  {isTicketClass ? (
+                    <div className="space-y-2">
+                      {ticketLines.map((line, index) => (
+                        <div
+                          key={`${line.name}-${index}`}
+                          className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.04]"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-base font-bold text-white truncate">
+                              {line.name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {Number(line.unitPrice).toLocaleString("en-US")}{" "}
+                              VND each
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-semibold text-white tabular-nums">
+                              × {line.quantity}
+                            </p>
+                            <p className="text-xs text-gray-400 tabular-nums">
+                              {Number(line.lineTotal).toLocaleString("en-US")}{" "}
+                              VND
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {ticket.seats.map((seat, index) => (
+                        <div
+                          key={index}
+                          className={`relative px-4 py-3 rounded-xl border transition-all ${
+                            seat.seatType === "VIP"
+                              ? "bg-gradient-to-br from-amber-500/20 to-orange-600/20 border-amber-500/30"
                               : "bg-white/5 border-white/10"
-                        }`}
-                      >
-                        {seat.seatType === "VIP" && (
-                          <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400" />
-                        )}
-                        <p className="text-lg font-bold text-white">
-                          {seat.seatNumber}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {seat.seatType}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                          }`}
+                        >
+                          {seat.seatType === "VIP" && (
+                            <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400" />
+                          )}
+                          <p className="text-lg font-bold text-white">
+                            {seat.seatNumber}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {seat.seatType}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* QR Code Section */}
+                {/* QR Code */}
                 {ticket.qrCodeUrl && (
                   <div className="mb-6 flex flex-col items-center">
                     <div className="flex items-center gap-2 mb-3">
@@ -470,21 +580,21 @@ function OrderWaitingContent() {
                         Check-in Code
                       </span>
                     </div>
-                    <div className="bg-white rounded-lg p-3 flex items-center justify-center">
+                    <div className="bg-white rounded-xl p-3 flex items-center justify-center">
                       <img
                         src={ticket.qrCodeUrl}
                         alt="QR Code"
-                        className="w-72 h-72 object-contain"
+                        className="w-56 h-56 sm:w-64 sm:h-64 object-contain"
                         style={{ imageRendering: "crisp-edges" }}
                       />
                     </div>
                     <p className="text-xs text-gray-500 mt-2 text-center">
-                      Please present this code to the staff at the event
+                      Present this code at check-in
                     </p>
                   </div>
                 )}
 
-                {/* Total Amount */}
+                {/* Total */}
                 <div className="flex items-center justify-between py-4 border-t border-white/10">
                   <span className="text-gray-400">Total Amount</span>
                   <span className="text-2xl font-bold text-white">
@@ -492,25 +602,45 @@ function OrderWaitingContent() {
                   </span>
                 </div>
 
-                {/* Download Button */}
-                <div className="mt-4">
+                {/* Actions: Download + Copy + Open ticket page */}
+                <div className="mt-4 space-y-2">
                   <button
+                    type="button"
                     onClick={handleDownload}
                     disabled={downloading}
-                    className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-red-600 to-red-500 text-white rounded-xl font-bold shadow-xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group"
+                    className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-[#e62b1e] to-red-600 text-white rounded-xl font-bold shadow-xl shadow-[#e62b1e]/25 hover:shadow-[#e62b1e]/40 transition-all disabled:opacity-50 relative overflow-hidden group"
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                     {downloading ? (
                       <Loader2 className="w-5 h-5 animate-spin relative" />
                     ) : (
                       <Download className="w-5 h-5 relative" />
                     )}
                     <span className="relative">
-                      {downloading
-                        ? "Downloading..."
-                        : "Download Ticket (PDF)"}
+                      {downloading ? "Downloading..." : "Download Ticket (PDF)"}
                     </span>
                   </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold border border-white/10 transition-colors"
+                    >
+                      {copied ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                      {copied ? "Copied" : "Copy link"}
+                    </button>
+                    <a
+                      href={ticketUrl}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold border border-white/10 transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Open ticket
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
@@ -612,52 +742,76 @@ function OrderWaitingContent() {
             {ticket.event && (
               <div className="mb-4 pb-4 border-b border-white/10">
                 <p className="text-sm text-gray-400 mb-1">Event</p>
-                <p className="font-semibold text-white">
-                  {ticket.event.name}
-                </p>
+                <p className="font-semibold text-white">{ticket.event.name}</p>
                 <p className="text-sm text-gray-500">
                   {formatDate(ticket.event.eventDate)}
                 </p>
               </div>
             )}
 
-            {/* Seats */}
+            {/* Tickets / seats summary */}
             <div className="mb-4 pb-4 border-b border-white/10">
-              <p className="text-sm text-gray-400 mb-2">Seats</p>
+              <p className="text-sm text-gray-400 mb-2">
+                {isTicketClass ? "Tickets" : "Seats"}
+              </p>
               <div className="flex flex-wrap gap-2">
-                {ticket.seats.map((seat, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1.5 bg-red-600/20 text-red-400 rounded-full text-sm font-medium border border-red-500/30"
-                  >
-                    {seat.seatNumber} ({seat.seatType})
-                  </span>
-                ))}
+                {isTicketClass
+                  ? ticketLines.map((line, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-1.5 bg-[#e62b1e]/15 text-[#ff6b5e] rounded-full text-sm font-medium border border-[#e62b1e]/30"
+                      >
+                        {line.name} × {line.quantity}
+                      </span>
+                    ))
+                  : ticket.seats.map((seat, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-1.5 bg-red-600/20 text-red-400 rounded-full text-sm font-medium border border-red-500/30"
+                      >
+                        {seat.seatNumber} ({seat.seatType})
+                      </span>
+                    ))}
               </div>
             </div>
 
             {/* Total */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-4">
               <span className="text-gray-400">Total</span>
               <span className="text-xl font-bold text-white">
                 {formatCurrency(ticket.totalAmount)}
               </span>
             </div>
+
+            {/* Save link while waiting */}
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm text-gray-300 font-medium transition-colors"
+            >
+              {copied ? (
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+              {copied ? "Ticket link copied" : "Copy ticket link for later"}
+            </button>
           </div>
 
           {/* Status Info */}
-          <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
-            <div className="flex items-start gap-3 text-left">
-              <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+          <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl text-left">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
                 <Shield className="w-4 h-4 text-blue-400" />
               </div>
               <div>
                 <p className="text-sm font-medium text-blue-300 mb-1">
-                  Do not close this page
+                  Keep this page open (optional)
                 </p>
                 <p className="text-xs text-blue-400/80 leading-relaxed">
-                  This page will automatically update once your payment is
-                  verified. Your e-ticket will appear here.
+                  We update automatically when payment is verified. You can also
+                  copy the ticket link above — the token does not expire — and
+                  reopen it later from email or bookmarks.
                 </p>
               </div>
             </div>
