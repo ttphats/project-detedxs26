@@ -133,56 +133,66 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
     [order.event_id]
   );
 
-  // Get order items + optional ticket type (inventory flow)
-  const [seats] = await pool.query<
-    (OrderItem & {
-      ticket_type_id: string | null;
-      ticket_type_name: string | null;
-    })[]
-  >(
-    `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
-            oi.ticket_code AS ticket_code,
-            oi.qr_code_url AS item_qr_code_url,
-            oi.checked_in_at AS item_checked_in_at,
-            s.ticket_type_id AS ticket_type_id,
-            tt.name AS ticket_type_name
-     FROM order_items oi
-     LEFT JOIN seats s ON oi.seat_id = s.id
-     LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
-     WHERE oi.order_id = ?
-     ORDER BY oi.created_at ASC`,
-    [order.id],
-  );
-
   const event = events[0];
 
-  // Lazy-mint per-ticket units for PAID orders (migration of old orders)
-  if (order.status === 'PAID') {
-    try {
-      const {ensureTicketUnitsForOrder} = await import('../utils/ticket-unit.js');
+  // Ensure per-ticket columns exist BEFORE selecting them (prod may lag schema)
+  try {
+    const {ensureOrderItemTicketColumns, ensureTicketUnitsForOrder} = await import(
+      '../utils/ticket-unit.js'
+    );
+    await ensureOrderItemTicketColumns();
+    if (order.status === 'PAID') {
       await ensureTicketUnitsForOrder(order.id);
-      // re-read codes after mint
-      const [refreshed] = await pool.query<any[]>(
-        `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
-                oi.ticket_code AS ticket_code,
-                oi.qr_code_url AS item_qr_code_url,
-                oi.checked_in_at AS item_checked_in_at,
-                s.ticket_type_id AS ticket_type_id,
-                tt.name AS ticket_type_name
-         FROM order_items oi
-         LEFT JOIN seats s ON oi.seat_id = s.id
-         LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
-         WHERE oi.order_id = ?
-         ORDER BY oi.created_at ASC`,
-        [order.id],
-      );
-      if (refreshed?.length) {
-        seats.length = 0;
-        seats.push(...refreshed);
-      }
-    } catch (e) {
-      console.warn('[TICKET] ensureTicketUnitsForOrder:', e);
     }
+  } catch (e) {
+    console.warn('[TICKET] ensure ticket columns/units:', e);
+  }
+
+  // Load order items — try full unit columns, fall back if migration missing
+  type SeatRow = OrderItem & {
+    ticket_type_id: string | null;
+    ticket_type_name: string | null;
+    ticket_code?: string | null;
+    item_qr_code_url?: string | null;
+    item_checked_in_at?: Date | null;
+  };
+
+  let seats: SeatRow[] = [];
+  try {
+    const [rows] = await pool.query<SeatRow[]>(
+      `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
+              oi.ticket_code AS ticket_code,
+              oi.qr_code_url AS item_qr_code_url,
+              oi.checked_in_at AS item_checked_in_at,
+              s.ticket_type_id AS ticket_type_id,
+              tt.name AS ticket_type_name
+       FROM order_items oi
+       LEFT JOIN seats s ON oi.seat_id = s.id
+       LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
+       WHERE oi.order_id = ?
+       ORDER BY oi.created_at ASC`,
+      [order.id],
+    );
+    seats = rows || [];
+  } catch (e) {
+    console.warn('[TICKET] full item SELECT failed, fallback basic:', e);
+    const [rows] = await pool.query<SeatRow[]>(
+      `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
+              s.ticket_type_id AS ticket_type_id,
+              tt.name AS ticket_type_name
+       FROM order_items oi
+       LEFT JOIN seats s ON oi.seat_id = s.id
+       LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
+       WHERE oi.order_id = ?
+       ORDER BY oi.created_at ASC`,
+      [order.id],
+    );
+    seats = (rows || []).map((r) => ({
+      ...r,
+      ticket_code: null,
+      item_qr_code_url: null,
+      item_checked_in_at: null,
+    }));
   }
 
   // Group into ticket lines for ticket-class UI / email
