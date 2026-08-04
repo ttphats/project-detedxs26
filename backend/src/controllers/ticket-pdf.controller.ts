@@ -60,6 +60,46 @@ export async function generateTicketPDF(
       minute: '2-digit',
     })
 
+    // Ensure per-ticket QR units exist
+    try {
+      const {ensureTicketUnitsForOrder} = await import('../utils/ticket-unit.js')
+      await ensureTicketUnitsForOrder(order.id)
+    } catch (e) {
+      console.warn('[PDF] ensureTicketUnitsForOrder:', e)
+    }
+
+    // Reload items with ticket codes
+    const {query} = await import('../db/mysql.js')
+    const {humanizeSeatType} = await import('../utils/ticket-lines.js')
+    const unitRows = await query<{
+      ticket_code: string | null
+      qr_code_url: string | null
+      seat_number: string
+      seat_type: string
+      price: number
+      ticket_type_name: string | null
+    }>(
+      `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
+              tt.name AS ticket_type_name
+       FROM order_items oi
+       LEFT JOIN seats s ON s.id = oi.seat_id
+       LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+       WHERE oi.order_id = ?
+       ORDER BY oi.created_at ASC`,
+      [order.id],
+    )
+
+    const ticketUnits = unitRows.map((r, i) => ({
+      index: i + 1,
+      ticketCode: r.ticket_code || `UNIT-${i + 1}`,
+      qrCodeUrl: r.qr_code_url || order.qrCodeUrl,
+      typeName:
+        (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
+        humanizeSeatType(r.seat_type),
+      seatNumber: r.seat_number,
+      price: Number(r.price),
+    }))
+
     // Generate HTML template for PDF
     const html = generateTicketHTML({
       orderNumber: order.orderNumber,
@@ -72,6 +112,7 @@ export async function generateTicketPDF(
         number: item.seat?.seatNumber || item.seatNumber,
         type: item.seat?.seatType || item.seatType,
       })),
+      ticketUnits,
       qrCodeUrl: order.qrCodeUrl,
       totalAmount: Number(order.totalAmount),
     })
@@ -119,9 +160,60 @@ function generateTicketHTML(data: {
   eventTime: string
   eventVenue: string
   seats: Array<{number: string; type: string}>
+  ticketUnits?: Array<{
+    index: number
+    ticketCode: string
+    qrCodeUrl: string | null
+    typeName: string
+    seatNumber: string
+    price: number
+  }>
   qrCodeUrl: string | null
   totalAmount: number
 }): string {
+  const units = data.ticketUnits || []
+  const unitsSection =
+    units.length > 0
+      ? `
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">📱</span>
+          <span class="section-title">Check-in QR (${units.length} vé)</span>
+        </div>
+        <div class="units-grid">
+          ${units
+            .map(
+              (u) => `
+          <div class="unit-card">
+            <div class="unit-title">${u.typeName}</div>
+            <div class="unit-code">${u.ticketCode}</div>
+            ${
+              u.qrCodeUrl
+                ? `<div class="unit-qr"><img src="${u.qrCodeUrl}" alt="${u.ticketCode}" /></div>`
+                : ''
+            }
+            <div class="unit-price">${Number(u.price).toLocaleString('vi-VN')}đ</div>
+          </div>`,
+            )
+            .join('')}
+        </div>
+        <div class="qr-hint">Mỗi QR = 1 lượt check-in · quét từng người</div>
+      </div>`
+      : data.qrCodeUrl
+        ? `
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">📱</span>
+          <span class="section-title">Mã check-in</span>
+        </div>
+        <div class="qr-section">
+          <div class="qr-container">
+            <img src="${data.qrCodeUrl}" alt="QR Code" />
+          </div>
+          <div class="qr-hint">Quét mã này tại quầy check-in</div>
+        </div>
+      </div>`
+        : ''
   return `
 <!DOCTYPE html>
 <html lang="vi">
@@ -148,6 +240,44 @@ function generateTicketHTML(data: {
       overflow: hidden;
       border: 1px solid rgba(255, 255, 255, 0.1);
       box-shadow: 0 0 40px rgba(220, 38, 38, 0.3);
+    }
+    .units-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .unit-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      page-break-inside: avoid;
+    }
+    .unit-title {
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .unit-code {
+      color: #e62b1e;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .unit-qr img {
+      width: 120px;
+      height: 120px;
+      background: #fff;
+      border-radius: 8px;
+      padding: 6px;
+    }
+    .unit-price {
+      color: #9ca3af;
+      font-size: 11px;
+      margin-top: 6px;
     }
     /* Logo Section */
     .logo {
@@ -429,45 +559,39 @@ function generateTicketHTML(data: {
         </div>
       </div>
 
-      <!-- Seats -->
+      <!-- Ticket types / seats summary -->
       <div class="section">
         <div class="section-header">
           <span class="section-icon">🎫</span>
-          <span class="section-title">Ghế ngồi</span>
+          <span class="section-title">${units.length > 0 ? 'Loại vé' : 'Ghế ngồi'}</span>
         </div>
         <div class="seats-grid">
-          ${data.seats
-            .map(
-              (seat) => `
+          ${
+            units.length > 0
+              ? units
+                  .map(
+                    (u) => `
+          <div class="seat-card">
+            <div class="seat-number">${u.typeName}</div>
+            <div class="seat-type">${u.ticketCode}</div>
+          </div>`,
+                  )
+                  .join('')
+              : data.seats
+                  .map(
+                    (seat) => `
           <div class="seat-card ${seat.type === 'VIP' ? 'vip' : ''}">
             <div class="seat-number">${seat.number}</div>
             <div class="seat-type">${seat.type}</div>
-          </div>
-          `
-            )
-            .join('')}
+          </div>`,
+                  )
+                  .join('')
+          }
         </div>
       </div>
 
-      <!-- QR Code -->
-      ${
-        data.qrCodeUrl
-          ? `
-      <div class="section">
-        <div class="section-header">
-          <span class="section-icon">📱</span>
-          <span class="section-title">Mã check-in</span>
-        </div>
-        <div class="qr-section">
-          <div class="qr-container">
-            <img src="${data.qrCodeUrl}" alt="QR Code" />
-          </div>
-          <div class="qr-hint">Quét mã này tại quầy check-in</div>
-        </div>
-      </div>
-      `
-          : ''
-      }
+      <!-- Per-ticket QR units (model B) or legacy single QR -->
+      ${unitsSection}
     </div>
   </div>
 </body>
