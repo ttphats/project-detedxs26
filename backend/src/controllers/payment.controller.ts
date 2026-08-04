@@ -176,9 +176,48 @@ async function processPaymentConfirmation(
       const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
 
       // Per-ticket unique codes + QR (model B) — must finish before email
+      let ticketUnits: Array<{
+        ticketCode: string
+        qrCodeUrl: string
+        typeName: string
+        seatNumber?: string
+        price: number
+        index: number
+      }> = []
       try {
         const {ensureTicketUnitsForOrder} = await import('../utils/ticket-unit.js')
+        const {query} = await import('../db/mysql.js')
+        const {humanizeSeatType} = await import('../utils/ticket-lines.js')
         await ensureTicketUnitsForOrder(order.id)
+        const rows = await query<{
+          ticket_code: string
+          qr_code_url: string
+          seat_number: string
+          seat_type: string
+          price: number
+          ticket_type_name: string | null
+        }>(
+          `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
+                  tt.name AS ticket_type_name
+           FROM order_items oi
+           LEFT JOIN seats s ON s.id = oi.seat_id
+           LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+           WHERE oi.order_id = ?
+           ORDER BY oi.created_at ASC`,
+          [order.id],
+        )
+        ticketUnits = rows
+          .filter((r) => r.ticket_code && r.qr_code_url)
+          .map((r, i) => ({
+            ticketCode: r.ticket_code,
+            qrCodeUrl: r.qr_code_url,
+            typeName:
+              (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
+              humanizeSeatType(r.seat_type),
+            seatNumber: r.seat_number,
+            price: Number(r.price),
+            index: i + 1,
+          }))
       } catch (e) {
         console.error('[PAYMENT] ensureTicketUnitsForOrder failed:', e)
       }
@@ -186,7 +225,7 @@ async function processPaymentConfirmation(
       // Send email (fire and forget)
       const eventDate = new Date(order.event.eventDate)
 
-      // Inventory ticket lines (type × qty) for email — keep seat string for seat-map templates
+      // Inventory ticket lines (type × qty) for email summary string
       const {buildTicketLines, formatTicketLinesSummary} = await import(
         '../utils/ticket-lines.js'
       )
@@ -206,7 +245,6 @@ async function processPaymentConfirmation(
               .map((item: any) => `${item.seatNumber} (${item.seatType})`)
               .join(', ')
 
-      // Format date and time
       const formattedDate = eventDate.toLocaleDateString('vi-VN', {
         weekday: 'long',
         year: 'numeric',
@@ -218,8 +256,7 @@ async function processPaymentConfirmation(
         minute: '2-digit',
       })
 
-      console.log('[EMAIL] Sending ticket email with URL:', ticketUrl)
-      console.log('[EMAIL] ticketLines:', formatTicketLinesSummary(ticketLines))
+      console.log('[EMAIL] ticketUnits:', ticketUnits.length, 'url:', ticketUrl)
 
       sendEmailByPurpose({
         purpose: 'TICKET_CONFIRMED',
@@ -235,14 +272,14 @@ async function processPaymentConfirmation(
           eventVenue: order.event.venue,
           eventAddress: order.event.venue,
           orderNumber: order.orderNumber,
-          // String summary for DB templates: "Early Bird × 2, Standard × 1"
           seats: seatsList,
-          // Structured list for HTML template that supports ticketLines
           ticketLines,
+          // Model B: drives multi-QR email HTML
+          ticketUnits,
           bookingMode: ticketLines.some((l) => l.ticketTypeId)
             ? 'TICKET_CLASS'
             : 'SEAT_MAP',
-          ticketCount: order.orderItems.length,
+          ticketCount: ticketUnits.length || order.orderItems.length,
           totalAmount: Number(order.totalAmount),
           qrCodeUrl,
           ticketUrl,
