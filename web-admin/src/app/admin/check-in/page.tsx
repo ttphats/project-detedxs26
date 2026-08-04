@@ -15,7 +15,16 @@ interface CheckInResult {
   orderNumber: string;
   customerName: string;
   customerEmail: string;
-  seatNumbers: string[];
+  seatNumbers?: string[];
+  ticketCode?: string;
+  typeName?: string;
+  ticketsCheckedIn?: string[];
+  progress?: {
+    total: number;
+    checkedIn: number;
+    pending: number;
+    ticketLines?: Array<{ name: string; quantity: number }>;
+  };
   event: {
     name: string;
   };
@@ -244,14 +253,24 @@ export default function CheckInPage() {
   };
 
   const processQRResult = async (decodedText: string) => {
-    // Extract order number from URL: https://tedxfptuniversityhcmc.com/check-in/TKHXXXXXXX
-    const match = decodedText.match(/\/check-in\/([A-Z0-9]+)/);
-    if (!match) {
-      message.error("Invalid QR code format");
+    // Model B: plain TKT-XXXXXXXX (preferred)
+    // Legacy URL: /check-in/TKHXXXX or order number
+    const raw = String(decodedText || "").trim();
+    const tktMatch = raw.match(/TKT-[A-F0-9]+/i);
+    const orderFromUrl = raw.match(/\/check-in\/([A-Z0-9]+)/i);
+    const ticketCode = tktMatch ? tktMatch[0].toUpperCase() : null;
+    const orderNumber = !ticketCode
+      ? orderFromUrl
+        ? orderFromUrl[1].toUpperCase()
+        : /^[A-Z0-9]{6,}$/i.test(raw)
+          ? raw.toUpperCase()
+          : null
+      : null;
+
+    if (!ticketCode && !orderNumber) {
+      message.error("Invalid QR — expect TKT-xxx ticket code");
       return;
     }
-
-    const orderNumber = match[1];
 
     // Set processing state
     setProcessing(true);
@@ -259,11 +278,10 @@ export default function CheckInPage() {
     // Call check-in API
     try {
       const token = localStorage.getItem("token");
-      console.log("[CHECK-IN] Calling API with order:", orderNumber);
-      console.log(
-        "[CHECK-IN] Token:",
-        token ? token.substring(0, 20) + "..." : "NO TOKEN",
-      );
+      const payload = ticketCode
+        ? { ticketCode }
+        : { orderNumber: orderNumber! };
+      console.log("[CHECK-IN] Calling API with:", payload);
 
       const res = await fetch("/api/admin/check-in", {
         method: "POST",
@@ -271,7 +289,7 @@ export default function CheckInPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ orderNumber }),
+        body: JSON.stringify(payload),
       });
 
       console.log("[CHECK-IN] Response status:", res.status);
@@ -279,14 +297,17 @@ export default function CheckInPage() {
       console.log("[CHECK-IN] Response data:", data);
 
       if (data.success) {
-        message.success(`✅ Check-in successful: ${data.data.customerName}`, 5);
+        const label = data.data.ticketCode
+          ? `${data.data.ticketCode} · ${data.data.typeName || "Ticket"}`
+          : data.data.customerName;
+        message.success(`✅ Check-in OK: ${label}`, 5);
         setLastResult(data.data);
 
-        // Update stats
+        // Update stats (prefer pax if present)
         setStats((prev) => ({
           ...prev,
           checkedIn: prev.checkedIn + 1,
-          pending: prev.pending - 1,
+          pending: Math.max(0, prev.pending - 1),
         }));
 
         // Play success sound
@@ -454,6 +475,13 @@ export default function CheckInPage() {
                   <span className="font-semibold">Order:</span>{" "}
                   {lastResult.orderNumber}
                 </div>
+                {lastResult.ticketCode && (
+                  <div>
+                    <span className="font-semibold">Ticket:</span>{" "}
+                    <span className="font-mono">{lastResult.ticketCode}</span>
+                    {lastResult.typeName ? ` · ${lastResult.typeName}` : ""}
+                  </div>
+                )}
                 <div>
                   <span className="font-semibold">Customer:</span>{" "}
                   {lastResult.customerName}
@@ -462,10 +490,20 @@ export default function CheckInPage() {
                   <span className="font-semibold">Email:</span>{" "}
                   {lastResult.customerEmail}
                 </div>
-                <div>
-                  <span className="font-semibold">Seats:</span>{" "}
-                  {lastResult.seatNumbers.join(", ")}
-                </div>
+                {lastResult.progress && (
+                  <div>
+                    <span className="font-semibold">Order progress:</span>{" "}
+                    {lastResult.progress.checkedIn}/{lastResult.progress.total}{" "}
+                    tickets in
+                  </div>
+                )}
+                {lastResult.seatNumbers &&
+                  lastResult.seatNumbers.length > 0 && (
+                    <div>
+                      <span className="font-semibold">Seats:</span>{" "}
+                      {lastResult.seatNumbers.join(", ")}
+                    </div>
+                  )}
                 <div>
                   <span className="font-semibold">Event:</span>{" "}
                   {lastResult.event.name}

@@ -5,8 +5,16 @@ import {UnauthorizedError, ForbiddenError, BadRequestError} from '../../utils/er
 import {prisma} from '../../db/prisma.js'
 import {requireAdmin} from '../../utils/auth.js'
 
+// Accept ticket unit code (TKT-xxx) OR legacy orderNumber
 const checkInSchema = z.object({
-  orderNumber: z.string().min(1, 'Order number is required'),
+  // Preferred: unique per-ticket code
+  ticketCode: z.string().min(1).optional(),
+  // Alias used by some scanners / UI fields
+  code: z.string().min(1).optional(),
+  // Legacy order-level check-in
+  orderNumber: z.string().min(1).optional(),
+}).refine((b) => !!(b.ticketCode || b.code || b.orderNumber), {
+  message: 'ticketCode or orderNumber is required',
 })
 
 const checkInStatusSchema = z.object({
@@ -14,12 +22,13 @@ const checkInStatusSchema = z.object({
 })
 
 const statsSchema = z.object({
-  eventId: z.string().uuid('Invalid event ID'),
+  eventId: z.string().min(1, 'Invalid event ID'),
 })
 
 /**
  * POST /api/admin/check-in
- * Check in an order
+ * Body: { ticketCode: "TKT-..." } preferred
+ *    or { orderNumber: "TKH..." } legacy (checks in ALL remaining units)
  */
 export async function checkIn(request: FastifyRequest, reply: FastifyReply) {
   const user = request.user
@@ -33,13 +42,15 @@ export async function checkIn(request: FastifyRequest, reply: FastifyReply) {
   }
 
   const body = checkInSchema.parse(request.body)
+  const scanValue = body.ticketCode || body.code || body.orderNumber || ''
 
-  const result = await checkinService.checkInOrder(body.orderNumber, user.userId)
+  const result = await checkinService.checkIn(scanValue, user.userId)
 
   return reply.send({
     success: true,
     data: result.order,
     message: result.message,
+    mode: (result as {mode?: string}).mode,
   })
 }
 

@@ -195,19 +195,25 @@ model Order {
 }
 
 model OrderItem {
-  id         String   @id @default(uuid()) @db.VarChar(36)
-  orderId    String   @map("order_id") @db.VarChar(36)
-  seatId     String   @map("seat_id") @db.VarChar(36)
-  price      Decimal  @db.Decimal(10, 2)
-  seatNumber String   @map("seat_number") @db.VarChar(20)
-  seatType   String   @map("seat_type") @db.VarChar(20)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  orderId     String    @map("order_id") @db.VarChar(36)
+  seatId      String?   @map("seat_id") @db.VarChar(36)
+  price       Decimal   @db.Decimal(10, 2)
+  seatNumber  String    @map("seat_number") @db.VarChar(20)
+  seatType    String    @map("seat_type") @db.VarChar(20)
+  ticketCode  String?   @unique @map("ticket_code") @db.VarChar(32)
+  qrCodeUrl   String?   @map("qr_code_url") @db.VarChar(500)
+  checkedInAt DateTime? @map("checked_in_at")
+  checkedInBy String?   @map("checked_in_by") @db.VarChar(36)
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  seat  Seat  @relation(fields: [seatId], references: [id])
+  seat  Seat? @relation(fields: [seatId], references: [id])
 
   @@index([orderId])
   @@index([seatId])
+  @@index([ticketCode])
+  @@index([checkedInAt])
   @@map("order_items")
 }
 
