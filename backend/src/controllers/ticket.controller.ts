@@ -47,11 +47,16 @@ export async function getTicket(
       success: true,
       data: result.data,
     });
-  } catch (error) {
-    console.error('Ticket view error:', error);
+  } catch (error: any) {
+    console.error('Ticket view error:', error?.message || error, error?.stack);
     return reply.status(500).send({
       success: false,
       error: 'Failed to load ticket',
+      // surface safe hint for debugging (no secrets)
+      detail:
+        process.env.NODE_ENV !== 'production'
+          ? String(error?.message || error)
+          : undefined,
     });
   }
 }
