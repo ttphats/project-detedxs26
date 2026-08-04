@@ -33,6 +33,18 @@ interface TicketLine {
   lineTotal: number;
 }
 
+interface TicketUnit {
+  id: string;
+  index: number;
+  ticketCode: string | null;
+  qrCodeUrl: string | null;
+  typeName: string;
+  seatNumber: string;
+  price: number;
+  checkedIn: boolean;
+  checkedInAt: string | null;
+}
+
 interface TicketData {
   orderNumber: string;
   status: string;
@@ -45,6 +57,8 @@ interface TicketData {
   canDownload: boolean;
   bookingMode?: "TICKET_CLASS" | "SEAT_MAP";
   ticketLines?: TicketLine[];
+  ticketUnits?: TicketUnit[];
+  checkInProgress?: { total: number; checkedIn: number; pending: number };
   tokenNeverExpires?: boolean;
   event: {
     id: string;
@@ -571,27 +585,91 @@ function OrderWaitingContent() {
                   )}
                 </div>
 
-                {/* QR Code */}
-                {ticket.qrCodeUrl && (
-                  <div className="mb-6 flex flex-col items-center">
-                    <div className="flex items-center gap-2 mb-3">
-                      <QrCode className="w-4 h-4 text-gray-500" />
-                      <span className="text-xs text-gray-500 uppercase tracking-wide">
-                        Check-in Code
-                      </span>
+                {/* Per-ticket QR units (model B) */}
+                {ticket.ticketUnits && ticket.ticketUnits.length > 0 ? (
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <QrCode className="w-4 h-4 text-gray-500" />
+                        <span className="text-xs text-gray-500 uppercase tracking-wide">
+                          Check-in QR ({ticket.ticketUnits.length})
+                        </span>
+                      </div>
+                      {ticket.checkInProgress && (
+                        <span className="text-[11px] text-gray-500 tabular-nums">
+                          {ticket.checkInProgress.checkedIn}/
+                          {ticket.checkInProgress.total} in
+                        </span>
+                      )}
                     </div>
-                    <div className="bg-white rounded-xl p-3 flex items-center justify-center">
-                      <img
-                        src={ticket.qrCodeUrl}
-                        alt="QR Code"
-                        className="w-56 h-56 sm:w-64 sm:h-64 object-contain"
-                        style={{ imageRendering: "crisp-edges" }}
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {ticket.ticketUnits.map((unit) => (
+                        <div
+                          key={unit.id || unit.index}
+                          className={`rounded-xl border p-3 ${
+                            unit.checkedIn
+                              ? "border-emerald-500/30 bg-emerald-500/5"
+                              : "border-white/10 bg-white/[0.03]"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-white truncate">
+                                {unit.typeName}
+                              </p>
+                              <p className="text-[11px] text-gray-500 font-mono">
+                                {unit.ticketCode || `Ticket #${unit.index}`}
+                              </p>
+                            </div>
+                            <span
+                              className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full shrink-0 ${
+                                unit.checkedIn
+                                  ? "bg-emerald-500/20 text-emerald-300"
+                                  : "bg-white/10 text-gray-400"
+                              }`}
+                            >
+                              {unit.checkedIn ? "In" : "Ready"}
+                            </span>
+                          </div>
+                          {unit.qrCodeUrl && (
+                            <div className="bg-white rounded-lg p-2 flex items-center justify-center">
+                              <img
+                                src={unit.qrCodeUrl}
+                                alt={unit.ticketCode || "QR"}
+                                className="w-36 h-36 object-contain"
+                                style={{ imageRendering: "crisp-edges" }}
+                              />
+                            </div>
+                          )}
+                          <p className="text-[11px] text-gray-500 mt-2 text-center tabular-nums">
+                            {Number(unit.price).toLocaleString("en-US")} VND
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-xs text-gray-500 mt-2 text-center">
-                      Present this code at check-in
+                    <p className="text-[11px] text-gray-600 mt-3 text-center">
+                      Each QR is unique — staff scan once per person
                     </p>
                   </div>
+                ) : (
+                  ticket.qrCodeUrl && (
+                    <div className="mb-6 flex flex-col items-center">
+                      <div className="flex items-center gap-2 mb-3">
+                        <QrCode className="w-4 h-4 text-gray-500" />
+                        <span className="text-xs text-gray-500 uppercase tracking-wide">
+                          Check-in Code
+                        </span>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 flex items-center justify-center">
+                        <img
+                          src={ticket.qrCodeUrl}
+                          alt="QR Code"
+                          className="w-56 h-56 sm:w-64 sm:h-64 object-contain"
+                          style={{ imageRendering: "crisp-edges" }}
+                        />
+                      </div>
+                    </div>
+                  )
                 )}
 
                 {/* Total */}
