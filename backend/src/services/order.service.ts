@@ -653,7 +653,7 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
     throw new ForbiddenError('Invalid access token')
   }
 
-  // Get order items joined with seats to include row/section for seat map rendering
+  // Get order items joined with seats (seat flow + ticket inventory metadata)
   const items = await query<{
     id: string
     seat_id: string | null
@@ -662,11 +662,16 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
     price: number
     row: string | null
     section: string | null
+    ticket_type_id: string | null
+    ticket_type_name: string | null
   }>(
     `SELECT oi.id, oi.seat_id, oi.seat_number, oi.seat_type, oi.price,
-            s.row AS row, s.section AS section
+            s.row AS row, s.section AS section,
+            s.ticket_type_id AS ticket_type_id,
+            tt.name AS ticket_type_name
      FROM order_items oi
      LEFT JOIN seats s ON oi.seat_id = s.id
+     LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
      WHERE oi.order_id = ?`,
     [order.id]
   )
@@ -685,7 +690,46 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
     row: item.row || '',
     section: item.section || '',
     price: Number(item.price),
+    ticketTypeId: item.ticket_type_id || null,
+    ticketTypeName: item.ticket_type_name || null,
   }))
+
+  // Inventory view for ticket-class checkout (group by ticket type / price)
+  // Does not remove seats[] — seat-map page/email still use seat numbers.
+  const lineMap = new Map<
+    string,
+    {
+      ticketTypeId: string | null
+      name: string
+      unitPrice: number
+      quantity: number
+      lineTotal: number
+    }
+  >()
+  for (const item of items) {
+    const unitPrice = Number(item.price)
+    const name =
+      (item.ticket_type_name && String(item.ticket_type_name).trim()) ||
+      humanizeSeatType(item.seat_type) ||
+      'Ticket'
+    const key = `${item.ticket_type_id || 'none'}|${name}|${unitPrice}`
+    const existing = lineMap.get(key)
+    if (existing) {
+      existing.quantity += 1
+      existing.lineTotal += unitPrice
+    } else {
+      lineMap.set(key, {
+        ticketTypeId: item.ticket_type_id || null,
+        name,
+        unitPrice,
+        quantity: 1,
+        lineTotal: unitPrice,
+      })
+    }
+  }
+  const ticketLines = Array.from(lineMap.values())
+  // Ticket-class if we resolved at least one named ticket type from inventory assign
+  const isTicketClassOrder = items.some((i) => !!i.ticket_type_id || !!i.ticket_type_name)
 
   return {
     id: order.id,
@@ -706,14 +750,31 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
     customerEmail: order.customer_email,
     customerPhone: order.customer_phone,
     createdAt: order.created_at,
+    // NEW: inventory-style lines for /tickets → checkout
+    bookingMode: isTicketClassOrder ? 'TICKET_CLASS' : 'SEAT_MAP',
+    ticketLines,
     items: items.map((item) => ({
       id: item.id,
       seatNumber: item.seat_number,
       seatType: item.seat_type,
       price: Number(item.price),
+      ticketTypeId: item.ticket_type_id || null,
+      ticketTypeName: item.ticket_type_name || null,
     })),
+    // KEEP for seat-map flow / legacy clients
     seats: mappedSeats,
   }
+}
+
+function humanizeSeatType(seatType: string | null | undefined): string {
+  const s = String(seatType || '').toUpperCase()
+  if (!s) return 'Ticket'
+  if (s.includes('VIP')) return 'VIP'
+  if (s.includes('DONOR')) return 'Donor'
+  if (s.includes('ECONOMY') || s.includes('EARLY')) return 'Early Bird'
+  if (s.includes('STANDARD') || s.includes('LEVEL_2')) return 'Standard'
+  if (s.startsWith('LEVEL_')) return s.replace('LEVEL_', 'Level ')
+  return s
 }
 
 
@@ -1023,6 +1084,16 @@ export async function createPendingOrderByTicketType(
           seat.seat_type,
         ]
       )
+      // Tag seat with ticket type so checkout inventory view + stock counting stay accurate.
+      // Does not change seat_number/seat_type — seat-map page still works.
+      try {
+        await execute(
+          `UPDATE seats SET ticket_type_id = ?, updated_at = NOW() WHERE id = ?`,
+          [seat.ticketTypeId, seat.id]
+        )
+      } catch (e) {
+        console.warn('[CREATE PENDING BY TYPE] tag ticket_type_id failed:', e)
+      }
     }
 
     if (promotionId) {

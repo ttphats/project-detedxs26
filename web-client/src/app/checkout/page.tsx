@@ -254,7 +254,8 @@ function CheckoutContent() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Seats from pending order (ticket-class + seat-map flows) or legacy seatIds
+  // Seat-map flow: keep seat list (legacy + /seats page).
+  // Ticket-class flow: use inventory ticketLines (type × qty) — no seat numbers in UI.
   const selectedSeats: Seat[] = (() => {
     if (orderData?.seats?.length) {
       return orderData.seats.map((s: any) => ({
@@ -270,7 +271,6 @@ function CheckoutContent() {
         price: Number(s.price) || 0,
       }));
     }
-    // Some payloads only return items[]
     if (orderData?.items?.length) {
       return orderData.items.map((s: any, idx: number) => ({
         id: s.seatId || s.id || `item-${idx}`,
@@ -280,7 +280,7 @@ function CheckoutContent() {
           parseInt(String(s.seatNumber || "").replace(/\D/g, ""), 10) || 0,
         section: "",
         status: "RESERVED",
-        ticketTypeId: "",
+        ticketTypeId: s.ticketTypeId || "",
         seatType: s.seatType || "",
         price: Number(s.price) || 0,
       }));
@@ -292,10 +292,63 @@ function CheckoutContent() {
     }
     return [];
   })();
+
+  type TicketLine = {
+    ticketTypeId: string | null;
+    name: string;
+    unitPrice: number;
+    quantity: number;
+    lineTotal: number;
+  };
+
+  const isTicketClass =
+    orderData?.bookingMode === "TICKET_CLASS" ||
+    (Array.isArray(orderData?.ticketLines) && orderData.ticketLines.length > 0);
+
+  const ticketLines: TicketLine[] = (() => {
+    if (Array.isArray(orderData?.ticketLines) && orderData.ticketLines.length) {
+      return orderData.ticketLines.map((l: any) => ({
+        ticketTypeId: l.ticketTypeId ?? null,
+        name: l.name || "Ticket",
+        unitPrice: Number(l.unitPrice) || 0,
+        quantity: Number(l.quantity) || 0,
+        lineTotal:
+          Number(l.lineTotal) ||
+          (Number(l.unitPrice) || 0) * (Number(l.quantity) || 0),
+      }));
+    }
+    // Client-side group fallback from seats/items
+    if (!selectedSeats.length) return [];
+    const map = new Map<string, TicketLine>();
+    for (const s of selectedSeats) {
+      const name = s.seatType || "Ticket";
+      const key = `${s.ticketTypeId || ""}|${name}|${s.price}`;
+      const cur = map.get(key);
+      if (cur) {
+        cur.quantity += 1;
+        cur.lineTotal += s.price;
+      } else {
+        map.set(key, {
+          ticketTypeId: s.ticketTypeId || null,
+          name,
+          unitPrice: s.price,
+          quantity: 1,
+          lineTotal: s.price,
+        });
+      }
+    }
+    return Array.from(map.values());
+  })();
+
+  const hasOrderLines =
+    (isTicketClass && ticketLines.length > 0) || selectedSeats.length > 0;
+
   const totalPrice =
     orderData?.totalAmount != null
       ? Number(orderData.totalAmount)
-      : selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
+      : isTicketClass
+        ? ticketLines.reduce((s, l) => s + l.lineTotal, 0)
+        : selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
   const transferContent = `Ticket payment order ${orderCode}`;
 
   const formatENDate = (dateStr: string) => {
@@ -389,10 +442,8 @@ function CheckoutContent() {
     );
   }
 
-  // Ticket-class: event + seats come from order; seat-map legacy still needs both.
-  const hasOrderSeats = selectedSeats.length > 0;
   const hasEventMeta = !!(event?.id || event?.name || orderData?.eventName);
-  if (orderError && !hasOrderSeats) {
+  if (orderError && !hasOrderLines) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center px-4">
         <div className="text-center glass-panel p-8 rounded-2xl max-w-md">
@@ -411,7 +462,7 @@ function CheckoutContent() {
     );
   }
 
-  if (!hasOrderSeats || !hasEventMeta) {
+  if (!hasOrderLines || !hasEventMeta) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center px-4">
         <div className="text-center glass-panel p-8 rounded-2xl max-w-md">
@@ -419,7 +470,7 @@ function CheckoutContent() {
             Order Not Found
           </h1>
           <p className="text-gray-500 text-sm mb-6">
-            Missing order seats or event info. Please start again from the
+            Missing order items or event info. Please start again from the
             ticket page.
           </p>
           <Link
@@ -789,19 +840,45 @@ function CheckoutContent() {
                 </div>
 
                 <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
-                  {selectedSeats.map((seat) => (
-                    <div
-                      key={seat.id}
-                      className="flex justify-between text-sm py-2 border-b border-white/5"
-                    >
-                      <span className="text-gray-300">
-                        Seat {seat.seatNumber}
-                      </span>
-                      <span className="font-medium text-white">
-                        {seat.price.toLocaleString("en-US")} VND
-                      </span>
-                    </div>
-                  ))}
+                  {isTicketClass
+                    ? ticketLines.map((line, idx) => (
+                        <div
+                          key={`${line.ticketTypeId || line.name}-${idx}`}
+                          className="flex justify-between text-sm py-2 border-b border-white/5 gap-3"
+                        >
+                          <span className="text-gray-300 min-w-0">
+                            <span className="text-white font-medium">
+                              {line.name}
+                            </span>
+                            <span className="text-gray-500">
+                              {" "}
+                              × {line.quantity}
+                            </span>
+                            {line.unitPrice > 0 && (
+                              <span className="block text-[11px] text-gray-600 mt-0.5">
+                                {line.unitPrice.toLocaleString("en-US")} VND
+                                each
+                              </span>
+                            )}
+                          </span>
+                          <span className="font-medium text-white shrink-0 tabular-nums">
+                            {line.lineTotal.toLocaleString("en-US")} VND
+                          </span>
+                        </div>
+                      ))
+                    : selectedSeats.map((seat) => (
+                        <div
+                          key={seat.id}
+                          className="flex justify-between text-sm py-2 border-b border-white/5"
+                        >
+                          <span className="text-gray-300">
+                            Seat {seat.seatNumber}
+                          </span>
+                          <span className="font-medium text-white">
+                            {seat.price.toLocaleString("en-US")} VND
+                          </span>
+                        </div>
+                      ))}
                 </div>
 
                 <div className="p-4 bg-linear-to-r from-red-600/20 to-transparent rounded-xl mb-6">
