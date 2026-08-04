@@ -141,16 +141,49 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
     })[]
   >(
     `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
+            oi.ticket_code AS ticket_code,
+            oi.qr_code_url AS item_qr_code_url,
+            oi.checked_in_at AS item_checked_in_at,
             s.ticket_type_id AS ticket_type_id,
             tt.name AS ticket_type_name
      FROM order_items oi
      LEFT JOIN seats s ON oi.seat_id = s.id
      LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
-     WHERE oi.order_id = ?`,
+     WHERE oi.order_id = ?
+     ORDER BY oi.created_at ASC`,
     [order.id],
   );
 
   const event = events[0];
+
+  // Lazy-mint per-ticket units for PAID orders (migration of old orders)
+  if (order.status === 'PAID') {
+    try {
+      const {ensureTicketUnitsForOrder} = await import('../utils/ticket-unit.js');
+      await ensureTicketUnitsForOrder(order.id);
+      // re-read codes after mint
+      const [refreshed] = await pool.query<any[]>(
+        `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
+                oi.ticket_code AS ticket_code,
+                oi.qr_code_url AS item_qr_code_url,
+                oi.checked_in_at AS item_checked_in_at,
+                s.ticket_type_id AS ticket_type_id,
+                tt.name AS ticket_type_name
+         FROM order_items oi
+         LEFT JOIN seats s ON oi.seat_id = s.id
+         LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
+         WHERE oi.order_id = ?
+         ORDER BY oi.created_at ASC`,
+        [order.id],
+      );
+      if (refreshed?.length) {
+        seats.length = 0;
+        seats.push(...refreshed);
+      }
+    } catch (e) {
+      console.warn('[TICKET] ensureTicketUnitsForOrder:', e);
+    }
+  }
 
   // Group into ticket lines for ticket-class UI / email
   const lineMap = new Map<
@@ -188,6 +221,30 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
     (s) => !!s.ticket_type_id || !!s.ticket_type_name,
   );
 
+  const ticketUnits = seats.map((seat: any, index: number) => {
+    const typeName =
+      (seat.ticket_type_name && String(seat.ticket_type_name).trim()) ||
+      humanizeSeatType(seat.seat_type);
+    return {
+      id: seat.id,
+      index: index + 1,
+      ticketCode: seat.ticket_code || null,
+      qrCodeUrl:
+        order.status === 'PAID'
+          ? seat.item_qr_code_url || order.qr_code_url
+          : null,
+      typeName,
+      ticketTypeId: seat.ticket_type_id || null,
+      seatNumber: seat.seat_number,
+      seatType: seat.seat_type,
+      price: Number(seat.price),
+      checkedIn: !!seat.item_checked_in_at,
+      checkedInAt: seat.item_checked_in_at || null,
+    };
+  });
+
+  const unitsCheckedIn = ticketUnits.filter((u) => u.checkedIn).length;
+
   return {
     data: {
       orderNumber: order.order_number,
@@ -195,14 +252,25 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
       customerName: order.customer_name,
       totalAmount: Number(order.total_amount),
       createdAt: order.created_at,
-      checkedIn: !!order.checked_in_at,
+      // Order-level: fully checked in when all units are in
+      checkedIn:
+        ticketUnits.length > 0
+          ? unitsCheckedIn === ticketUnits.length
+          : !!order.checked_in_at,
       checkedInAt: order.checked_in_at,
+      checkInProgress: {
+        total: ticketUnits.length,
+        checkedIn: unitsCheckedIn,
+        pending: ticketUnits.length - unitsCheckedIn,
+      },
       qrCodeUrl: order.status === 'PAID' ? order.qr_code_url : null,
       canDownload: order.status === 'PAID',
       // Permanent link auth: token is hash-only (does NOT expire by time)
       tokenNeverExpires: true,
       bookingMode: isTicketClass ? 'TICKET_CLASS' : 'SEAT_MAP',
       ticketLines,
+      // Model B: one QR / unique code per physical ticket
+      ticketUnits,
       event: event
         ? {
             id: event.id,
@@ -216,12 +284,15 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
           }
         : null,
       // Keep seats for seat-map flow
-      seats: seats.map((seat) => ({
+      seats: seats.map((seat: any) => ({
         seatNumber: seat.seat_number,
         seatType: seat.seat_type,
         price: Number(seat.price),
         ticketTypeId: seat.ticket_type_id || null,
         ticketTypeName: seat.ticket_type_name || null,
+        ticketCode: seat.ticket_code || null,
+        qrCodeUrl: seat.item_qr_code_url || null,
+        checkedIn: !!seat.item_checked_in_at,
       })),
     },
   };
