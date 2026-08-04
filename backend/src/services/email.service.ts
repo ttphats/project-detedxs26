@@ -132,19 +132,37 @@ export interface SendEmailByPurposeOptions {
   triggeredBy?: string;
   allowDuplicate?: boolean;
   businessEvent?: string;
+  /** When set (admin confirm), MUST use this template from Email Templates. */
+  templateId?: string;
 }
 
 /**
- * Send email by purpose (uses default template for that purpose)
+ * Send email using admin Email Template only (no hardcoded override).
+ * - templateId preferred (admin picker)
+ * - else default active template for purpose
+ * - ticketUnits → filled into {{ticketUnitsHtml}} if present in template
  */
 export async function sendEmailByPurpose(options: SendEmailByPurposeOptions): Promise<EmailResult> {
-  const { purpose, to, data, orderId, triggeredBy, allowDuplicate } = options;
+  const { purpose, to, data, orderId, triggeredBy, allowDuplicate, templateId } = options;
 
-  // Get template
-  const template = await getTemplateByPurpose(purpose);
+  // Resolve template strictly from DB settings
+  let template = templateId
+    ? await getTemplateById(templateId)
+    : await getTemplateByPurpose(purpose);
+
+  if (templateId && template && purpose && template.purpose && template.purpose !== purpose) {
+    console.warn(
+      `[EMAIL] templateId ${templateId} purpose=${template.purpose} != requested ${purpose}`,
+    );
+  }
+
   if (!template) {
     console.warn(`⚠️ No active template found for purpose: ${purpose}`);
     return { success: false, error: `No template for purpose: ${purpose}` };
+  }
+
+  if (templateId && !template.isActive) {
+    return { success: false, error: 'Selected email template is inactive' };
   }
 
   // Check anti-spam (unless allowDuplicate)
@@ -163,56 +181,48 @@ export async function sendEmailByPurpose(options: SendEmailByPurposeOptions): Pr
     }
   }
 
-  // Replace variables
-  const subject = replaceVariables(template.subject, data);
-
-  // Model B: when ticketUnits[] present on TICKET_CONFIRMED, render multi-QR HTML
-  // (DB templates only do {{var}} replace — they can't loop units.)
-  let html: string
+  // Build ticketUnitsHtml for {{ticketUnitsHtml}} — never replace whole template
   const units = Array.isArray(data.ticketUnits) ? data.ticketUnits : []
-  if (purpose === 'TICKET_CONFIRMED' && units.length > 0) {
-    const {buildTicketConfirmationEmailHtml, buildTicketUnitsHtml} = await import(
-      '../utils/ticket-email-html.js'
+  let ticketUnitsHtml = ''
+  if (units.length > 0) {
+    const {buildTicketUnitsHtml} = await import('../utils/ticket-email-html.js')
+    ticketUnitsHtml = buildTicketUnitsHtml(
+      units.map((u: any, i: number) => ({
+        ticketCode: String(u.ticketCode || u.code || ''),
+        qrCodeUrl: String(u.qrCodeUrl || u.qr || ''),
+        typeName: String(u.typeName || u.name || 'Ticket'),
+        seatNumber: u.seatNumber,
+        price: Number(u.price) || 0,
+        index: u.index || i + 1,
+      })),
     )
-    // Prefer full multi-ticket design; also expose units HTML for DB templates that use {{ticketUnitsHtml}}
-    const enriched = {
-      ...data,
-      ticketUnitsHtml: buildTicketUnitsHtml(units),
-      ticketCount: units.length,
-    }
-    if (
-      template.htmlContent.includes('{{ticketUnitsHtml}}') ||
-      template.htmlContent.includes('{{ ticketUnitsHtml }}')
-    ) {
-      html = replaceVariables(template.htmlContent, enriched)
-    } else {
-      html = buildTicketConfirmationEmailHtml({
-        customerName: String(data.customerName || ''),
-        eventName: String(data.eventName || ''),
-        eventDate: String(data.eventDate || ''),
-        eventTime: String(data.eventTime || ''),
-        eventVenue: String(data.eventVenue || ''),
-        eventAddress: data.eventAddress ? String(data.eventAddress) : undefined,
-        orderNumber: String(data.orderNumber || ''),
-        totalAmount: Number(data.totalAmount) || 0,
-        ticketUrl: String(data.ticketUrl || ''),
-        pdfUrl: data.pdfUrl ? String(data.pdfUrl) : undefined,
-        ticketUnits: units.map((u: any, i: number) => ({
-          ticketCode: String(u.ticketCode || u.code || ''),
-          qrCodeUrl: String(u.qrCodeUrl || u.qr || ''),
-          typeName: String(u.typeName || u.name || 'Ticket'),
-          seatNumber: u.seatNumber,
-          price: Number(u.price) || 0,
-          index: u.index || i + 1,
-        })),
-        seatsSummary: data.seats ? String(data.seats) : undefined,
-      })
-    }
-  } else {
-    html = replaceVariables(template.htmlContent, data)
   }
 
-  const text = template.textContent ? replaceVariables(template.textContent, data) : undefined;
+  const enriched = {
+    ...data,
+    ticketUnitsHtml,
+    ticketCount: units.length || data.ticketCount || '',
+    seats:
+      typeof data.seats === 'string'
+        ? data.seats
+        : Array.isArray(data.seats)
+          ? data.seats
+              .map((s: any) =>
+                typeof s === 'string'
+                  ? s
+                  : `${s.seatNumber || s.name || ''} (${s.seatType || s.typeName || ''})`.trim(),
+              )
+              .filter(Boolean)
+              .join(', ')
+          : String(data.seats ?? ''),
+  }
+
+  // STRICT: only admin template HTML + variable replace
+  const subject = replaceVariables(template.subject, enriched);
+  const html = replaceVariables(template.htmlContent, enriched);
+  const text = template.textContent
+    ? replaceVariables(template.textContent, enriched)
+    : undefined;
 
   // Send email
   const result = await sendEmail({ to, subject, html, text });

@@ -61,6 +61,8 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
   }
 
   const {id} = request.params as {id: string}
+  const body = (request.body || {}) as {templateId?: string}
+  const templateId = body.templateId
   const ipAddress = request.ip
   const userAgent = request.headers['user-agent']
 
@@ -160,11 +162,20 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
     let emailError: string | null = null
 
     try {
+      const totalFormatted = new Intl.NumberFormat('vi-VN', {
+        style: 'currency',
+        currency: 'VND',
+      }).format(Number(result.order.totalAmount) || 0)
+      const pdfUrl = ticketUrl
+        .replace('/ticket/', '/api/ticket/')
+        .replace('?token=', '/pdf?token=')
+
       const emailResult = await sendEmailByPurpose({
         purpose: 'TICKET_CONFIRMED',
         to: result.order.customerEmail,
         orderId: result.order.id,
         triggeredBy: user.userId,
+        templateId, // admin-selected template from Email Templates
         data: {
           customerName: result.order.customerName,
           eventName: result.order.event.name,
@@ -176,9 +187,10 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
           seats: seatsList,
           ticketUnits,
           ticketCount: ticketUnits.length || result.order.orderItems.length,
-          totalAmount: Number(result.order.totalAmount),
+          totalAmount: totalFormatted,
           qrCodeUrl,
           ticketUrl,
+          pdfUrl,
         },
       })
       if (emailResult.success) {
@@ -322,12 +334,14 @@ export async function resendEmail(request: FastifyRequest, reply: FastifyReply) 
   }
 
   const {id} = request.params as {id: string}
+  const body = (request.body || {}) as {templateId?: string}
 
   try {
-    const result = await ordersService.resendTicketEmail(id, {
-      userId: user.userId,
-      roleName: user.roleName,
-    })
+    const result = await ordersService.resendTicketEmail(
+      id,
+      {userId: user.userId, roleName: user.roleName},
+      {templateId: body.templateId},
+    )
 
     if (!result.emailResult.success) {
       throw new BadRequestError(`Failed to send email: ${result.emailResult.error}`)

@@ -54,16 +54,14 @@ export async function listOrders(input: ListOrdersInput) {
     prisma.order.count({where: {...where, status: 'CANCELLED'}}),
   ])
 
-  const mappedOrders = orders.map((order: any) => ({
-    ...order,
-    seats: (order.orderItems || []).map((item: any) => ({
-      seatNumber: item.seat?.seatNumber || item.seatNumber,
-      seatType: item.seat?.seatType || item.seatType,
-      section: item.seat?.section ?? '',
-      row: item.seat?.row ?? '',
-      price: Number(item.price),
-    })),
-  }))
+  // Resolve ticket type names via seats.ticket_type_id (no Prisma relation on Seat)
+  const typeNameByOrderItemId = await loadTicketTypeNamesForOrders(
+    orders.map((o: any) => o.id),
+  )
+
+  const mappedOrders = orders.map((order: any) =>
+    mapOrderForAdmin(order, typeNameByOrderItemId),
+  )
 
   return {
     orders: mappedOrders,
@@ -80,6 +78,105 @@ export async function listOrders(input: ListOrdersInput) {
   }
 }
 
+async function loadTicketTypeNamesForOrders(
+  orderIds: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (!orderIds.length) return map
+  try {
+    const placeholders = orderIds.map(() => '?').join(',')
+    const rows = await rawQuery<{
+      order_item_id: string
+      type_name: string | null
+    }>(
+      `SELECT oi.id AS order_item_id, tt.name AS type_name
+       FROM order_items oi
+       LEFT JOIN seats s ON s.id = oi.seat_id
+       LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+       WHERE oi.order_id IN (${placeholders})`,
+      orderIds,
+    )
+    for (const r of rows) {
+      if (r.type_name) map.set(r.order_item_id, r.type_name)
+    }
+  } catch (e) {
+    console.warn('[ADMIN ORDERS] loadTicketTypeNames failed:', e)
+  }
+  return map
+}
+
+/**
+ * Admin list/detail mapper — ticket inventory view (hide seat UI).
+ */
+function mapOrderForAdmin(
+  order: any,
+  typeNameByOrderItemId: Map<string, string> = new Map(),
+) {
+  const items = order.orderItems || []
+  const tickets = items.map((item: any, index: number) => {
+    const typeName =
+      typeNameByOrderItemId.get(item.id) ||
+      humanizeTypeName(item.seatType || item.seat?.seatType)
+    return {
+      id: item.id,
+      index: index + 1,
+      ticketCode: item.ticketCode || null,
+      qrCodeUrl: item.qrCodeUrl || null,
+      typeName,
+      seatType: item.seatType || item.seat?.seatType || null,
+      price: Number(item.price),
+      checkedInAt: item.checkedInAt || null,
+      checkedIn: !!item.checkedInAt,
+    }
+  })
+
+  const lineMap = new Map<
+    string,
+    {name: string; unitPrice: number; quantity: number; lineTotal: number}
+  >()
+  for (const t of tickets) {
+    const key = `${t.typeName}|${t.price}`
+    const cur = lineMap.get(key)
+    if (cur) {
+      cur.quantity += 1
+      cur.lineTotal += t.price
+    } else {
+      lineMap.set(key, {
+        name: t.typeName,
+        unitPrice: t.price,
+        quantity: 1,
+        lineTotal: t.price,
+      })
+    }
+  }
+  const ticketLines = Array.from(lineMap.values())
+  const ticketSummary = ticketLines
+    .map((l) => `${l.name} × ${l.quantity}`)
+    .join(', ')
+
+  return {
+    ...order,
+    tickets,
+    ticketLines,
+    ticketSummary,
+    ticketCount: tickets.length,
+    // Seat admin UI hidden — empty for legacy consumers
+    seats: [],
+    orderItems: undefined,
+  }
+}
+
+function humanizeTypeName(seatType: string | null | undefined): string {
+  const s = String(seatType || '').toUpperCase()
+  if (!s) return 'Ticket'
+  if (s.includes('VIP')) return 'VIP'
+  if (s.includes('DONOR')) return 'Donor'
+  if (s.includes('ECONOMY') || s.includes('EARLY')) return 'Early Bird'
+  if (s.includes('STANDARD') || s.includes('LEVEL_2')) return 'Standard'
+  if (s.startsWith('LEVEL_')) return s.replace('LEVEL_', 'Level ')
+  return s
+}
+
 /**
  * Get order by ID
  */
@@ -94,17 +191,8 @@ export async function getOrderById(id: string) {
   })
 
   if (!order) return null
-
-  return {
-    ...order,
-    seats: (order.orderItems || []).map((item: any) => ({
-      seatNumber: item.seat?.seatNumber || item.seatNumber,
-      seatType: item.seat?.seatType || item.seatType,
-      section: item.seat?.section ?? '',
-      row: item.seat?.row ?? '',
-      price: Number(item.price),
-    })),
-  }
+  const typeNames = await loadTicketTypeNamesForOrders([id])
+  return mapOrderForAdmin(order, typeNames)
 }
 
 /**
@@ -357,7 +445,8 @@ export async function rejectPayment(
  */
 export async function resendTicketEmail(
   orderId: string,
-  adminUser: {userId: string; roleName: string}
+  adminUser: {userId: string; roleName: string},
+  options?: {templateId?: string},
 ) {
   const order = await prisma.order.findUnique({
     where: {id: orderId},
@@ -477,13 +566,22 @@ export async function resendTicketEmail(
           )
           .join(', ')
 
-  // Send email with allowDuplicate to bypass anti-spam
+  const totalFormatted = new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+  }).format(Number(order.totalAmount) || 0)
+  const pdfUrl = ticketUrl
+    .replace('/ticket/', '/api/ticket/')
+    .replace('?token=', '/pdf?token=')
+
+  // Send email with allowDuplicate — MUST use admin template
   const emailResult = await sendEmailByPurpose({
     purpose: 'TICKET_CONFIRMED',
     to: order.customerEmail,
     orderId: order.id,
     triggeredBy: adminUser.userId,
     allowDuplicate: true,
+    templateId: options?.templateId,
     data: {
       customerName: order.customerName,
       eventName: order.event.name,
@@ -496,9 +594,10 @@ export async function resendTicketEmail(
       ticketLines,
       ticketUnits,
       ticketCount: ticketUnits.length || order.orderItems.length,
-      totalAmount: Number(order.totalAmount),
+      totalAmount: totalFormatted,
       qrCodeUrl,
       ticketUrl,
+      pdfUrl,
     },
   })
 
