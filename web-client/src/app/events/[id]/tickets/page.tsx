@@ -187,7 +187,8 @@ export default function TicketClassPage({
         };
       });
 
-    const openAvailability = (types: TicketType[]): TicketAvailability[] =>
+    /** Fallback when only full-event payload is available: no stock numbers. */
+    const unknownAvailability = (types: TicketType[]): TicketAvailability[] =>
       types.map((tt) => ({
         ticketTypeId: tt.id,
         name: tt.name,
@@ -199,7 +200,8 @@ export default function TicketClassPage({
         sold: 0,
         reserved: 0,
         locked: 0,
-        available: 99,
+        // Unknown stock — allow trying; backend still enforces inventory.
+        available: MAX_QTY_PER_TYPE,
       }));
 
     const mapAvailability = (
@@ -207,10 +209,13 @@ export default function TicketClassPage({
       types: TicketType[],
       fromTicketsEndpoint: boolean,
     ): TicketAvailability[] => {
-      if (!fromTicketsEndpoint) return openAvailability(types);
+      if (!fromTicketsEndpoint) return unknownAvailability(types);
       return types.map((tt) => {
         const src = list.find((t) => t.id === tt.id);
         const a = src?.availability;
+        // Inventory source of truth: when endpoint omits availability → 0 (sold out)
+        const available =
+          typeof a?.available === "number" ? Math.max(0, a.available) : 0;
         return {
           ticketTypeId: tt.id,
           name: tt.name,
@@ -222,7 +227,7 @@ export default function TicketClassPage({
           sold: a?.sold ?? 0,
           reserved: a?.reserved ?? 0,
           locked: a?.locked ?? 0,
-          available: a?.available ?? 99,
+          available,
         };
       });
     };
@@ -439,9 +444,16 @@ export default function TicketClassPage({
       toast.error("Please add at least 1 ticket");
       return;
     }
+    // Inventory gate: no stock → block checkout (do not hit create-order)
     for (const item of cartItems) {
+      if (item.available <= 0) {
+        toast.error(`${item.name} is sold out`);
+        return;
+      }
       if (item.qty > item.available) {
-        toast.error(`Chỉ còn ${item.available} vé ${item.name}`);
+        toast.error(
+          `Only ${item.available} ${item.name} ticket(s) left / Chỉ còn ${item.available} vé ${item.name}`,
+        );
         return;
       }
     }
