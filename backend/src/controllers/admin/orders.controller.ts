@@ -89,10 +89,71 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       minute: '2-digit',
     })
 
-    // Format seats for email template (string format)
-    const seatsList = result.order.orderItems
-      .map((item: any) => `${item.seat.seatNumber} (${item.seat.seatType})`)
+    // Per-ticket units for multi-QR email
+    let ticketUnits: Array<{
+      ticketCode: string
+      qrCodeUrl: string
+      typeName: string
+      seatNumber?: string
+      price: number
+      index: number
+    }> = []
+    let seatsList = result.order.orderItems
+      .map(
+        (item: any) =>
+          `${item.seat?.seatNumber || item.seatNumber} (${item.seat?.seatType || item.seatType})`,
+      )
       .join(', ')
+    try {
+      const {ensureTicketUnitsForOrder} = await import('../../utils/ticket-unit.js')
+      const {query} = await import('../../db/mysql.js')
+      const {humanizeSeatType, buildTicketLines, formatTicketLinesSummary} = await import(
+        '../../utils/ticket-lines.js'
+      )
+      await ensureTicketUnitsForOrder(result.order.id)
+      const rows = await query<{
+        ticket_code: string
+        qr_code_url: string
+        seat_number: string
+        seat_type: string
+        price: number
+        ticket_type_name: string | null
+      }>(
+        `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
+                tt.name AS ticket_type_name
+         FROM order_items oi
+         LEFT JOIN seats s ON s.id = oi.seat_id
+         LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+         WHERE oi.order_id = ?
+         ORDER BY oi.created_at ASC`,
+        [result.order.id],
+      )
+      ticketUnits = rows
+        .filter((r) => r.ticket_code && r.qr_code_url)
+        .map((r, i) => ({
+          ticketCode: r.ticket_code,
+          qrCodeUrl: r.qr_code_url,
+          typeName:
+            (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
+            humanizeSeatType(r.seat_type),
+          seatNumber: r.seat_number,
+          price: Number(r.price),
+          index: i + 1,
+        }))
+      seatsList = formatTicketLinesSummary(
+        buildTicketLines(
+          result.order.orderItems.map((item: any) => ({
+            seatNumber: item.seat?.seatNumber || item.seatNumber,
+            seatType: item.seat?.seatType || item.seatType,
+            price: item.price,
+            ticketTypeId: item.seat?.ticketTypeId,
+            ticketTypeName: item.seat?.ticketType?.name,
+          })),
+        ),
+      )
+    } catch (e) {
+      console.warn('[CONFIRM] ticket units for email:', e)
+    }
 
     // ALWAYS send confirmation email (with existing or new token)
     let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
@@ -113,6 +174,8 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
           eventAddress: result.order.event.venue,
           orderNumber: result.order.orderNumber,
           seats: seatsList,
+          ticketUnits,
+          ticketCount: ticketUnits.length || result.order.orderItems.length,
           totalAmount: Number(result.order.totalAmount),
           qrCodeUrl,
           ticketUrl,
