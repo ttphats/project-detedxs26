@@ -1,0 +1,311 @@
+import {FastifyRequest, FastifyReply} from 'fastify'
+import {prisma} from '../db/prisma.js'
+import * as qrcodeService from '../services/qrcode.service.js'
+import {sendEmailByPurpose} from '../services/email.service.js'
+import {config} from '../config/env.js'
+import {generateAccessToken} from '../utils/helpers.js'
+
+/**
+ * POST /api/payments/webhook
+ * Payment webhook handler
+ */
+export async function handleWebhook(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    const body = request.body as any
+
+    // Mock payment provider for development
+    if (config.payment?.provider === 'mock' || !config.payment?.provider) {
+      return handleMockWebhook(body, reply)
+    }
+
+    // Handle Stripe webhook
+    if (config.payment.provider === 'stripe') {
+      return handleStripeWebhook(request, body, reply)
+    }
+
+    // Handle VNPay webhook
+    if (config.payment.provider === 'vnpay') {
+      return handleVNPayWebhook(body, reply)
+    }
+
+    return reply.status(400).send({
+      success: false,
+      error: 'Unsupported payment provider',
+    })
+  } catch (error: any) {
+    console.error('Webhook error:', error)
+    return reply.status(500).send({
+      success: false,
+      error: 'Webhook processing failed',
+    })
+  }
+}
+
+async function handleMockWebhook(body: any, reply: FastifyReply) {
+  const {orderId, status} = body
+
+  if (!orderId) {
+    return reply.status(400).send({
+      success: false,
+      error: 'Missing orderId',
+    })
+  }
+
+  await processPaymentConfirmation(orderId, {
+    transactionId: `mock-${Date.now()}`,
+    status: status || 'COMPLETED',
+    metadata: JSON.stringify(body),
+  })
+
+  return reply.send({success: true, data: {received: true}})
+}
+
+async function handleStripeWebhook(request: FastifyRequest, body: any, reply: FastifyReply) {
+  const {type, data} = body
+
+  if (type === 'checkout.session.completed') {
+    const session = data.object
+    const orderId = session.metadata.orderId
+
+    await processPaymentConfirmation(orderId, {
+      transactionId: session.id,
+      status: 'COMPLETED',
+      metadata: JSON.stringify(session),
+    })
+  }
+
+  return reply.send({success: true, data: {received: true}})
+}
+
+async function handleVNPayWebhook(body: any, reply: FastifyReply) {
+  const {vnp_TxnRef, vnp_ResponseCode} = body
+
+  if (vnp_ResponseCode === '00') {
+    await processPaymentConfirmation(vnp_TxnRef, {
+      transactionId: body.vnp_TransactionNo,
+      status: 'COMPLETED',
+      metadata: JSON.stringify(body),
+    })
+  }
+
+  return reply.send({success: true, data: {received: true}})
+}
+
+/**
+ * Process payment confirmation (IDEMPOTENT)
+ */
+async function processPaymentConfirmation(
+  orderId: string,
+  paymentData: {transactionId: string; status: string; metadata: string}
+) {
+  await prisma.$transaction(
+    async (tx: any) => {
+      const order = await tx.order.findUnique({
+        where: {id: orderId},
+        include: {
+          payment: true,
+          orderItems: {include: {seat: true}},
+          event: true,
+        },
+      })
+
+      if (!order) throw new Error(`Order ${orderId} not found`)
+
+      // Idempotency check
+      if (order.payment?.webhookProcessed) {
+        console.log(`Webhook already processed for order ${orderId}`)
+        return
+      }
+
+      // ⚠️ Use existing plaintext token if available, otherwise generate new one
+      let accessToken: string
+      let accessTokenHash: string
+
+      if (order.accessToken) {
+        // Reuse existing plaintext token
+        accessToken = order.accessToken
+        accessTokenHash = order.accessTokenHash!
+        console.log('[WEBHOOK] Reusing existing plaintext token')
+      } else {
+        // Generate new token (shouldn't happen if createPendingOrder works correctly)
+        const {token, hash} = await import('../utils/helpers.js').then((m) =>
+          m.generateAccessToken()
+        )
+        accessToken = token
+        accessTokenHash = hash
+        console.log('[WEBHOOK] Generated new access token')
+      }
+
+      // Update payment
+      await tx.payment.update({
+        where: {orderId},
+        data: {
+          status: paymentData.status,
+          transactionId: paymentData.transactionId,
+          webhookReceived: true,
+          webhookProcessed: true,
+          webhookData: paymentData.metadata,
+          paidAt: new Date(),
+        },
+      })
+
+      // Update order with token
+      await tx.order.update({
+        where: {id: orderId},
+        data: {
+          status: 'PAID',
+          paidAt: new Date(),
+          accessTokenHash,
+          accessToken, // Save plaintext for future email sends
+        },
+      })
+
+      // Mark seats as SOLD
+      const seatIds = order.orderItems
+        .map((item: any) => item.seatId)
+        .filter((id: any): id is string => id !== null)
+      if (seatIds.length > 0) {
+        await tx.seat.updateMany({
+          where: {id: {in: seatIds}},
+          data: {status: 'SOLD'},
+        })
+      }
+
+      // Generate order-level QR + permanent ticket URL
+      const qrCodeUrl = await qrcodeService.generateTicketQRCode(order.orderNumber, order.eventId)
+      const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
+
+      // Per-ticket unique codes + QR (model B) — must finish before email
+      let ticketUnits: Array<{
+        ticketCode: string
+        qrCodeUrl: string
+        typeName: string
+        seatNumber?: string
+        price: number
+        index: number
+      }> = []
+      try {
+        const {ensureTicketUnitsForOrder} = await import('../utils/ticket-unit.js')
+        const {query} = await import('../db/mysql.js')
+        const {humanizeSeatType} = await import('../utils/ticket-lines.js')
+        await ensureTicketUnitsForOrder(order.id)
+        const rows = await query<{
+          ticket_code: string
+          qr_code_url: string
+          seat_number: string
+          seat_type: string
+          price: number
+          ticket_type_name: string | null
+        }>(
+          `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
+                  tt.name AS ticket_type_name
+           FROM order_items oi
+           LEFT JOIN seats s ON s.id = oi.seat_id
+           LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+           WHERE oi.order_id = ?
+           ORDER BY oi.created_at ASC`,
+          [order.id],
+        )
+        ticketUnits = rows
+          .filter((r) => r.ticket_code && r.qr_code_url)
+          .map((r, i) => ({
+            ticketCode: r.ticket_code,
+            qrCodeUrl: r.qr_code_url,
+            typeName:
+              (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
+              humanizeSeatType(r.seat_type),
+            seatNumber: r.seat_number,
+            price: Number(r.price),
+            index: i + 1,
+          }))
+      } catch (e) {
+        console.error('[PAYMENT] ensureTicketUnitsForOrder failed:', e)
+      }
+
+      // Send email (fire and forget)
+      const eventDate = new Date(order.event.eventDate)
+
+      // Inventory ticket lines (type × qty) for email summary string
+      const {buildTicketLines, formatTicketLinesSummary} = await import(
+        '../utils/ticket-lines.js'
+      )
+      const ticketLines = buildTicketLines(
+        order.orderItems.map((item: any) => ({
+          seatNumber: item.seatNumber,
+          seatType: item.seatType,
+          price: item.price,
+          ticketTypeId: item.seat?.ticketTypeId || item.ticketTypeId || null,
+          ticketTypeName: item.seat?.ticketType?.name || item.ticketTypeName || null,
+        })),
+      )
+      const seatsList =
+        ticketLines.length > 0
+          ? formatTicketLinesSummary(ticketLines)
+          : order.orderItems
+              .map((item: any) => `${item.seatNumber} (${item.seatType})`)
+              .join(', ')
+
+      const formattedDate = eventDate.toLocaleDateString('vi-VN', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+      const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+
+      console.log('[EMAIL] ticketUnits:', ticketUnits.length, 'url:', ticketUrl)
+
+      sendEmailByPurpose({
+        purpose: 'TICKET_CONFIRMED',
+        businessEvent: 'PAYMENT_CONFIRMED',
+        orderId: order.id,
+        triggeredBy: 'SYSTEM',
+        to: order.customerEmail,
+        data: {
+          customerName: order.customerName,
+          eventName: order.event.name,
+          eventDate: formattedDate,
+          eventTime: formattedTime,
+          eventVenue: order.event.venue,
+          eventAddress: order.event.venue,
+          orderNumber: order.orderNumber,
+          seats: seatsList,
+          ticketLines,
+          // Model B: drives multi-QR email HTML
+          ticketUnits,
+          bookingMode: ticketLines.some((l) => l.ticketTypeId)
+            ? 'TICKET_CLASS'
+            : 'SEAT_MAP',
+          ticketCount: ticketUnits.length || order.orderItems.length,
+          totalAmount: Number(order.totalAmount),
+          qrCodeUrl,
+          ticketUrl,
+        },
+      }).catch((err) => console.error('Failed to send ticket email:', err))
+
+      // Send Telegram Notification
+      import('../services/telegram.service.js')
+        .then((m) =>
+          m.notifyOrderConfirmed({
+            orderNumber: order.orderNumber,
+            customerName: order.customerName,
+            eventName: order.event.name,
+            totalAmount: Number(order.totalAmount),
+            seats: order.orderItems.map((item: any) => ({
+              seatNumber: item.seatNumber,
+              seatType: item.seatType,
+            })),
+          })
+        )
+        .catch((telegramErr) =>
+          console.error('[TELEGRAM] Failed to send order confirmed notification:', telegramErr)
+        )
+
+      console.log(`✅ Payment confirmed for order ${orderId}`)
+    },
+    {timeout: 30000}
+  )
+}

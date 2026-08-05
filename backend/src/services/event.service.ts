@@ -1,0 +1,585 @@
+import {query, queryOne} from '../db/mysql.js'
+import {NotFoundError} from '../utils/errors.js'
+import {Event} from '../types/index.js'
+import {allocateTicketInventory} from '../utils/ticket-seat-match.js'
+
+function formatTime(date: Date): string {
+  if (!date) return ''
+  return new Date(date).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Ho_Chi_Minh',
+  })
+}
+
+function extractTagline(name: string): string {
+  const match = name.match(/:\s*(.+)$/)
+  return match ? match[1] : ''
+}
+
+// Get all published events
+export async function getPublishedEvents(status: string = 'PUBLISHED', featured?: boolean) {
+  const events = await query<Event & {speaker_count: number}>(
+    `SELECT e.*, 
+      (SELECT COUNT(*) FROM speakers WHERE event_id = e.id AND is_active = 1) as speaker_count
+    FROM events e
+    WHERE e.status = ?
+    ORDER BY e.event_date ASC`,
+    [status]
+  )
+
+  const formattedEvents = events.map((event) => ({
+    id: event.id,
+    name: event.name,
+    slug: event.slug,
+    tagline: extractTagline(event.name),
+    description: event.description,
+    date: event.event_date,
+    time: `${formatTime(event.doors_open_time)} - ${formatTime(event.end_time)}`,
+    venue: event.venue,
+    location: 'Ho Chi Minh City, Vietnam',
+    bannerImageUrl: event.banner_image_url,
+    thumbnailUrl: event.thumbnail_url,
+    speakerCount: event.speaker_count,
+    background: {
+      type: 'image',
+      value:
+        event.banner_image_url ||
+        'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=1920&h=1080&fit=crop',
+      overlay: 'linear-gradient(135deg, rgba(230,43,30,0.9) 0%, rgba(26,26,26,0.95) 100%)',
+    },
+    highlights: [
+      {icon: 'mic', text: `${event.speaker_count || 12}+ Speakers`},
+      {icon: 'lightbulb', text: 'Ideas Worth Spreading'},
+      {icon: 'users', text: '500+ Attendees'},
+      {icon: 'coffee', text: 'Networking Sessions'},
+    ],
+  }))
+
+  if (featured && formattedEvents.length > 0) {
+    return formattedEvents[0]
+  }
+
+  return formattedEvents
+}
+
+// Get event by ID
+export async function getEventById(eventId: string, sessionId?: string) {
+  const event = await queryOne<Event & {speaker_count: number}>(
+    `SELECT e.*,
+      (SELECT COUNT(*) FROM speakers WHERE event_id = e.id AND is_active = 1) as speaker_count
+    FROM events e
+    WHERE e.id = ?`,
+    [eventId]
+  )
+
+  if (!event) {
+    throw new NotFoundError('Event not found')
+  }
+
+  // Ensure card image column exists (idempotent) so public API can return imageUrl
+  try {
+    const {ensureTicketTypeImageColumn} = await import('./admin/ticket-types.service.js')
+    await ensureTicketTypeImageColumn()
+  } catch (err) {
+    console.warn('[EVENTS] ensureTicketTypeImageColumn skipped:', err)
+  }
+
+  // Get ticket types (image_url optional — safe if column missing until migration)
+  let ticketTypes: Array<{
+    id: string
+    name: string
+    subtitle: string | null
+    description: string | null
+    price: number
+    benefits: string | null
+    level: number
+    color: string
+    icon?: string | null
+    image_url?: string | null
+  }> = []
+  try {
+    ticketTypes = await query(
+      `SELECT id, name, subtitle, description, price, benefits, level, color, icon, image_url
+       FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY level ASC`,
+      [eventId]
+    )
+  } catch {
+    // Fallback when image_url column not yet migrated
+    ticketTypes = await query(
+      `SELECT id, name, subtitle, description, price, benefits, level, color, icon
+       FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY level ASC`,
+      [eventId]
+    )
+  }
+
+  // Get seats grouped by row with lock information
+  const seats = await query<{
+    id: string
+    seat_number: number
+    row: string
+    section: string | null
+    seat_type: string
+    price: number
+    status: string
+    locked_by: string | null
+    lock_expires_at: Date | null
+  }>(
+    `SELECT s.id, s.seat_number, s.row, s.section, s.seat_type, s.price, s.status,
+            sl.session_id as locked_by, sl.expires_at as lock_expires_at
+     FROM seats s
+     LEFT JOIN seat_locks sl ON s.id = sl.seat_id AND sl.expires_at > NOW()
+     WHERE s.event_id = ?
+     ORDER BY s.row ASC, s.seat_number ASC`,
+    [eventId]
+  )
+
+  // Extract level from seat_type (LEVEL_1 -> 1)
+  const getSeatLevel = (seatType: string): number => {
+    const upperType = seatType?.toUpperCase() || ''
+    if (upperType.startsWith('LEVEL_')) {
+      return parseInt(upperType.replace('LEVEL_', ''), 10)
+    }
+    return 2 // Default to level 2 (standard)
+  }
+
+  // Group seats by row
+  const seatMap = seats.reduce((acc, seat) => {
+    const existing = acc.find((r) => r.row === seat.row)
+    const level = getSeatLevel(seat.seat_type)
+
+    // Determine final status based on DB status and locks
+    // IMPORTANT: Check SOLD/RESERVED first - these override any lock status
+    let finalStatus = seat.status.toLowerCase()
+    if (finalStatus === 'sold' || finalStatus === 'reserved') {
+      finalStatus = 'sold'
+    } else if (seat.locked_by) {
+      finalStatus = seat.locked_by === sessionId ? 'locked_by_me' : 'locked'
+    }
+
+    const seatData = {
+      id: seat.id,
+      seatNumber: seat.seat_number,
+      row: seat.row,
+      number: seat.seat_number,
+      status: finalStatus,
+      price: Number(seat.price),
+      seatType: seat.seat_type, // Keep original LEVEL_X format
+      level: level, // Add level for client-side mapping
+      section: seat.section,
+    }
+    if (existing) {
+      existing.seats.push(seatData)
+    } else {
+      acc.push({row: seat.row, seats: [seatData]})
+    }
+    return acc
+  }, [] as {row: string; seats: {id: string; seatNumber: number; row: string; number: number; status: string; price: number; seatType: string; level: number; section: string | null}[]}[])
+
+  return {
+    id: event.id,
+    name: event.name,
+    slug: event.slug,
+    tagline: extractTagline(event.name),
+    description: event.description,
+    date: event.event_date,
+    time: `${formatTime(event.doors_open_time)} - ${formatTime(event.end_time)}`,
+    venue: event.venue,
+    location: 'Ho Chi Minh City, Vietnam',
+    bannerImageUrl: event.banner_image_url,
+    thumbnailUrl: event.thumbnail_url,
+    speakerCount: event.speaker_count,
+    status: event.status,
+    maxCapacity: event.max_capacity,
+    availableSeats: event.available_seats,
+    ticketTypes: ticketTypes.map((tt) => {
+      const imageUrl =
+        typeof tt.image_url === 'string' && tt.image_url.trim()
+          ? tt.image_url.trim()
+          : null
+      return {
+        id: tt.id,
+        name: tt.name,
+        subtitle: tt.subtitle,
+        description: tt.description,
+        price: tt.price,
+        benefits: tt.benefits ? JSON.parse(tt.benefits) : [],
+        level: tt.level,
+        color: tt.color,
+        icon: tt.icon || null,
+        imageUrl,
+        // snake_case alias for older clients / proxies
+        image_url: imageUrl,
+      }
+    }),
+    seatMap,
+  }
+}
+
+// Get event by slug
+export async function getEventBySlug(slug: string) {
+  const event = await queryOne<Event>('SELECT * FROM events WHERE slug = ?', [slug])
+
+  if (!event) {
+    throw new NotFoundError('Event not found')
+  }
+
+  return event
+}
+
+// Get event speakers
+export async function getEventSpeakers(eventId: string) {
+  // First check if eventId is an ID or slug
+  let realEventId = eventId
+  const eventBySlug = await queryOne<{id: string}>(
+    'SELECT id FROM events WHERE slug = ? OR id = ?',
+    [eventId, eventId]
+  )
+
+  if (eventBySlug) {
+    realEventId = eventBySlug.id
+  }
+
+  const speakers = await query<{
+    id: string
+    name: string
+    title: string | null
+    company: string | null
+    bio: string | null
+    image_url: string | null
+    topic: string | null
+    social_links: string | null
+    sort_order: number
+  }>(
+    `SELECT id, name, title, company, bio, image_url, topic, social_links, sort_order
+     FROM speakers
+     WHERE event_id = ? AND is_active = 1
+     ORDER BY sort_order, name`,
+    [realEventId]
+  )
+
+  return speakers.map((s) => ({
+    id: s.id,
+    name: s.name,
+    title: s.title || '',
+    company: s.company || '',
+    bio: s.bio || '',
+    image: s.image_url || '',
+    topic: s.topic || '',
+    socialLinks: s.social_links ? JSON.parse(s.social_links) : null,
+  }))
+}
+
+// Get event timeline
+export async function getEventTimeline(eventId: string) {
+  // First check if eventId is an ID or slug
+  let realEventId = eventId
+  const eventBySlug = await queryOne<{id: string}>(
+    'SELECT id FROM events WHERE slug = ? OR id = ?',
+    [eventId, eventId]
+  )
+
+  if (eventBySlug) {
+    realEventId = eventBySlug.id
+  }
+
+  const timeline = await query<{
+    id: string
+    start_time: string
+    end_time: string
+    title: string
+    description: string | null
+    speaker_name: string | null
+    speaker_avatar_url: string | null
+    type: string
+    order_index: number
+    status: string
+  }>(
+    `SELECT id, start_time, end_time, title, description, speaker_name, speaker_avatar_url, type, order_index, status
+     FROM event_timelines
+     WHERE event_id = ? AND status IN ('PUBLISHED', 'COMPLETED')
+     ORDER BY order_index, start_time`,
+    [realEventId]
+  )
+
+  return timeline.map((t) => ({
+    id: t.id,
+    time: t.start_time,
+    endTime: t.end_time,
+    title: t.title,
+    description: t.description || '',
+    speaker: t.speaker_name || undefined,
+    speakerImage: t.speaker_avatar_url || undefined,
+    type: t.type.toLowerCase(),
+    status: t.status,
+  }))
+}
+
+/**
+ * Resolve real event id from id or slug.
+ */
+async function resolveEventId(eventIdOrSlug: string): Promise<string> {
+  const row = await queryOne<{id: string}>(
+    'SELECT id FROM events WHERE id = ? OR slug = ? LIMIT 1',
+    [eventIdOrSlug, eventIdOrSlug]
+  )
+  if (!row) throw new NotFoundError('Event not found')
+  return row.id
+}
+
+/**
+ * Get available seat counts per ticket type.
+ * Used by the ticket-class booking flow (no seat selection).
+ * Returns: [{ ticketTypeId, name, level, color, price, max_quantity,
+ *             totalSeats, sold, reserved, locked, available }]
+ */
+export async function getTicketAvailability(eventId: string) {
+  const realEventId = await resolveEventId(eventId)
+
+  // Get ticket types for this event
+  const ticketTypes = await query<{
+    id: string
+    name: string
+    level: number
+    color: string
+    price: number
+    max_quantity: number | null
+  }>(
+    'SELECT id, name, level, color, price, max_quantity FROM ticket_types WHERE event_id = ? AND is_active = 1 ORDER BY level ASC',
+    [realEventId]
+  )
+
+  // Aggregate seat counts per ticket_type_id (status breakdown)
+  // Seats without ticket_type_id are matched via seat_type LEVEL_<level> fallback
+  const seatStats = await query<{
+    ticket_type_id: string | null
+    seat_type: string
+    status: string
+    count: number
+  }>(
+    `SELECT ticket_type_id, seat_type, status, COUNT(*) as count
+     FROM seats WHERE event_id = ?
+     GROUP BY ticket_type_id, seat_type, status`,
+    [realEventId]
+  )
+
+  // Active locks (not expired) per seat — count as "locked"
+  const lockedByType = await query<{
+    ticket_type_id: string | null
+    seat_type: string
+    count: number
+  }>(
+    `SELECT s.ticket_type_id, s.seat_type, COUNT(*) as count
+     FROM seat_locks sl
+     JOIN seats s ON sl.seat_id = s.id
+     WHERE sl.event_id = ? AND sl.expires_at > NOW() AND s.status = 'AVAILABLE'
+     GROUP BY s.ticket_type_id, s.seat_type`,
+    [realEventId]
+  )
+
+  const allocated = allocateTicketInventory(
+    ticketTypes.map((tt) => ({
+      id: tt.id,
+      name: tt.name,
+      level: tt.level,
+      max_quantity: tt.max_quantity,
+    })),
+    seatStats,
+    lockedByType,
+  )
+  const byId = new Map(allocated.map((a) => [a.ticketTypeId, a]))
+
+  return ticketTypes.map((tt) => {
+    const a = byId.get(tt.id) || {
+      totalSeats: 0,
+      sold: 0,
+      reserved: 0,
+      locked: 0,
+      available: 0,
+    }
+    return {
+      ticketTypeId: tt.id,
+      name: tt.name,
+      level: tt.level,
+      color: tt.color,
+      price: Number(tt.price),
+      maxQuantity: tt.max_quantity,
+      totalSeats: a.totalSeats,
+      sold: a.sold,
+      reserved: a.reserved,
+      locked: a.locked,
+      available: a.available,
+    }
+  })
+}
+
+/**
+ * Ticket-class page payload (NO seatMap).
+ * GET /events/:eventId/tickets
+ *
+ * Returns event meta + ticket types (with imageUrl) + per-type availability.
+ * Designed for /events/[id]/tickets — do not use getEventById (heavy seat map).
+ */
+export async function getEventTickets(eventIdOrSlug: string) {
+  const realEventId = await resolveEventId(eventIdOrSlug)
+
+  const event = await queryOne<Event>(
+    `SELECT id, name, slug, description, event_date, doors_open_time, end_time,
+            venue, status, banner_image_url, thumbnail_url
+     FROM events WHERE id = ?`,
+    [realEventId]
+  )
+  if (!event) throw new NotFoundError('Event not found')
+  if (event.status !== 'PUBLISHED') {
+    // Still return for preview; client can decide. Keep published-only if preferred.
+  }
+
+  // Ensure image_url column exists so SELECT does not fail on older DBs
+  try {
+    const {ensureTicketTypeImageColumn} = await import('./admin/ticket-types.service.js')
+    await ensureTicketTypeImageColumn()
+  } catch (err) {
+    console.warn('[EVENTS] getEventTickets ensureTicketTypeImageColumn skipped:', err)
+  }
+
+  type TtRow = {
+    id: string
+    name: string
+    subtitle: string | null
+    description: string | null
+    price: number
+    benefits: string | null
+    level: number
+    color: string
+    icon: string | null
+    image_url: string | null
+    max_quantity: number | null
+    sort_order: number
+  }
+
+  let ticketTypeRows: TtRow[] = []
+  try {
+    ticketTypeRows = await query<TtRow>(
+      `SELECT id, name, subtitle, description, price, benefits, level, color, icon,
+              image_url, max_quantity, sort_order
+       FROM ticket_types
+       WHERE event_id = ? AND is_active = 1
+       ORDER BY sort_order ASC, level ASC, name ASC`,
+      [realEventId]
+    )
+  } catch {
+    // Column image_url missing — retry without it
+    const rows = await query<Omit<TtRow, 'image_url'>>(
+      `SELECT id, name, subtitle, description, price, benefits, level, color, icon,
+              max_quantity, sort_order
+       FROM ticket_types
+       WHERE event_id = ? AND is_active = 1
+       ORDER BY sort_order ASC, level ASC, name ASC`,
+      [realEventId]
+    )
+    ticketTypeRows = rows.map((r) => ({...r, image_url: null}))
+  }
+
+  // Seat stats for availability (no full seatMap)
+  const seatStats = await query<{
+    ticket_type_id: string | null
+    seat_type: string
+    status: string
+    count: number
+  }>(
+    `SELECT ticket_type_id, seat_type, status, COUNT(*) as count
+     FROM seats WHERE event_id = ?
+     GROUP BY ticket_type_id, seat_type, status`,
+    [realEventId]
+  )
+
+  const lockedByType = await query<{
+    ticket_type_id: string | null
+    seat_type: string
+    count: number
+  }>(
+    `SELECT s.ticket_type_id, s.seat_type, COUNT(*) as count
+     FROM seat_locks sl
+     JOIN seats s ON sl.seat_id = s.id
+     WHERE sl.event_id = ? AND sl.expires_at > NOW() AND s.status = 'AVAILABLE'
+     GROUP BY s.ticket_type_id, s.seat_type`,
+    [realEventId]
+  )
+
+  const allocated = allocateTicketInventory(
+    ticketTypeRows.map((tt) => ({
+      id: tt.id,
+      name: tt.name,
+      level: Number(tt.level) || 1,
+      max_quantity: tt.max_quantity,
+    })),
+    seatStats,
+    lockedByType,
+  )
+  const availById = new Map(allocated.map((a) => [a.ticketTypeId, a]))
+
+  const ticketTypes = ticketTypeRows.map((tt) => {
+    const a = availById.get(tt.id) || {
+      totalSeats: 0,
+      sold: 0,
+      reserved: 0,
+      locked: 0,
+      available: 0,
+    }
+    const maxQ = tt.max_quantity != null ? Number(tt.max_quantity) : null
+
+    const imageUrl =
+      typeof tt.image_url === 'string' && tt.image_url.trim() ? tt.image_url.trim() : null
+
+    let benefits: string[] = []
+    if (tt.benefits) {
+      try {
+        const parsed = typeof tt.benefits === 'string' ? JSON.parse(tt.benefits) : tt.benefits
+        benefits = Array.isArray(parsed) ? parsed.map(String) : []
+      } catch {
+        benefits = []
+      }
+    }
+
+    return {
+      id: tt.id,
+      name: tt.name,
+      subtitle: tt.subtitle,
+      description: tt.description,
+      price: Number(tt.price),
+      benefits,
+      level: Number(tt.level) || 1,
+      color: tt.color || '#e62b1e',
+      icon: tt.icon || null,
+      imageUrl,
+      image_url: imageUrl,
+      maxQuantity: maxQ,
+      sortOrder: Number(tt.sort_order) || 0,
+      availability: {
+        totalSeats: a.totalSeats,
+        sold: a.sold,
+        reserved: a.reserved,
+        locked: a.locked,
+        available: a.available,
+      },
+    }
+  })
+
+  return {
+    id: event.id,
+    name: event.name,
+    slug: event.slug,
+    tagline: extractTagline(event.name),
+    description: event.description,
+    date: event.event_date,
+    time: `${formatTime(event.doors_open_time)} - ${formatTime(event.end_time)}`,
+    venue: event.venue,
+    location: 'Ho Chi Minh City, Vietnam',
+    bannerImageUrl: event.banner_image_url,
+    thumbnailUrl: event.thumbnail_url,
+    status: event.status,
+    // Explicit: no seatMap on this endpoint
+    ticketTypes,
+  }
+}

@@ -1,0 +1,699 @@
+import {prisma} from '../../db/prisma.js'
+import {randomBytes, createHash} from 'crypto'
+import {generateTicketQRCode, generateTicketUrl} from '../qrcode.service.js'
+import {sendEmailByPurpose} from '../email.service.js'
+import {createAuditLog} from '../audit.service.js'
+import {execute, query as rawQuery} from '../../db/mysql.js'
+import {redis} from '../../db/redis.js'
+
+export interface ListOrdersInput {
+  page?: number
+  limit?: number
+  status?: string
+  eventId?: string
+  search?: string
+}
+
+/**
+ * List orders with pagination and filters
+ */
+export async function listOrders(input: ListOrdersInput) {
+  const page = Number(input.page) || 1
+  const limit = Number(input.limit) || 20
+  const skip = (page - 1) * limit
+
+  const where: any = {}
+
+  if (input.status) where.status = input.status
+  if (input.eventId) where.eventId = input.eventId
+
+  if (input.search) {
+    where.OR = [
+      {orderNumber: {contains: input.search}},
+      {customerName: {contains: input.search}},
+      {customerEmail: {contains: input.search}},
+      {customerPhone: {contains: input.search}},
+    ]
+  }
+
+  const [orders, total, pending, paid, cancelled] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      include: {
+        event: {select: {id: true, name: true, eventDate: true, venue: true}},
+        orderItems: {include: {seat: true}},
+        payment: true,
+      },
+      orderBy: {createdAt: 'desc'},
+      skip,
+      take: limit,
+    }),
+    prisma.order.count({where}),
+    prisma.order.count({where: {...where, status: 'PENDING'}}),
+    prisma.order.count({where: {...where, status: 'PAID'}}),
+    prisma.order.count({where: {...where, status: 'CANCELLED'}}),
+  ])
+
+  // Resolve ticket type names via seats.ticket_type_id (no Prisma relation on Seat)
+  const typeNameByOrderItemId = await loadTicketTypeNamesForOrders(
+    orders.map((o: any) => o.id),
+  )
+
+  const mappedOrders = orders.map((order: any) =>
+    mapOrderForAdmin(order, typeNameByOrderItemId),
+  )
+
+  return {
+    orders: mappedOrders,
+    pagination: {page, limit, total, totalPages: Math.ceil(total / limit)},
+    summary: {
+      totalOrders: total,
+      pendingOrders: pending,
+      paidOrders: paid,
+      cancelledOrders: cancelled,
+      pending,
+      paid,
+      cancelled,
+    },
+  }
+}
+
+async function loadTicketTypeNamesForOrders(
+  orderIds: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (!orderIds.length) return map
+  try {
+    const placeholders = orderIds.map(() => '?').join(',')
+    const rows = await rawQuery<{
+      order_item_id: string
+      type_name: string | null
+    }>(
+      `SELECT oi.id AS order_item_id, tt.name AS type_name
+       FROM order_items oi
+       LEFT JOIN seats s ON s.id = oi.seat_id
+       LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+       WHERE oi.order_id IN (${placeholders})`,
+      orderIds,
+    )
+    for (const r of rows) {
+      if (r.type_name) map.set(r.order_item_id, r.type_name)
+    }
+  } catch (e) {
+    console.warn('[ADMIN ORDERS] loadTicketTypeNames failed:', e)
+  }
+  return map
+}
+
+/**
+ * Admin list/detail mapper — ticket inventory view (hide seat UI).
+ */
+function mapOrderForAdmin(
+  order: any,
+  typeNameByOrderItemId: Map<string, string> = new Map(),
+) {
+  const items = order.orderItems || []
+  const tickets = items.map((item: any, index: number) => {
+    const typeName =
+      typeNameByOrderItemId.get(item.id) ||
+      humanizeTypeName(item.seatType || item.seat?.seatType)
+    return {
+      id: item.id,
+      index: index + 1,
+      ticketCode: item.ticketCode || null,
+      qrCodeUrl: item.qrCodeUrl || null,
+      typeName,
+      seatType: item.seatType || item.seat?.seatType || null,
+      price: Number(item.price),
+      checkedInAt: item.checkedInAt || null,
+      checkedIn: !!item.checkedInAt,
+    }
+  })
+
+  const lineMap = new Map<
+    string,
+    {name: string; unitPrice: number; quantity: number; lineTotal: number}
+  >()
+  for (const t of tickets) {
+    const key = `${t.typeName}|${t.price}`
+    const cur = lineMap.get(key)
+    if (cur) {
+      cur.quantity += 1
+      cur.lineTotal += t.price
+    } else {
+      lineMap.set(key, {
+        name: t.typeName,
+        unitPrice: t.price,
+        quantity: 1,
+        lineTotal: t.price,
+      })
+    }
+  }
+  const ticketLines = Array.from(lineMap.values())
+  const ticketSummary = ticketLines
+    .map((l) => `${l.name} × ${l.quantity}`)
+    .join(', ')
+
+  return {
+    ...order,
+    tickets,
+    ticketLines,
+    ticketSummary,
+    ticketCount: tickets.length,
+    // Seat admin UI hidden — empty for legacy consumers
+    seats: [],
+    orderItems: undefined,
+  }
+}
+
+function humanizeTypeName(seatType: string | null | undefined): string {
+  const s = String(seatType || '').toUpperCase()
+  if (!s) return 'Ticket'
+  if (s.includes('VIP')) return 'VIP'
+  if (s.includes('DONOR')) return 'Donor'
+  if (s.includes('ECONOMY') || s.includes('EARLY')) return 'Early Bird'
+  if (s.includes('STANDARD') || s.includes('LEVEL_2')) return 'Standard'
+  if (s.startsWith('LEVEL_')) return s.replace('LEVEL_', 'Level ')
+  return s
+}
+
+/**
+ * Get order by ID
+ */
+export async function getOrderById(id: string) {
+  const order = await prisma.order.findUnique({
+    where: {id},
+    include: {
+      event: true,
+      orderItems: {include: {seat: true}},
+      payment: true,
+    },
+  })
+
+  if (!order) return null
+  const typeNames = await loadTicketTypeNamesForOrders([id])
+  return mapOrderForAdmin(order, typeNames)
+}
+
+/**
+ * Generate access token
+ */
+function generateAccessToken(): {token: string; hash: string} {
+  const token = randomBytes(32).toString('hex')
+  const hash = createHash('sha256').update(token).digest('hex')
+  return {token, hash}
+}
+
+/**
+ * Confirm payment (admin action)
+ */
+export async function confirmPayment(
+  orderId: string,
+  adminUser: {userId: string; roleName: string},
+  ipAddress?: string,
+  userAgent?: string
+) {
+  const result = await prisma.$transaction(
+    async (tx: any) => {
+      const order = await tx.order.findUnique({
+        where: {id: orderId},
+        include: {
+          event: true,
+          orderItems: {include: {seat: true}},
+          payment: true,
+        },
+      })
+
+      if (!order) throw new Error('Order not found')
+      if (order.status === 'PAID') throw new Error('Order already paid')
+      if (order.status === 'CANCELLED') throw new Error('Order is cancelled')
+      if (order.status === 'EXPIRED') throw new Error('Order has expired')
+
+      // ⚠️ Use existing plaintext token if available, otherwise generate new one
+      let accessToken: string
+      let accessTokenHash: string
+
+      if (order.accessToken) {
+        // Reuse existing plaintext token
+        accessToken = order.accessToken
+        accessTokenHash = order.accessTokenHash!
+        console.log('[CONFIRM PAYMENT] Reusing existing plaintext token')
+      } else {
+        // Generate new token (old orders or webhook payments)
+        const generated = generateAccessToken()
+        accessToken = generated.token
+        accessTokenHash = generated.hash
+        console.log('[CONFIRM PAYMENT] Generated new access token')
+      }
+
+      // Order-level QR (legacy display / wallet entry)
+      const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
+
+      // Update order to PAID
+      const updatedOrder = await tx.order.update({
+        where: {id: orderId},
+        data: {
+          status: 'PAID',
+          paidAt: new Date(),
+          accessTokenHash,
+          accessToken, // Save plaintext for future email sends
+          qrCodeUrl,
+        },
+      })
+
+      // Per-ticket units (model B): unique TKT-xxx + QR each order_item
+      try {
+        const {ensureTicketUnitsForOrder} = await import('../../utils/ticket-unit.js')
+        await ensureTicketUnitsForOrder(orderId)
+        console.log('[CONFIRM PAYMENT] Per-ticket QR units ready')
+      } catch (e) {
+        console.error('[CONFIRM PAYMENT] ensureTicketUnitsForOrder failed:', e)
+      }
+
+      // Update payment
+      if (order.payment) {
+        await tx.payment.update({
+          where: {orderId},
+          data: {
+            status: 'COMPLETED',
+            paidAt: new Date(),
+          },
+        })
+      } else {
+        await tx.payment.create({
+          data: {
+            orderId,
+            amount: order.totalAmount,
+            paymentMethod: 'BANK_TRANSFER',
+            status: 'COMPLETED',
+            paidAt: new Date(),
+          },
+        })
+      }
+
+      // Mark seats as SOLD
+      const seatIds = order.orderItems
+        .map((item: any) => item.seatId)
+        .filter((id: any): id is string => id !== null)
+      if (seatIds.length > 0) {
+        await tx.seat.updateMany({
+          where: {id: {in: seatIds}},
+          data: {status: 'SOLD'},
+        })
+
+        // Delete seat locks for these seats (they are now permanently SOLD)
+        await tx.seatLock.deleteMany({
+          where: {seatId: {in: seatIds}},
+        })
+        console.log(`[CONFIRM PAYMENT] Deleted ${seatIds.length} seat locks`)
+      }
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          userId: adminUser.userId,
+          userRole: adminUser.roleName,
+          action: 'CONFIRM',
+          entity: 'PAYMENT',
+          entityId: orderId,
+          oldValue: JSON.stringify({status: order.status}),
+          newValue: JSON.stringify({status: 'PAID'}),
+          metadata: JSON.stringify({
+            orderNumber: order.orderNumber,
+            amount: Number(order.totalAmount),
+          }),
+          ipAddress,
+          userAgent,
+        },
+      })
+
+      return {order, updatedOrder, accessToken, seatIds}
+    },
+    {timeout: 30000}
+  )
+
+  return result
+}
+
+/**
+ * Reject payment (admin action)
+ */
+export async function rejectPayment(
+  orderId: string,
+  reason: string,
+  adminUser: {userId: string; roleName: string},
+  notes?: string,
+  ipAddress?: string,
+  userAgent?: string
+) {
+  const result = await prisma.$transaction(
+    async (tx: any) => {
+      const order = await tx.order.findUnique({
+        where: {id: orderId},
+        include: {
+          event: true,
+          orderItems: {include: {seat: true}},
+          payment: true,
+        },
+      })
+
+      if (!order) throw new Error('Order not found')
+      if (order.status === 'PAID') throw new Error('Cannot reject paid order')
+      if (order.status === 'CANCELLED') throw new Error('Order already cancelled')
+      if (order.status === 'EXPIRED') throw new Error('Order has expired')
+
+      // Update order to CANCELLED
+      const updatedOrder = await tx.order.update({
+        where: {id: orderId},
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancellationReason: reason,
+        },
+      })
+
+      // Update payment to FAILED
+      if (order.payment) {
+        await tx.payment.update({
+          where: {orderId},
+          data: {
+            status: 'FAILED',
+            metadata: JSON.stringify({
+              rejectedBy: adminUser.userId,
+              rejectedAt: new Date().toISOString(),
+              reason,
+              notes,
+            }),
+          },
+        })
+      }
+
+      // Decrement promotion used count if applicable
+      const orderPromo = await rawQuery<{promotion_id: string | null}>(
+        'SELECT promotion_id FROM orders WHERE id = ?',
+        [orderId]
+      );
+      const promotionId = orderPromo[0]?.promotion_id;
+      if (promotionId) {
+        await execute(
+          'UPDATE promotions SET used_count = GREATEST(0, used_count - 1) WHERE id = ?',
+          [promotionId]
+        );
+      }
+
+      // Release seats back to AVAILABLE
+      const seatIds = order.orderItems
+        .map((item: any) => item.seatId)
+        .filter((id: any): id is string => id !== null)
+      if (seatIds.length > 0) {
+        await tx.seat.updateMany({
+          where: {id: {in: seatIds}},
+          data: {status: 'AVAILABLE'},
+        })
+      }
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          userId: adminUser.userId,
+          userRole: adminUser.roleName,
+          action: 'REJECT',
+          entity: 'PAYMENT',
+          entityId: orderId,
+          oldValue: JSON.stringify({status: order.status}),
+          newValue: JSON.stringify({status: 'CANCELLED', reason}),
+          metadata: JSON.stringify({
+            orderNumber: order.orderNumber,
+            releasedSeats: seatIds.length,
+            notes,
+          }),
+          ipAddress,
+          userAgent,
+        },
+      })
+
+      return {order, updatedOrder, releasedSeats: seatIds.length}
+    },
+    {timeout: 30000}
+  )
+
+  return result
+}
+
+/**
+ * Resend ticket email for PAID order
+ */
+export async function resendTicketEmail(
+  orderId: string,
+  adminUser: {userId: string; roleName: string},
+  options?: {templateId?: string},
+) {
+  const order = await prisma.order.findUnique({
+    where: {id: orderId},
+    include: {
+      event: true,
+      orderItems: {include: {seat: true}},
+    },
+  })
+
+  if (!order) throw new Error('Order not found')
+  if (order.status !== 'PAID') throw new Error('Can only resend email for PAID orders')
+
+  // ⚠️ Use existing plaintext token if available, otherwise generate new one
+  let accessToken: string
+  let accessTokenHash: string
+
+  if (order.accessToken) {
+    // Reuse existing plaintext token - this keeps ticket URL valid!
+    accessToken = order.accessToken
+    accessTokenHash = order.accessTokenHash!
+    console.log(`[RESEND EMAIL] Reusing existing plaintext token for order ${order.orderNumber}`)
+  } else {
+    // Generate new token (for old orders that don't have plaintext saved)
+    const generated = generateAccessToken()
+    accessToken = generated.token
+    accessTokenHash = generated.hash
+    console.log(`[RESEND EMAIL] Generated new access token for order ${order.orderNumber}`)
+
+    // Update order with new access token
+    await prisma.order.update({
+      where: {id: orderId},
+      data: {accessTokenHash, accessToken},
+    })
+  }
+
+  // Generate QR code and ticket URL
+  const qrCodeUrl = await generateTicketQRCode(order.orderNumber, order.eventId)
+  const ticketUrl = generateTicketUrl(order.orderNumber, accessToken)
+
+  // Ensure per-ticket units exist before email
+  let ticketUnits: Array<{
+    ticketCode: string
+    qrCodeUrl: string
+    typeName: string
+    seatNumber?: string
+    price: number
+    index: number
+  }> = []
+  const {buildTicketLines, formatTicketLinesSummary, humanizeSeatType} = await import(
+    '../../utils/ticket-lines.js'
+  )
+  try {
+    const {ensureTicketUnitsForOrder} = await import('../../utils/ticket-unit.js')
+    const {query} = await import('../../db/mysql.js')
+    await ensureTicketUnitsForOrder(orderId)
+    const rows = await query<{
+      ticket_code: string
+      qr_code_url: string
+      seat_number: string
+      seat_type: string
+      price: number
+      ticket_type_name: string | null
+    }>(
+      `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
+              tt.name AS ticket_type_name
+       FROM order_items oi
+       LEFT JOIN seats s ON s.id = oi.seat_id
+       LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+       WHERE oi.order_id = ?
+       ORDER BY oi.created_at ASC`,
+      [orderId],
+    )
+    ticketUnits = rows
+      .filter((r) => r.ticket_code && r.qr_code_url)
+      .map((r, i) => ({
+        ticketCode: r.ticket_code,
+        qrCodeUrl: r.qr_code_url,
+        typeName:
+          (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
+          humanizeSeatType(r.seat_type),
+        seatNumber: r.seat_number,
+        price: Number(r.price),
+        index: i + 1,
+      }))
+  } catch (e) {
+    console.error('[RESEND EMAIL] ticket units:', e)
+  }
+
+  // Format date
+  const eventDate = new Date(order.event.eventDate)
+  const formattedDate = eventDate.toLocaleDateString('vi-VN', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+  const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const ticketLines = buildTicketLines(
+    order.orderItems.map((item: any) => ({
+      seatNumber: item.seat?.seatNumber || item.seatNumber,
+      seatType: item.seat?.seatType || item.seatType,
+      price: item.price,
+      ticketTypeId: item.seat?.ticketTypeId || null,
+      ticketTypeName: item.seat?.ticketType?.name || null,
+    })),
+  )
+  const seatsList =
+    ticketLines.length > 0
+      ? formatTicketLinesSummary(ticketLines)
+      : order.orderItems
+          .map(
+            (item: any) =>
+              `${item.seat?.seatNumber || item.seatNumber} (${item.seat?.seatType || item.seatType})`,
+          )
+          .join(', ')
+
+  const totalFormatted = new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+  }).format(Number(order.totalAmount) || 0)
+  const pdfUrl = ticketUrl
+    .replace('/ticket/', '/api/ticket/')
+    .replace('?token=', '/pdf?token=')
+
+  // Send email with allowDuplicate — MUST use admin template
+  const emailResult = await sendEmailByPurpose({
+    purpose: 'TICKET_CONFIRMED',
+    to: order.customerEmail,
+    orderId: order.id,
+    triggeredBy: adminUser.userId,
+    allowDuplicate: true,
+    templateId: options?.templateId,
+    data: {
+      customerName: order.customerName,
+      eventName: order.event.name,
+      eventDate: formattedDate,
+      eventTime: formattedTime,
+      eventVenue: order.event.venue,
+      eventAddress: order.event.venue,
+      orderNumber: order.orderNumber,
+      seats: seatsList,
+      ticketLines,
+      ticketUnits,
+      ticketCount: ticketUnits.length || order.orderItems.length,
+      totalAmount: totalFormatted,
+      qrCodeUrl,
+      ticketUrl,
+      pdfUrl,
+    },
+  })
+
+  // Update email_sent_at
+  if (emailResult.success) {
+    await prisma.order.update({
+      where: {id: orderId},
+      data: {emailSentAt: new Date()},
+    })
+  }
+
+  return {order, emailResult}
+}
+
+/**
+ * Delete order completely (admin action)
+ */
+export async function deleteOrder(
+  orderId: string,
+  adminUser: {userId: string; roleName: string},
+  ipAddress?: string,
+  userAgent?: string
+): Promise<{orderNumber: string; releasedSeats: number}> {
+  const order = await prisma.order.findUnique({
+    where: {id: orderId},
+    include: {
+      orderItems: {include: {seat: true}},
+      event: true,
+    },
+  })
+
+  if (!order) {
+    throw new Error('Order not found')
+  }
+
+  const seatIds = order.orderItems
+    .map((item: any) => item.seatId)
+    .filter((id: any) => id !== null) as string[]
+
+  // Release seats back to AVAILABLE
+  if (seatIds.length > 0) {
+    await execute(
+      `UPDATE seats
+       SET status = 'AVAILABLE', updated_at = NOW()
+       WHERE id IN (${seatIds.map(() => '?').join(',')})`,
+      seatIds
+    )
+  }
+
+  // Delete seat locks for this order
+  if (seatIds.length > 0) {
+    await execute(
+      `DELETE FROM seat_locks
+       WHERE event_id = ? AND seat_id IN (${seatIds.map(() => '?').join(',')})`,
+      [order.eventId, ...seatIds]
+    )
+  }
+
+  // Delete from Redis (correct key format)
+  for (const seatId of seatIds) {
+    await redis.del(`seat:${order.eventId}:${seatId}`)
+  }
+
+  // Delete order items first (foreign key constraint)
+  await prisma.orderItem.deleteMany({where: {orderId}})
+
+  // Delete payment record if exists
+  await prisma.payment.deleteMany({where: {orderId}})
+
+  // Delete the order itself
+  await prisma.order.delete({where: {id: orderId}})
+
+  // Create audit log
+  await createAuditLog({
+    userId: adminUser.userId,
+    userRole: adminUser.roleName,
+    action: 'DELETE',
+    entity: 'ORDER',
+    entityId: orderId,
+    metadata: {
+      orderNumber: order.orderNumber,
+      status: order.status,
+      customerEmail: order.customerEmail,
+      releasedSeats: seatIds.length,
+      eventId: order.eventId,
+    },
+    ipAddress,
+    userAgent,
+  })
+
+  console.log(
+    `[ADMIN DELETE ORDER] Deleted order ${order.orderNumber}, released ${seatIds.length} seats`
+  )
+
+  return {
+    orderNumber: order.orderNumber,
+    releasedSeats: seatIds.length,
+  }
+}
