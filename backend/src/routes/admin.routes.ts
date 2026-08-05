@@ -1,0 +1,179 @@
+import {FastifyInstance} from 'fastify'
+import {requireAuth} from '../middleware/auth.js'
+
+// Controllers
+import * as dashboardController from '../controllers/admin/dashboard.controller.js'
+import * as ordersController from '../controllers/admin/orders.controller.js'
+import * as speakersController from '../controllers/admin/speakers.controller.js'
+import * as emailTemplatesController from '../controllers/admin/email-templates.controller.js'
+import * as usersController from '../controllers/admin/users.controller.js'
+import * as eventsController from '../controllers/admin/events.controller.js'
+import * as seatsController from '../controllers/admin/seats.controller.js'
+import * as auditLogsController from '../controllers/admin/audit-logs.controller.js'
+import * as uploadController from '../controllers/admin/upload.controller.js'
+import * as layoutsController from '../controllers/admin/layouts.controller.js'
+import * as layoutVersionsController from '../controllers/admin/layout-versions.controller.js'
+import * as seatLocksController from '../controllers/admin/seat-locks.controller.js'
+import * as ticketTypesController from '../controllers/admin/ticket-types.controller.js'
+import * as timelinesController from '../controllers/admin/timelines.controller.js'
+import * as customersController from '../controllers/admin/customers.controller.js'
+import * as partnersController from '../controllers/admin/partners.controller.js'
+import * as speakerRegisterController from '../controllers/admin/speaker-register.controller.js'
+import * as checkinController from '../controllers/admin/checkin.controller.js'
+import * as promotionsController from '../controllers/admin/promotions.controller.js'
+import * as settingsController from '../controllers/admin/settings.controller.js'
+
+export async function registerAdminRoutes(fastify: FastifyInstance) {
+  // All admin routes require authentication
+  const preHandler = requireAuth
+
+  // Promotions
+  fastify.get('/admin/promotions', {preHandler}, promotionsController.listPromotions)
+  fastify.get('/admin/promotions/:id', {preHandler}, promotionsController.getPromotion)
+  fastify.post('/admin/promotions', {preHandler}, promotionsController.createPromotion)
+  fastify.put('/admin/promotions/:id', {preHandler}, promotionsController.updatePromotion)
+  fastify.delete('/admin/promotions/:id', {preHandler}, promotionsController.deletePromotion)
+  fastify.patch('/admin/promotions/:id/toggle', {preHandler}, promotionsController.togglePromotion)
+
+  // Partners
+  fastify.get('/admin/partners', {preHandler}, partnersController.list)
+  fastify.get('/admin/partners/:id', {preHandler}, partnersController.getById)
+  fastify.post('/admin/partners', {preHandler}, partnersController.create)
+  fastify.put('/admin/partners/:id', {preHandler}, partnersController.update)
+  fastify.delete('/admin/partners/:id', {preHandler}, partnersController.remove)
+
+  // Speaker Registration (Config, Fields, Submissions)
+  fastify.get('/admin/speakers/register/config', {preHandler}, speakerRegisterController.getConfig)
+  fastify.put('/admin/speakers/register/config', {preHandler}, speakerRegisterController.updateConfig)
+  fastify.get('/admin/speakers/register/fields', {preHandler}, speakerRegisterController.listFields)
+  fastify.post('/admin/speakers/register/fields', {preHandler}, speakerRegisterController.createField)
+  fastify.put('/admin/speakers/register/fields/:id', {preHandler}, speakerRegisterController.updateField)
+  fastify.delete('/admin/speakers/register/fields/:id', {preHandler}, speakerRegisterController.removeField)
+  fastify.get('/admin/speakers/submissions', {preHandler}, speakerRegisterController.listSubmissions)
+  fastify.put('/admin/speakers/submissions/:id/status', {preHandler}, speakerRegisterController.updateSubmissionStatus)
+
+  // Dashboard
+  fastify.get('/admin/dashboard/stats', {preHandler}, dashboardController.getStats)
+
+  // Check-in
+  fastify.post('/admin/check-in', {preHandler}, checkinController.checkIn)
+  fastify.get('/admin/check-in/status/:orderNumber', {preHandler}, checkinController.getStatus)
+  fastify.get('/admin/check-in/stats/:eventId', {preHandler}, checkinController.getStats)
+  fastify.get('/admin/check-in/list/:eventId', {preHandler}, checkinController.getCheckedInList)
+
+  // Orders
+  fastify.get('/admin/orders', {preHandler}, ordersController.list)
+  fastify.get('/admin/orders/:id', {preHandler}, ordersController.getById)
+  fastify.post('/admin/orders/:id/confirm', {preHandler}, ordersController.confirmPayment)
+  fastify.post('/admin/orders/:id/reject', {preHandler}, ordersController.rejectPayment)
+  fastify.post('/admin/orders/:id/resend-email', {preHandler}, ordersController.resendEmail)
+  // Alias: frontend web-admin uses /send-email — keep both working
+  fastify.post('/admin/orders/:id/send-email', {preHandler}, ordersController.resendEmail)
+  fastify.delete('/admin/orders/:id', {preHandler}, ordersController.remove)
+
+  // Speakers
+  fastify.get('/admin/speakers', {preHandler}, speakersController.list)
+  fastify.get('/admin/speakers/:id', {preHandler}, speakersController.getById)
+  fastify.post('/admin/speakers', {preHandler}, speakersController.create)
+  fastify.put('/admin/speakers/:id', {preHandler}, speakersController.update)
+  fastify.delete('/admin/speakers/:id', {preHandler}, speakersController.remove)
+
+  // Email Templates
+  fastify.get('/admin/email-templates', {preHandler}, emailTemplatesController.list)
+  fastify.get('/admin/email-templates/:id', {preHandler}, emailTemplatesController.getById)
+  fastify.get('/admin/email-templates/:id/preview', {preHandler}, emailTemplatesController.preview)
+  fastify.post('/admin/email-templates', {preHandler}, emailTemplatesController.create)
+  fastify.post('/admin/email-templates/upload', {preHandler}, emailTemplatesController.upload)
+  fastify.post(
+    '/admin/email-templates/upload/save',
+    {preHandler},
+    emailTemplatesController.saveUploaded
+  )
+  fastify.put('/admin/email-templates/:id', {preHandler}, emailTemplatesController.update)
+  fastify.delete('/admin/email-templates/:id', {preHandler}, emailTemplatesController.remove)
+  fastify.post(
+    '/admin/email-templates/:id/set-default',
+    {preHandler},
+    emailTemplatesController.setDefault
+  )
+  fastify.post(
+    '/admin/email-templates/:id/activate',
+    {preHandler},
+    emailTemplatesController.activate
+  )
+  fastify.post('/admin/email-templates/:id/preview', {preHandler}, emailTemplatesController.preview)
+
+  // Users
+  fastify.get('/admin/users', {preHandler}, usersController.list)
+  fastify.get('/admin/users/:id', {preHandler}, usersController.getById)
+  fastify.post('/admin/users', {preHandler}, usersController.create)
+  fastify.put('/admin/users/:id', {preHandler}, usersController.update)
+  fastify.delete('/admin/users/:id', {preHandler}, usersController.remove)
+
+  // Events (Admin CRUD)
+  fastify.get('/admin/events', {preHandler}, eventsController.list)
+  fastify.get('/admin/events/:id', {preHandler}, eventsController.getById)
+  fastify.post('/admin/events', {preHandler}, eventsController.create)
+  fastify.put('/admin/events/:id', {preHandler}, eventsController.update)
+  fastify.delete('/admin/events/:id', {preHandler}, eventsController.remove)
+
+  // Seats (Admin CRUD)
+  fastify.get('/admin/seats', {preHandler}, seatsController.list)
+  fastify.get('/admin/seats/:id', {preHandler}, seatsController.getById)
+  fastify.post('/admin/seats', {preHandler}, seatsController.create)
+  fastify.put('/admin/seats/:id', {preHandler}, seatsController.update)
+  fastify.put('/admin/seats', {preHandler}, seatsController.bulkUpdate)
+  fastify.delete('/admin/seats', {preHandler}, seatsController.remove)
+
+  // Layouts
+  fastify.get('/admin/layouts', {preHandler}, layoutsController.list)
+  fastify.post('/admin/layouts', {preHandler}, layoutsController.create)
+  fastify.put('/admin/layouts', {preHandler}, layoutsController.update)
+  fastify.delete('/admin/layouts', {preHandler}, layoutsController.remove)
+
+  // Layout Versions
+  fastify.get('/admin/layout-versions', {preHandler}, layoutVersionsController.list)
+  fastify.post('/admin/layout-versions', {preHandler}, layoutVersionsController.create)
+  fastify.put('/admin/layout-versions/:id', {preHandler}, layoutVersionsController.update)
+  fastify.post('/admin/layout-versions/:id/publish', {preHandler}, layoutVersionsController.publish)
+  fastify.delete('/admin/layout-versions', {preHandler}, layoutVersionsController.remove)
+
+  // Seat Locks (Admin)
+  fastify.get('/admin/seat-locks', {preHandler}, seatLocksController.list)
+  fastify.delete('/admin/seat-locks/:id', {preHandler}, seatLocksController.remove)
+  fastify.post('/admin/seat-locks/clear-all', {preHandler}, seatLocksController.clearAll)
+
+  // Ticket Types
+  fastify.get('/admin/ticket-types', {preHandler}, ticketTypesController.list)
+  fastify.post('/admin/ticket-types', {preHandler}, ticketTypesController.create)
+  fastify.put('/admin/ticket-types/:id', {preHandler}, ticketTypesController.update)
+  fastify.put('/admin/ticket-types', {preHandler}, ticketTypesController.bulkAssign)
+  fastify.delete('/admin/ticket-types', {preHandler}, ticketTypesController.remove)
+
+  // Timelines
+  fastify.get('/admin/timelines', {preHandler}, timelinesController.list)
+  fastify.post('/admin/timelines', {preHandler}, timelinesController.create)
+  fastify.post('/admin/timelines/reorder', {preHandler}, timelinesController.reorder)
+  fastify.put('/admin/timelines/:id', {preHandler}, timelinesController.update)
+  fastify.post('/admin/timelines/:id/publish', {preHandler}, timelinesController.publish)
+  fastify.delete('/admin/timelines/:id', {preHandler}, timelinesController.remove)
+
+  // Customers
+  fastify.get('/admin/customers', {preHandler}, customersController.list)
+  fastify.get('/admin/customers/:id', {preHandler}, customersController.getById)
+
+  // Audit Logs
+  fastify.get('/admin/audit-logs', {preHandler}, auditLogsController.list)
+
+  // Upload (requires multipart support)
+  fastify.post('/admin/upload', {preHandler}, uploadController.uploadImage)
+  fastify.delete('/admin/upload', {preHandler}, uploadController.deleteImage)
+
+  // System Settings
+  fastify.get('/admin/settings', {preHandler}, settingsController.getSettings)
+  fastify.put('/admin/settings', {preHandler}, settingsController.updateSettings)
+  fastify.get('/admin/settings/notification-emails', {preHandler}, settingsController.getNotificationEmails)
+  fastify.put('/admin/settings/notification-emails', {preHandler}, settingsController.updateNotificationEmails)
+  fastify.get('/admin/settings/on-duty-email', {preHandler}, settingsController.getOnDutyEmail)
+  fastify.put('/admin/settings/on-duty-email', {preHandler}, settingsController.updateOnDutyEmail)
+}

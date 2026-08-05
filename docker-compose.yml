@@ -1,0 +1,92 @@
+c version: '3.8'
+
+services:
+  # Backend API (Fastify)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tedx-backend
+    ports:
+      - '4000:4000'
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - HOST=0.0.0.0
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
+      - CLIENT_URL=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3002
+      - RATE_LIMIT_MAX=100
+      - RATE_LIMIT_WINDOW=60
+      - SEAT_LOCK_TTL=300
+      - CRON_SECRET=abc123
+      - EMAIL_PROVIDER=resend
+      - EMAIL_FROM=TEDxFPT University HCMC <onboarding@resend.dev>
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - CLOUDINARY_URL=${CLOUDINARY_URL}
+      - CLOUDINARY_FOLDER=tedx-fptuhcmc
+    networks:
+      - tedx-network
+    restart: unless-stopped
+
+  # Web Admin (Next.js)
+  web-admin:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+    container_name: tedx-web-admin
+    ports:
+      - '3002:3002'
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:4000/api
+      - INTERNAL_API_URL=http://backend:4000/api
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - CLOUDINARY_URL=${CLOUDINARY_URL}
+      - CLOUDINARY_FOLDER=tedx-fptuhcmc
+    networks:
+      - tedx-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Web Client (Next.js)
+  web-client:
+    build:
+      context: ./web-client
+      dockerfile: Dockerfile
+    container_name: tedx-web-client
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:4000/api
+      - INTERNAL_API_URL=http://backend:4000/api
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+    networks:
+      - tedx-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  tedx-network:
+    driver: bridge

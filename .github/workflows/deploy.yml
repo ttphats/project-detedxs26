@@ -1,0 +1,74 @@
+name: Deploy Backend to Ubuntu
+
+on:
+  push:
+    branches:
+      - main # Production
+      - feature/fastify-backend # Staging
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  # =====================================
+  # Deploy Backend to Ubuntu Server
+  # =====================================
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Ubuntu Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "🚀 Starting deployment..."
+
+            # Navigate to project directory
+            cd /var/www/tedx-backend || exit 1
+
+            # Pull latest code
+            echo "📥 Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/${{ github.ref_name }}
+
+            # Navigate to backend directory
+            cd backend
+
+            # Install Puppeteer system dependencies (if not already installed)
+            echo "🤖 Checking Puppeteer dependencies..."
+            if ! dpkg -l | grep -q libgbm1; then
+              echo "Installing Puppeteer dependencies..."
+              sudo apt-get update
+              sudo apt-get install -y ca-certificates fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 lsb-release wget xdg-utils
+            fi
+
+            # Install dependencies
+            echo "📦 Installing dependencies..."
+            npm ci --production
+
+            # Generate Prisma Client
+            echo "🔧 Generating Prisma Client..."
+            npx prisma generate
+
+            # Build TypeScript
+            echo "🔨 Building TypeScript..."
+            npm run build
+
+            # Restart PM2
+            echo "🔄 Restarting PM2..."
+            pm2 restart tedx-backend || pm2 start npm --name "tedx-backend" -- run start
+
+            # Save PM2 config
+            pm2 save
+
+            # Show status
+            echo "✅ Deployment completed!"
+            pm2 status tedx-backend
