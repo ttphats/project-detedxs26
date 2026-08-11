@@ -25,6 +25,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Tag,
+  Images,
 } from "lucide-react";
 import { MENU_LABELS } from "@/constants/menu";
 
@@ -48,6 +49,7 @@ const menuItems = [
     icon: ClipboardList,
   },
   { href: "/admin/partners", label: "Partners", icon: Handshake },
+  { href: "/admin/gallery", label: "Gallery", icon: Images },
   { href: "/admin/timelines", label: MENU_LABELS.TIMELINE, icon: Clock },
   {
     href: "/admin/layout-editor",

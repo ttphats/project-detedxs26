@@ -6,12 +6,19 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { formatVNDate } from "@/lib/date-utils";
 import {
+  loadCheckoutState,
+  clearCheckoutState,
+  type AttendeeInfo,
+} from "@/lib/checkout-store";
+import { StepIndicator } from "@/components";
+import {
   ArrowLeft,
   Copy,
   Check,
   Clock,
   CreditCard,
   Ticket,
+  Users,
   QrCode,
   AlertTriangle,
   Loader2,
@@ -46,7 +53,7 @@ interface EventData {
 
 // Bank account info for transfer
 const bankInfo = {
-  bankName: "Ngân hàng Á Châu - ACB",
+  bankName: "Asia Commercial Bank - ACB",
   bankLogo: "/acb-logo.png",
   accountNumber: "85085588",
   accountHolder: "CONG TY TNHH TICKETHUB VN",
@@ -64,6 +71,7 @@ function CheckoutContent() {
   const accessToken = searchParams.get("token"); // Access token from create-pending
 
   const [formData, setFormData] = useState({ name: "", email: "", phone: "" });
+  const [attendees, setAttendees] = useState<AttendeeInfo[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -107,7 +115,7 @@ function CheckoutContent() {
           // Navigation Guard: if order is no longer PENDING, redirect away
           if (data.data.status !== "PENDING") {
             console.log("[CHECKOUT] Order is not PENDING, redirecting...");
-            router.replace(`/ticket/${orderNumber}?token=${accessToken}`);
+            router.replace(`/order-waiting?order=${orderNumber}&token=${accessToken}`);
             return;
           }
 
@@ -117,8 +125,19 @@ function CheckoutContent() {
           // Set initial countdown based on actual time remaining
           setTimeLeft(data.data.timeRemaining);
 
-          // Pre-fill customer info if already exists
-          if (data.data.customerName) {
+          // Load attendee info from checkout store
+          const checkoutState = loadCheckoutState();
+          if (checkoutState?.attendees?.length) {
+            setAttendees(checkoutState.attendees);
+            // Use first attendee as the buyer
+            const firstAttendee = checkoutState.attendees[0];
+            setFormData({
+              name: firstAttendee.name,
+              email: firstAttendee.email,
+              phone: firstAttendee.phone,
+            });
+          } else if (data.data.customerName) {
+            // Fallback: pre-fill from existing order data
             setFormData({
               name: data.data.customerName,
               email: data.data.customerEmail,
@@ -225,8 +244,8 @@ function CheckoutContent() {
         number: parseInt(s.seatNumber.replace(/\D/g, "")) || 0,
         section: s.section,
         status: "RESERVED",
-        ticketTypeId: "",
-        seatType: s.seatType,
+        ticketTypeId: s.ticketTypeId || "",
+        seatType: s.ticketTypeName || s.seatType,
         price: s.price,
       }))
     : event
@@ -237,7 +256,7 @@ function CheckoutContent() {
   const totalPrice =
     orderData?.totalAmount ||
     selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
-  const transferContent = `Nap quy khach hang id ${orderCode}`;
+  const transferContent = `Ticket payment order ${orderCode}`;
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -247,7 +266,7 @@ function CheckoutContent() {
 
   const handleOpenConfirm = () => {
     if (!formData.name || !formData.email || !formData.phone) {
-      toast.error("Please fill in all information");
+      toast.error("Buyer information is missing. Please go back to fill in attendee info.");
       return;
     }
     setShowConfirmModal(true);
@@ -280,6 +299,12 @@ function CheckoutContent() {
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
+          attendees: attendees.length > 0 ? attendees.map((a) => ({
+            seatId: a.seatId,
+            name: a.name,
+            email: a.email,
+            phone: a.phone,
+          })) : undefined,
         }),
       });
 
@@ -291,9 +316,12 @@ function CheckoutContent() {
 
       console.log("[CHECKOUT] Payment confirmed for order:", orderNumber);
 
-      // Navigate to ticket page with token for status tracking (using replace to prevent back navigation)
-      const ticketPath = `/ticket/${orderNumber}?token=${accessToken}`;
-      router.replace(ticketPath);
+      // Clear checkout state on successful submission
+      clearCheckoutState();
+
+      // Navigate to waiting page where we poll for admin confirmation
+      const waitingPath = `/order-waiting?order=${orderNumber}&token=${accessToken}`;
+      router.replace(waitingPath);
     } catch (error: unknown) {
       console.error("Payment confirmation error:", error);
       setOrderError(
@@ -407,10 +435,10 @@ function CheckoutContent() {
 
               {isExpired && (
                 <Link
-                  href={`/events/${eventId}/seats`}
+                  href={`/events/${eventId}/tickets`}
                   className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-lg transition-colors"
                 >
-                  Select seats again
+                  Select tickets again
                 </Link>
               )}
             </div>
@@ -420,14 +448,17 @@ function CheckoutContent() {
         {/* Spacer for fixed timer on mobile */}
         <div className="h-16 sm:hidden" />
 
+        {/* Step Indicator */}
+        <StepIndicator currentStep={3} />
+
         {/* Header */}
         <div className="mb-6 sm:mb-8 animate-fade-in-down">
           <Link
-            href={`/events/${eventId}/seats`}
+            href={`/checkout/attendee-info?event=${eventId}&order=${orderNumber}&token=${accessToken}`}
             className="inline-flex items-center gap-2 text-gray-400 hover:text-red-500 transition-colors group"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Back to seat selection
+            Back to attendee info
           </Link>
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white mt-4">
             Payment
@@ -435,69 +466,53 @@ function CheckoutContent() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left: Customer Info & Bank Transfer */}
+          {/* Left: Attendee Summary & Bank Transfer */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Customer Info */}
-            <div className="glass-panel rounded-2xl p-6 animate-fade-in relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 rounded-full blur-2xl" />
+            {/* Attendee Summary (read-only, from Step 2) */}
+            {attendees.length > 0 && (
+              <div className="glass-panel rounded-2xl p-6 animate-fade-in relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 rounded-full blur-2xl" />
 
-              <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
-                <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-red-500" />
-                </div>
-                Customer Information
-              </h2>
+                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+                  <span className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
+                    <Users className="w-5 h-5 text-red-500" />
+                  </span>
+                  Attendees
+                  <span className="ml-auto text-sm font-normal text-gray-400">
+                    <Link
+                      href={`/events/${eventId}/tickets`}
+                      className="text-red-400 hover:text-red-300 underline underline-offset-2"
+                    >
+                      Edit
+                    </Link>
+                  </span>
+                </h2>
 
-              <div className="space-y-4 relative">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-white placeholder-gray-500 transition-all"
-                    placeholder="John Doe"
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Email *
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={(e) =>
-                        setFormData({ ...formData, email: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-white placeholder-gray-500 transition-all"
-                      placeholder="email@example.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Phone Number *
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      value={formData.phone}
-                      onChange={(e) =>
-                        setFormData({ ...formData, phone: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-white placeholder-gray-500 transition-all"
-                      placeholder="0901234567"
-                    />
-                  </div>
+                <div className="space-y-3 relative">
+                  {attendees.map((attendee, idx) => (
+                    <div
+                      key={attendee.seatId}
+                      className="flex items-center gap-4 p-3 bg-white/5 rounded-xl border border-white/5"
+                    >
+                      <div className="w-8 h-8 bg-red-600/20 rounded-lg flex items-center justify-center text-red-400 text-sm font-bold">
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-white text-sm truncate">
+                          {attendee.name}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">
+                          {attendee.email} · {attendee.phone}
+                        </p>
+                      </div>
+                      <span className="text-xs text-gray-500 whitespace-nowrap">
+                        {attendee.seatLabel}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Bank Transfer Section */}
             <div
@@ -627,7 +642,7 @@ function CheckoutContent() {
                       <div className="w-80 h-80 bg-white rounded-lg flex items-center justify-center relative overflow-hidden">
                         <img
                           src="/bank-qr.png"
-                          alt="QR chuyển khoản ngân hàng"
+                          alt="Bank transfer QR code"
                           className="w-full h-full object-contain"
                           onError={(e) => {
                             // Fallback: hide img and show placeholder text
@@ -638,7 +653,7 @@ function CheckoutContent() {
                               fallback.className = "qr-fallback flex flex-col items-center justify-center gap-2 p-4 text-center";
                               fallback.innerHTML = `
                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9V7a2 2 0 012-2h2m0 0V3m0 2h2M3 15v2a2 2 0 002 2h2m0 0v2m0-2h2m6-14h2a2 2 0 012 2v2m0 0h2m-2 0V5m0 6h2m-2 0v2m0 4h2a2 2 0 01-2 2h-2m0 0v2m0-2h-2"/></svg>
-                                <p class="text-xs text-gray-400">Đặt file <strong>bank-qr.png</strong> vào thư mục <strong>public/</strong></p>
+                                <p class="text-xs text-gray-400">Place <strong>bank-qr.png</strong> in the <strong>public/</strong> folder</p>
                               `;
                               parent.appendChild(fallback);
                             }
@@ -672,9 +687,9 @@ function CheckoutContent() {
                 <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/10 rounded-full blur-2xl" />
 
                 <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
+                  <span className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
                     <Ticket className="w-5 h-5 text-red-500" />
-                  </div>
+                  </span>
                   Order Information
                 </h2>
 
@@ -697,7 +712,7 @@ function CheckoutContent() {
                       className="flex justify-between text-sm py-2 border-b border-white/5"
                     >
                       <span className="text-gray-300">
-                        Seat {seat.seatNumber}
+                        {seat.seatType || "Ticket"}
                       </span>
                       <span className="font-medium text-white">
                         {seat.price.toLocaleString()} VND
@@ -767,8 +782,8 @@ function CheckoutContent() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => !isProcessing && setShowConfirmModal(false)}
           />
-          <div className="relative bg-zinc-900 border border-white/10 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-fade-in-up">
-            <div className="p-6">
+          <div className="relative bg-zinc-900 border border-white/10 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-fade-in-up max-h-[85vh] flex flex-col">
+            <div className="p-6 overflow-y-auto">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-red-600/20 rounded-full flex items-center justify-center">
                   <AlertTriangle className="w-5 h-5 text-red-500" />
@@ -778,50 +793,84 @@ function CheckoutContent() {
                 </h3>
               </div>
               <p className="text-sm text-gray-400 mb-6 leading-relaxed">
-                The e-ticket will be sent to the email address below. Please double-check your information before confirming payment!
+                Each e-ticket will be sent to its attendee&apos;s email below.
+                Please double-check every ticket&apos;s information before
+                confirming payment!
               </p>
-              <div className="space-y-3 bg-white/5 p-4 rounded-xl mb-6 border border-white/10">
-                <div>
-                  <span className="text-xs text-gray-500 block">Full Name</span>
-                  <span className="text-sm font-semibold text-white">
-                    {formData.name}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-500 block">Email</span>
-                  <span className="text-sm font-semibold text-white">
-                    {formData.email}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-500 block">
-                    Phone Number
-                  </span>
-                  <span className="text-sm font-semibold text-white">
-                    {formData.phone}
-                  </span>
-                </div>
+              <div className="space-y-3 mb-6">
+                {(attendees.length > 0
+                  ? attendees
+                  : [
+                      {
+                        seatId: "buyer",
+                        seatLabel: "Ticket",
+                        name: formData.name,
+                        email: formData.email,
+                        phone: formData.phone,
+                      },
+                    ]
+                ).map((attendee, idx) => (
+                  <div
+                    key={attendee.seatId}
+                    className="bg-white/5 p-4 rounded-xl border border-white/10"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-red-400">
+                        Ticket {idx + 1}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {attendee.seatLabel}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-xs text-gray-500 block">
+                          Full Name
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {attendee.name}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500 block">
+                          Email
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {attendee.email}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500 block">
+                          Phone Number
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {attendee.phone}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowConfirmModal(false)}
-                  disabled={isProcessing}
-                  className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold transition-colors disabled:opacity-50"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={submitPayment}
-                  disabled={isProcessing}
-                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    "Confirm"
-                  )}
-                </button>
-              </div>
+            </div>
+            <div className="flex gap-3 p-6 pt-0 shrink-0">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                disabled={isProcessing}
+                className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold transition-colors disabled:opacity-50"
+              >
+                Edit
+              </button>
+              <button
+                onClick={submitPayment}
+                disabled={isProcessing}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isProcessing ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  "Confirm"
+                )}
+              </button>
             </div>
           </div>
         </div>

@@ -34,6 +34,10 @@ interface OrderItem extends RowDataPacket {
   seat_number: string;
   seat_type: string;
   price: number;
+  attendee_name: string | null;
+  attendee_email: string | null;
+  attendee_phone: string | null;
+  ticket_type_name: string | null;
 }
 
 // Rate limiting map (in production, use Redis)
@@ -133,9 +137,16 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
     [order.event_id]
   );
 
-  // Get order items (seats)
+  // Get order items (seats) — joined with ticket_types for the purchased
+  // ticket type name, since the ticket-class flow never shows real seat codes
   const [seats] = await pool.query<OrderItem[]>(
-    `SELECT id, seat_number, seat_type, price FROM order_items WHERE order_id = ?`,
+    `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
+            oi.attendee_name, oi.attendee_email, oi.attendee_phone,
+            tt.name AS ticket_type_name
+     FROM order_items oi
+     LEFT JOIN seats s ON oi.seat_id = s.id
+     LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
+     WHERE oi.order_id = ?`,
     [order.id]
   );
 
@@ -164,8 +175,11 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
       } : null,
       seats: seats.map((seat: OrderItem) => ({
         seatNumber: seat.seat_number,
-        seatType: seat.seat_type,
+        seatType: seat.ticket_type_name || seat.seat_type,
         price: Number(seat.price),
+        attendeeName: seat.attendee_name,
+        attendeeEmail: seat.attendee_email,
+        attendeePhone: seat.attendee_phone,
       })),
     },
   };

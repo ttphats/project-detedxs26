@@ -124,11 +124,11 @@ function generateTicketHTML(data: {
 }): string {
   return `
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vé ${data.orderNumber}</title>
+  <title>Ticket ${data.orderNumber}</title>
   <style>
     * {
       margin: 0;
@@ -379,14 +379,14 @@ function generateTicketHTML(data: {
 
     <!-- Header: Event Info -->
     <div class="header">
-      <div class="status-badge">✓ Đã xác nhận</div>
+      <div class="status-badge">✓ Confirmed</div>
       <h1 class="event-name">${data.eventName}</h1>
 
       <div class="event-details">
         <div class="detail-item">
           <div class="detail-icon">📅</div>
           <div class="detail-content">
-            <div class="detail-label">Ngày</div>
+            <div class="detail-label">Date</div>
             <div class="detail-value">${data.eventDate}</div>
           </div>
         </div>
@@ -394,7 +394,7 @@ function generateTicketHTML(data: {
         <div class="detail-item">
           <div class="detail-icon">🕐</div>
           <div class="detail-content">
-            <div class="detail-label">Giờ</div>
+            <div class="detail-label">Time</div>
             <div class="detail-value">${data.eventTime}</div>
           </div>
         </div>
@@ -402,7 +402,7 @@ function generateTicketHTML(data: {
         <div class="detail-item venue-full">
           <div class="detail-icon">📍</div>
           <div class="detail-content">
-            <div class="detail-label">Địa điểm</div>
+            <div class="detail-label">Venue</div>
             <div class="detail-value">${data.eventVenue}</div>
           </div>
         </div>
@@ -420,12 +420,12 @@ function generateTicketHTML(data: {
       <div class="section">
         <div class="section-header">
           <span class="section-icon">👤</span>
-          <span class="section-title">Thông tin người tham dự</span>
+          <span class="section-title">Attendee Information</span>
         </div>
         <div class="attendee-name">${data.customerName}</div>
         <div class="order-meta">
           <span class="order-number">#${data.orderNumber}</span>
-          <span>${data.seats.length} vé</span>
+          <span>${data.seats.length} ticket${data.seats.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
 
@@ -433,7 +433,7 @@ function generateTicketHTML(data: {
       <div class="section">
         <div class="section-header">
           <span class="section-icon">🎫</span>
-          <span class="section-title">Ghế ngồi</span>
+          <span class="section-title">Seats</span>
         </div>
         <div class="seats-grid">
           ${data.seats
@@ -456,13 +456,13 @@ function generateTicketHTML(data: {
       <div class="section">
         <div class="section-header">
           <span class="section-icon">📱</span>
-          <span class="section-title">Mã check-in</span>
+          <span class="section-title">Check-in Code</span>
         </div>
         <div class="qr-section">
           <div class="qr-container">
             <img src="${data.qrCodeUrl}" alt="QR Code" />
           </div>
-          <div class="qr-hint">Quét mã này tại quầy check-in</div>
+          <div class="qr-hint">Scan this code at the check-in counter</div>
         </div>
       </div>
       `

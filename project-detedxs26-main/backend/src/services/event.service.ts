@@ -283,3 +283,93 @@ export async function getEventTimeline(eventId: string) {
     status: t.status,
   }))
 }
+
+/**
+ * Ticket-class page: event meta + ticket types. NO seatMap, NO availability
+ * counts (the ticket-type "available" counter is intentionally not shown —
+ * stock is enforced server-side at order-creation time instead).
+ */
+export async function getEventTickets(eventIdOrSlug: string) {
+  // First check if eventId is an ID or slug
+  let realEventId = eventIdOrSlug
+  const eventBySlug = await queryOne<{id: string}>(
+    'SELECT id FROM events WHERE slug = ? OR id = ?',
+    [eventIdOrSlug, eventIdOrSlug]
+  )
+  if (eventBySlug) {
+    realEventId = eventBySlug.id
+  }
+
+  const event = await queryOne<Event>(
+    `SELECT id, name, slug, description, event_date, doors_open_time, end_time,
+            venue, status, banner_image_url, thumbnail_url
+     FROM events WHERE id = ?`,
+    [realEventId]
+  )
+  if (!event) throw new NotFoundError('Event not found')
+
+  type TtRow = {
+    id: string
+    name: string
+    subtitle: string | null
+    description: string | null
+    price: number
+    benefits: string | null
+    level: number
+    color: string
+    icon: string | null
+    max_quantity: number | null
+    sort_order: number
+  }
+
+  const ticketTypeRows = await query<TtRow>(
+    `SELECT id, name, subtitle, description, price, benefits, level, color, icon,
+            max_quantity, sort_order
+     FROM ticket_types
+     WHERE event_id = ? AND is_active = 1
+     ORDER BY sort_order ASC, level ASC, name ASC`,
+    [realEventId]
+  )
+
+  const ticketTypes = ticketTypeRows.map((tt) => {
+    let benefits: string[] = []
+    if (tt.benefits) {
+      try {
+        const parsed = typeof tt.benefits === 'string' ? JSON.parse(tt.benefits) : tt.benefits
+        benefits = Array.isArray(parsed) ? parsed.map(String) : []
+      } catch {
+        benefits = []
+      }
+    }
+
+    return {
+      id: tt.id,
+      name: tt.name,
+      subtitle: tt.subtitle,
+      description: tt.description,
+      price: Number(tt.price),
+      benefits,
+      level: Number(tt.level) || 1,
+      color: tt.color || '#e62b1e',
+      icon: tt.icon || null,
+      maxQuantity: tt.max_quantity != null ? Number(tt.max_quantity) : null,
+      sortOrder: Number(tt.sort_order) || 0,
+    }
+  })
+
+  return {
+    id: event.id,
+    name: event.name,
+    slug: event.slug,
+    tagline: extractTagline(event.name),
+    description: event.description,
+    date: event.event_date,
+    time: `${formatTime(event.doors_open_time)} - ${formatTime(event.end_time)}`,
+    venue: event.venue,
+    status: event.status,
+    bannerImageUrl: event.banner_image_url,
+    thumbnailUrl: event.thumbnail_url,
+    // Explicit: no seatMap, no availability on this endpoint
+    ticketTypes,
+  }
+}

@@ -27,6 +27,23 @@ interface CreatePendingOrderResult {
   accessToken: string
 }
 
+// ============================================
+// TICKET-CLASS BOOKING (no seat selection)
+// User picks ticket type + quantity; backend
+// auto-assigns available seats from that tier.
+// ============================================
+
+interface CreatePendingOrderByTypeParams {
+  eventId: string
+  sessionId: string
+  promoCode?: string
+  /** Multi-type cart items (preferred). Legacy single-type is normalized by controller. */
+  items: Array<{ticketTypeId: string; quantity: number}>
+}
+
+const TICKET_CLASS_LOCK_MINUTES = 10
+const TICKET_CLASS_LOCK_SECONDS = TICKET_CLASS_LOCK_MINUTES * 60
+
 // Create a pending order
 export async function createPendingOrder(
   params: CreatePendingOrderParams
@@ -70,7 +87,7 @@ export async function createPendingOrder(
       }
     }
 
-    throw new BadRequestError('Đơn hàng đang được xử lý. Vui lòng chờ trong giây lát.')
+    throw new BadRequestError('Your order is being processed. Please wait a moment.')
   }
 
   try {
@@ -379,9 +396,10 @@ interface ConfirmPaymentParams {
   customerName: string
   customerEmail: string
   customerPhone: string
+  attendees?: Array<{seatId: string; name: string; email: string; phone: string}>
 }
 
-// Cancel pending order (user clicks "Chọn ghế khác")
+// Cancel pending order (user clicks "Select Other Seats")
 export async function cancelPendingOrder(
   orderNumber: string,
   accessToken: string
@@ -466,11 +484,11 @@ export async function cancelPendingOrder(
   }
 }
 
-// Confirm payment (user clicks "Đã thanh toán")
+// Confirm payment (user clicks "I Have Paid")
 export async function confirmPayment(
   params: ConfirmPaymentParams
 ): Promise<{orderNumber: string; status: string}> {
-  const {orderNumber, accessToken, customerName, customerEmail, customerPhone} = params
+  const {orderNumber, accessToken, customerName, customerEmail, customerPhone, attendees} = params
 
   // Get order with expiration check
   const order = await queryOne<{
@@ -500,11 +518,11 @@ export async function confirmPayment(
 
   // Check order status
   if (order.status === 'PAID') {
-    throw new BadRequestError('Đơn hàng đã được thanh toán và xác nhận')
+    throw new BadRequestError('This order has already been paid and confirmed')
   }
 
   if (order.status === 'PENDING_CONFIRMATION') {
-    throw new BadRequestError('Đơn hàng đang chờ admin xác nhận. Vui lòng đợi.')
+    throw new BadRequestError('This order is awaiting admin confirmation. Please wait.')
   }
 
   if (order.is_expired === 1) {
@@ -516,7 +534,7 @@ export async function confirmPayment(
   }
 
   if (order.status !== 'PENDING') {
-    throw new BadRequestError(`Không thể xác nhận đơn hàng với trạng thái ${order.status}`)
+    throw new BadRequestError(`Cannot confirm an order with status ${order.status}`)
   }
 
   // Update order to PENDING_CONFIRMATION
@@ -530,6 +548,20 @@ export async function confirmPayment(
      WHERE order_number = ?`,
     [customerName, customerEmail, customerPhone, orderNumber]
   )
+
+  // Save attendee info if provided
+  if (attendees && attendees.length > 0) {
+    for (const attendee of attendees) {
+      await execute(
+        `UPDATE order_items
+         SET attendee_name = ?,
+             attendee_email = ?,
+             attendee_phone = ?
+         WHERE order_id = ? AND seat_id = ?`,
+        [attendee.name, attendee.email, attendee.phone, order.id, attendee.seatId]
+      )
+    }
+  }
 
   // Mark seats as RESERVED
   await execute(
@@ -613,7 +645,9 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
     throw new ForbiddenError('Invalid access token')
   }
 
-  // Get order items joined with seats to include row/section for seat map rendering
+  // Get order items joined with seats (row/section) and ticket_types (name) —
+  // the ticket type name is what the ticket-class flow labels attendee-info
+  // blocks with, since the user never sees the auto-assigned seat.
   const items = await query<{
     id: string
     seat_id: string | null
@@ -622,11 +656,15 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
     price: number
     row: string | null
     section: string | null
+    ticket_type_id: string | null
+    ticket_type_name: string | null
   }>(
     `SELECT oi.id, oi.seat_id, oi.seat_number, oi.seat_type, oi.price,
-            s.row AS row, s.section AS section
+            s.row AS row, s.section AS section,
+            tt.id AS ticket_type_id, tt.name AS ticket_type_name
      FROM order_items oi
      LEFT JOIN seats s ON oi.seat_id = s.id
+     LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
      WHERE oi.order_id = ?`,
     [order.id]
   )
@@ -645,6 +683,8 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
     row: item.row || '',
     section: item.section || '',
     price: Number(item.price),
+    ticketTypeId: item.ticket_type_id || '',
+    ticketTypeName: item.ticket_type_name || item.seat_type,
   }))
 
   return {
@@ -673,5 +713,320 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
       price: Number(item.price),
     })),
     seats: mappedSeats,
+  }
+}
+
+/**
+ * Create a pending order by ticket type(s) + quantity.
+ * Supports multi-type cart: items = [{ticketTypeId, quantity}, ...]
+ * Auto-assigns AVAILABLE seats from matching tiers.
+ * Locks seats in Redis + seat_locks for classic seat-map interop.
+ */
+export async function createPendingOrderByTicketType(
+  params: CreatePendingOrderByTypeParams
+): Promise<CreatePendingOrderResult & {seatIds: string[]}> {
+  const {eventId, sessionId, promoCode, items} = params
+
+  if (!items || items.length === 0) {
+    throw new BadRequestError('Cart is empty')
+  }
+
+  // Merge duplicate ticket types
+  const qtyByType = new Map<string, number>()
+  for (const item of items) {
+    const q = Math.floor(Number(item.quantity))
+    if (!item.ticketTypeId || q < 1) continue
+    qtyByType.set(item.ticketTypeId, (qtyByType.get(item.ticketTypeId) || 0) + q)
+  }
+  if (qtyByType.size === 0) {
+    throw new BadRequestError('Cart is empty')
+  }
+
+  const totalQty = [...qtyByType.values()].reduce((a, b) => a + b, 0)
+  if (totalQty < 1 || totalQty > 20) {
+    throw new BadRequestError('Total quantity must be between 1 and 20')
+  }
+  for (const q of qtyByType.values()) {
+    if (q > 10) {
+      throw new BadRequestError('Quantity per ticket type must be at most 10')
+    }
+  }
+
+  // Distributed lock per session+event (covers multi-type)
+  const lockKey = `order:create-type:${sessionId}:${eventId}`
+  const lockTtl = 30
+  const lockAcquired = await redis.set(lockKey, generateUUID(), 'NX', 'EX', lockTtl)
+  if (!lockAcquired) {
+    throw new BadRequestError('Your order is being processed. Please wait a moment.')
+  }
+
+  try {
+    const event = await queryOne<{id: string; status: string; name: string}>(
+      'SELECT id, status, name FROM events WHERE id = ?',
+      [eventId]
+    )
+    if (!event) throw new NotFoundError('Event not found')
+    if (event.status !== 'PUBLISHED') {
+      throw new BadRequestError('Event is not available for booking')
+    }
+
+    // Resolve + lock seats for each ticket type
+    type SeatPick = {
+      id: string
+      seat_number: string
+      seat_type: string
+      price: number
+      ticketTypeId: string
+      ticketTypeName: string
+      ticketTypePrice: number
+    }
+    const allPicked: SeatPick[] = []
+    const promoTickets: Array<{id: string; price: number; ticketTypeId: string}> = []
+    let rawTotalAmount = 0
+    const summaryParts: string[] = []
+
+    for (const [ticketTypeId, quantity] of qtyByType) {
+      const ticketType = await queryOne<{
+        id: string
+        name: string
+        price: number
+        level: number
+        max_quantity: number | null
+      }>(
+        'SELECT id, name, price, level, max_quantity FROM ticket_types WHERE id = ? AND event_id = ? AND is_active = 1',
+        [ticketTypeId, eventId]
+      )
+      if (!ticketType) throw new NotFoundError(`Ticket type not found: ${ticketTypeId}`)
+
+      // Prefer seats already tagged with this ticket_type_id; else seat_type aliases
+      // (Early Bird shares LEVEL_2 — real availability enforced by the physical seat query below).
+      const {seatTypeAliasesForTicketType, isEarlyBirdType} =
+        await import('../utils/ticket-seat-match.js')
+
+      const seatTypeAliases = seatTypeAliasesForTicketType({
+        name: ticketType.name,
+        level: ticketType.level,
+      })
+
+      const aliasPlaceholders = seatTypeAliases.map(() => '?').join(',') || "''"
+      // Early Bird may share LEVEL_2 seats already tagged as Standard in DB.
+      // Allow alias seat_type match even when ticket_type_id is set to another type.
+      const candidateSeats = await query<{
+        id: string
+        seat_number: string
+        seat_type: string
+        price: number
+      }>(
+        `SELECT id, seat_number, seat_type, price FROM seats
+         WHERE event_id = ? AND status = 'AVAILABLE'
+           AND (
+             ticket_type_id = ?
+             OR UPPER(REPLACE(REPLACE(seat_type, ' ', '_'), '-', '_')) IN (${aliasPlaceholders})
+           )
+         ORDER BY
+           CASE WHEN ticket_type_id = ? THEN 0 ELSE 1 END,
+           CASE WHEN ticket_type_id IS NULL OR ticket_type_id = '' THEN 0 ELSE 1 END,
+           ${isEarlyBirdType(ticketType) ? 'seat_number DESC,' : ''}
+           row ASC,
+           seat_number ASC
+         LIMIT ?`,
+        [
+          eventId,
+          ticketTypeId,
+          ...seatTypeAliases,
+          ticketTypeId,
+          Math.max(quantity * 8, 40),
+        ]
+      )
+
+      if (candidateSeats.length < quantity) {
+        throw new BadRequestError(
+          `Not enough "${ticketType.name}" tickets available (${candidateSeats.length} left).`
+        )
+      }
+
+      const available: typeof candidateSeats = []
+      for (const seat of candidateSeats) {
+        if (available.length >= quantity) break
+        // Skip already picked in this same request
+        if (allPicked.some((p) => p.id === seat.id)) continue
+        const key = `seat:${eventId}:${seat.id}`
+        const lockedBy = await redis.get(key)
+        if (!lockedBy || lockedBy === sessionId) {
+          const dbLock = await queryOne<{session_id: string}>(
+            'SELECT session_id FROM seat_locks WHERE seat_id = ? AND expires_at > NOW()',
+            [seat.id]
+          )
+          if (!dbLock || dbLock.session_id === sessionId) {
+            available.push(seat)
+          }
+        }
+      }
+
+      if (available.length < quantity) {
+        throw new BadRequestError(
+          `Not enough "${ticketType.name}" tickets available (${available.length} left).`
+        )
+      }
+
+      const picked = available.slice(0, quantity)
+      const unitPrice = Number(ticketType.price)
+      for (const seat of picked) {
+        allPicked.push({
+          id: seat.id,
+          seat_number: seat.seat_number,
+          seat_type: seat.seat_type,
+          price: unitPrice,
+          ticketTypeId,
+          ticketTypeName: ticketType.name,
+          ticketTypePrice: unitPrice,
+        })
+        promoTickets.push({id: seat.id, price: unitPrice, ticketTypeId})
+      }
+      rawTotalAmount += unitPrice * quantity
+      summaryParts.push(`${quantity} x ${ticketType.name}`)
+    }
+
+    const seatIds = allPicked.map((s) => s.id)
+
+    // Lock all seats (Redis + seat_locks). Schema may not have ticket_type_id on seat_locks.
+    for (const seat of allPicked) {
+      await redis.set(
+        `seat:${eventId}:${seat.id}`,
+        sessionId,
+        'EX',
+        TICKET_CLASS_LOCK_SECONDS
+      )
+      try {
+        await execute(
+          `INSERT INTO seat_locks (id, seat_id, event_id, session_id, ticket_type_id, expires_at, created_at)
+           VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())
+           ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), ticket_type_id = VALUES(ticket_type_id), expires_at = VALUES(expires_at)`,
+          [
+            generateUUID(),
+            seat.id,
+            eventId,
+            sessionId,
+            seat.ticketTypeId,
+            TICKET_CLASS_LOCK_MINUTES,
+          ]
+        )
+      } catch {
+        // Fallback when seat_locks.ticket_type_id column is missing
+        await execute(
+          `INSERT INTO seat_locks (id, seat_id, event_id, session_id, expires_at, created_at)
+           VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())
+           ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), expires_at = VALUES(expires_at)`,
+          [generateUUID(), seat.id, eventId, sessionId, TICKET_CLASS_LOCK_MINUTES]
+        )
+      }
+    }
+
+    const discount = await promotionsService.calculateBestDiscount({
+      eventId,
+      tickets: promoTickets,
+      promoCode,
+    })
+
+    let totalAmount = rawTotalAmount
+    let discountAmount: number | null = null
+    let promotionId: string | null = null
+    let appliedPromoCode: string | null = null
+
+    if (discount) {
+      discountAmount = discount.discountAmount
+      promotionId = discount.promotionId
+      totalAmount = Math.max(0, rawTotalAmount - discountAmount)
+      if (promoCode) appliedPromoCode = promoCode
+    }
+
+    const orderNumber = generateOrderNumber()
+    const orderId = generateUUID()
+    const {token: accessToken, hash: accessTokenHash} = generateAccessToken()
+
+    await execute(
+      `INSERT INTO orders (id, order_number, event_id, total_amount, status, customer_name, customer_email, customer_phone, expires_at, access_token_hash, access_token, discount_amount, promotion_id, promo_code, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'PENDING', '', '', '', DATE_ADD(NOW(), INTERVAL 15 MINUTE), ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        orderId,
+        orderNumber,
+        eventId,
+        totalAmount,
+        accessTokenHash,
+        accessToken,
+        discountAmount,
+        promotionId,
+        appliedPromoCode,
+      ]
+    )
+
+    for (const seat of allPicked) {
+      const orderItemId = generateUUID()
+      await execute(
+        `INSERT INTO order_items (id, order_id, seat_id, price, seat_number, seat_type, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          orderItemId,
+          orderId,
+          seat.id,
+          seat.ticketTypePrice,
+          seat.seat_number,
+          seat.seat_type,
+        ]
+      )
+      // Tag seat with ticket type so the ticket-class page + attendee-info step stay accurate.
+      // Does not change seat_number/seat_type — seat-map page still works.
+      try {
+        await execute(
+          `UPDATE seats SET ticket_type_id = ?, updated_at = NOW() WHERE id = ?`,
+          [seat.ticketTypeId, seat.id]
+        )
+      } catch (e) {
+        console.warn('[CREATE PENDING BY TYPE] tag ticket_type_id failed:', e)
+      }
+    }
+
+    if (promotionId) {
+      await execute(
+        'UPDATE promotions SET used_count = used_count + 1 WHERE id = ?',
+        [promotionId]
+      )
+    }
+
+    const orderData = await queryOne<{expires_at: Date}>(
+      'SELECT expires_at FROM orders WHERE id = ?',
+      [orderId]
+    )
+
+    console.log(
+      `[CREATE PENDING ORDER BY TYPE] Created order ${orderNumber} for ${summaryParts.join(', ')}`
+    )
+
+    sendOrderNotificationToDevs({
+      orderNumber,
+      eventName: event.name,
+      seats: allPicked.map((s) => ({
+        seatNumber: s.seat_number,
+        seatType: s.seat_type,
+        price: s.ticketTypePrice,
+      })),
+      totalAmount,
+      discountAmount,
+      promoCode: appliedPromoCode,
+    }).catch((err) => console.error('[NOTIFICATION] Failed:', err))
+
+    return {
+      orderId,
+      orderNumber,
+      totalAmount,
+      status: 'PENDING',
+      expiresAt: orderData?.expires_at
+        ? new Date(orderData.expires_at).toISOString()
+        : null,
+      accessToken,
+      seatIds,
+    }
+  } finally {
+    await redis.del(lockKey)
   }
 }

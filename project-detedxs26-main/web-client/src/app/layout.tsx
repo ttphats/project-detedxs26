@@ -22,7 +22,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased bg-black`}>
+      <body className={`${inter.variable} font-sans antialiased bg-black`} suppressHydrationWarning>
         <Toaster
           position="top-center"
           richColors
