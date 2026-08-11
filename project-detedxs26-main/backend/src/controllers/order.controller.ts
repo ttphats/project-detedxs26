@@ -21,6 +21,54 @@ export async function createPendingOrder(
   return reply.send(successResponse(result))
 }
 
+// POST /orders/create-pending-by-type
+// Ticket-class booking: multi-type cart OR single type + quantity.
+// Backend auto-assigns available seats. No seat map needed.
+export async function createPendingOrderByType(
+  request: FastifyRequest<{
+    Body: {
+      eventId: string
+      sessionId: string
+      promoCode?: string
+      // Multi-type cart (preferred)
+      items?: Array<{ticketTypeId: string; quantity: number}>
+      // Legacy single-type (backward compatible)
+      ticketTypeId?: string
+      quantity?: number
+    }
+  }>,
+  reply: FastifyReply
+) {
+  const {eventId, sessionId, promoCode, items, ticketTypeId, quantity} = request.body
+
+  if (!eventId || !sessionId) {
+    throw new BadRequestError('Missing required fields: eventId, sessionId')
+  }
+
+  // Normalize to items[] — multi-type cart or legacy single type
+  let normalizedItems: Array<{ticketTypeId: string; quantity: number}> = []
+  if (items && Array.isArray(items) && items.length > 0) {
+    normalizedItems = items
+      .filter((i) => i?.ticketTypeId && Number(i.quantity) > 0)
+      .map((i) => ({ticketTypeId: i.ticketTypeId, quantity: Math.floor(Number(i.quantity))}))
+  } else if (ticketTypeId && quantity) {
+    normalizedItems = [{ticketTypeId, quantity: Math.floor(Number(quantity))}]
+  }
+
+  if (normalizedItems.length === 0) {
+    throw new BadRequestError('Cart is empty. Provide items[] or ticketTypeId + quantity.')
+  }
+
+  const result = await orderService.createPendingOrderByTicketType({
+    eventId,
+    sessionId,
+    promoCode,
+    items: normalizedItems,
+  })
+
+  return reply.send(successResponse(result))
+}
+
 // POST /orders/confirm-payment
 export async function confirmPayment(
   request: FastifyRequest<{
@@ -30,11 +78,12 @@ export async function confirmPayment(
       customerName: string
       customerEmail: string
       customerPhone: string
+      attendees?: Array<{seatId: string; name: string; email: string; phone: string}>
     }
   }>,
   reply: FastifyReply
 ) {
-  const {orderNumber, accessToken, customerName, customerEmail, customerPhone} = request.body
+  const {orderNumber, accessToken, customerName, customerEmail, customerPhone, attendees} = request.body
 
   if (!orderNumber || !accessToken || !customerName || !customerEmail || !customerPhone) {
     throw new BadRequestError('Missing required fields')
@@ -46,13 +95,14 @@ export async function confirmPayment(
     customerName,
     customerEmail,
     customerPhone,
+    attendees,
   })
 
   return reply.send(
     successResponse({
       orderNumber: result.orderNumber,
       status: result.status,
-      message: 'Đang chờ admin xác nhận thanh toán',
+      message: 'Awaiting admin payment confirmation',
     })
   )
 }

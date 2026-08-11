@@ -73,21 +73,21 @@ export const SELECTED_SEAT_COLORS: SeatColorConfig = {
   glow: "shadow-red-500/50",
 };
 
-// Seat type labels (Vietnamese)
+// Seat type labels
 export const SEAT_TYPE_LABELS: Record<SeatType, string> = {
   VIP: "VIP",
   STANDARD: "Standard",
   ECONOMY: "Economy",
-  DISABLED: "Không khả dụng",
+  DISABLED: "Unavailable",
 };
 
-// Seat status labels (Vietnamese)
+// Seat status labels
 export const SEAT_STATUS_LABELS: Record<SeatStatus, string> = {
-  AVAILABLE: "Trống",
-  RESERVED: "Đang giữ",
-  SOLD: "Đã bán",
-  LOCKED: "Đã khóa",
-  selected: "Đã chọn",
+  AVAILABLE: "Available",
+  RESERVED: "Reserved",
+  SOLD: "Sold",
+  LOCKED: "Locked",
+  selected: "Selected",
 };
 
 // Zone label styles

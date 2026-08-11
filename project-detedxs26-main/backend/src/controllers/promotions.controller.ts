@@ -44,18 +44,18 @@ export async function validatePromoCode(
   );
 
   if (promos.length === 0) {
-    throw new BadRequestError('Mã giảm giá không tồn tại hoặc đã hết hạn');
+    throw new BadRequestError('Promo code does not exist or has expired');
   }
 
   const promo = promos[0];
   const now = new Date();
-  
+
   if (now < new Date(promo.start_date) || now > new Date(promo.end_date)) {
-    throw new BadRequestError('Mã giảm giá chưa đến ngày áp dụng hoặc đã hết hạn');
+    throw new BadRequestError('Promo code is not yet active or has expired');
   }
 
   if (promo.max_usage && promo.used_count >= promo.max_usage) {
-    throw new BadRequestError('Mã giảm giá đã hết lượt sử dụng');
+    throw new BadRequestError('Promo code has reached its usage limit');
   }
 
   const placeholders = seatIds.map(() => '?').join(',');
@@ -73,7 +73,7 @@ export async function validatePromoCode(
     // If it returns a different promotion, it means the promo code was less optimal than an auto promo!
     // Or if it returns null, the promo code requirements weren't met (e.g. ticket types)
     if (!discount) {
-       throw new BadRequestError('Mã giảm giá không áp dụng cho loại vé này');
+       throw new BadRequestError('Promo code does not apply to this ticket type');
     }
   }
 

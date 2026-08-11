@@ -39,15 +39,29 @@ export default function Header() {
           <Link href="/" className="group flex items-center gap-1 relative">
             {/* Glow behind logo on hover */}
             <div className="absolute -inset-4 bg-red-600/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <span className="relative text-2xl font-black text-white ted-logo-text tracking-tight">
-              TED
-            </span>
-            <span className="relative text-2xl font-black text-red-600 ted-logo-text animate-pulse">
-              x
-            </span>
-            <span className="relative text-lg font-light text-white/90 tracking-wide">
-              FPTUniversityHCMC
-            </span>
+            {/* You can replace /logo.png with your actual logo file in the public folder */}
+            <img 
+              src="/logo.png" 
+              alt="TEDxFPTUniversityHCMC Logo" 
+              className="relative h-16 md:h-20 w-auto object-contain z-10"
+              onError={(e) => {
+                // Fallback to text if image not found
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+            {/* Fallback text logo (hidden by default) */}
+            <div className="hidden flex items-center gap-1">
+              <span className="relative text-2xl font-black text-white ted-logo-text tracking-tight">
+                TED
+              </span>
+              <span className="relative text-2xl font-black text-red-600 ted-logo-text animate-pulse">
+                x
+              </span>
+              <span className="relative text-lg font-light text-white/90 tracking-wide">
+                FPTUniversityHCMC
+              </span>
+            </div>
           </Link>
 
           {/* Desktop Navigation */}
@@ -55,24 +69,39 @@ export default function Header() {
             {[
               { href: "/#program", label: "Timeline" },
               { href: "/#speakers", label: "Speakers" },
+              { href: "/gallery", label: "Gallery" },
               { href: "/#partners", label: "Partners" },
-            ].map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className="group relative px-5 py-2 text-gray-300 hover:text-white font-medium transition-all uppercase text-sm tracking-wider"
-              >
-                <span className="relative z-10">{item.label}</span>
-                {/* Hover background */}
-                <div className="absolute inset-0 bg-white/5 rounded-full scale-0 group-hover:scale-100 transition-transform duration-300" />
-                {/* Underline animation */}
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-[2px] bg-red-600 group-hover:w-3/4 transition-all duration-300" />
-              </a>
-            ))}
+            ].map((item) =>
+              item.href.startsWith("/#") ? (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className="group relative px-5 py-2 text-gray-300 hover:text-white font-medium transition-all uppercase text-sm tracking-wider"
+                >
+                  <span className="relative z-10">{item.label}</span>
+                  {/* Hover background */}
+                  <div className="absolute inset-0 bg-white/5 rounded-full scale-0 group-hover:scale-100 transition-transform duration-300" />
+                  {/* Underline animation */}
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-[2px] bg-red-600 group-hover:w-3/4 transition-all duration-300" />
+                </a>
+              ) : (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="group relative px-5 py-2 text-gray-300 hover:text-white font-medium transition-all uppercase text-sm tracking-wider"
+                >
+                  <span className="relative z-10">{item.label}</span>
+                  {/* Hover background */}
+                  <div className="absolute inset-0 bg-white/5 rounded-full scale-0 group-hover:scale-100 transition-transform duration-300" />
+                  {/* Underline animation */}
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-[2px] bg-red-600 group-hover:w-3/4 transition-all duration-300" />
+                </Link>
+              ),
+            )}
 
             {/* CTA Button with glow */}
             <Link
-              href="/events/evt-tedx-2026/seats"
+              href="/events/evt-tedx-2026/tickets"
               className="group relative ml-4 px-6 py-3 overflow-hidden"
             >
               {/* Button background with gradient border */}
@@ -113,6 +142,7 @@ export default function Header() {
               {[
                 { href: "/#program", label: "Timeline" },
                 { href: "/#speakers", label: "Speakers" },
+                { href: "/gallery", label: "Gallery" },
                 { href: "/#partners", label: "Partners" },
                 { href: "/privacy", label: "Privacy Policy" },
                 { href: "/terms", label: "Terms & Conditions" },
@@ -143,7 +173,7 @@ export default function Header() {
                 );
               })}
               <Link
-                href="/events/evt-tedx-2026/seats"
+                href="/events/evt-tedx-2026/tickets"
                 className="mx-4 mt-3 px-4 py-3 bg-red-600 text-white font-bold text-center uppercase text-sm tracking-wider rounded-full hover:bg-red-500 transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >

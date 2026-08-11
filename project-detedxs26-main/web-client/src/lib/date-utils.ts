@@ -17,9 +17,9 @@ export function formatVNDate(
   if (isNaN(date.getTime())) return "-";
 
   if (options) {
-    return date.toLocaleDateString("vi-VN", { ...options, timeZone: "Asia/Ho_Chi_Minh" });
+    return date.toLocaleDateString("en-US", { ...options, timeZone: "Asia/Ho_Chi_Minh" });
   }
-  return date.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+  return date.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
 }
 
 /**
@@ -52,7 +52,7 @@ export function formatVNTime(dateStr: string | Date | null | undefined): string 
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return "-";
 
-  return date.toLocaleTimeString("vi-VN", {
+  return date.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Asia/Ho_Chi_Minh"

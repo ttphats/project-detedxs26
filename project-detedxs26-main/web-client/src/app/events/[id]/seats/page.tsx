@@ -1,6 +1,10 @@
 'use client'
 
 import {use, useState, useEffect, useCallback, useRef} from 'react'
+import {
+  saveCheckoutState,
+  type CheckoutState,
+} from '@/lib/checkout-store'
 import Link from 'next/link'
 import {toast} from 'sonner'
 import {
@@ -71,11 +75,6 @@ interface EventData {
   location: string
   ticketTypes: TicketType[]
   seatMap: SeatRow[]
-  stats: {
-    total: number
-    available: number
-    sold: number
-  }
 }
 
 // ── Seat-gap validation ──────────────────────────────────────────────
@@ -780,10 +779,31 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
       // Set flag to prevent lock deletion during navigation to checkout
       sessionStorage.setItem('navigating_to_checkout', 'true')
 
-      // Navigate to checkout with order info
-      // Use window.location.replace to force full page reload (bypass Next.js client-side navigation on mobile)
-      const checkoutUrl = `/checkout?event=${id}&order=${orderData.data.orderNumber}&token=${orderData.data.accessToken}`
-      window.location.replace(checkoutUrl)
+      // Save checkout state for the multi-step flow
+      const checkoutStateData: CheckoutState = {
+        eventId: id,
+        eventName: event!.name,
+        eventDate: event!.date,
+        orderNumber: orderData.data.orderNumber,
+        accessToken: orderData.data.accessToken,
+        selectedSeats: selectedSeats.map((s) => ({
+          id: s.id,
+          row: s.row,
+          number: s.number,
+          seatNumber: s.seatNumber,
+          section: s.section,
+          seatType: s.seatType,
+          level: s.level,
+          price: s.price,
+          ticketTypeId: s.ticketTypeId,
+        })),
+        attendees: [],
+      }
+      saveCheckoutState(checkoutStateData)
+
+      // Navigate to attendee info page (Step 2)
+      const attendeeUrl = `/checkout/attendee-info?event=${id}&order=${orderData.data.orderNumber}&token=${orderData.data.accessToken}`
+      window.location.replace(attendeeUrl)
     } catch (error) {
       console.error('Checkout error:', error)
       setLockError('Failed to proceed to checkout. Please try again.')
@@ -945,7 +965,7 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                         className="font-black text-xl"
                         style={{ color: ticketType.color }}
                       >
-                        {Math.round(ticketType.price).toLocaleString("vi-VN")}đ
+                        {Math.round(ticketType.price).toLocaleString("vi-VN")} VND
                       </p>
                     </div>
                   </div>
@@ -1254,9 +1274,9 @@ export default function SeatSelectionPage({params}: {params: Promise<{id: string
                   <div className='absolute bottom-0 left-0 w-24 h-24 bg-red-600/5 rounded-full blur-xl translate-y-1/2 -translate-x-1/2' />
 
                   <h2 className='relative text-xl font-bold text-white mb-6 flex items-center gap-3'>
-                    <div className='w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center'>
+                    <span className='w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center'>
                       <Ticket className='w-5 h-5 text-red-500' />
-                    </div>
+                    </span>
                     Order Summary
                   </h2>
 

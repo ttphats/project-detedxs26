@@ -36,17 +36,31 @@ export async function uploadImage(
   }
 
   try {
-    // No transformation for QR codes to preserve quality
+    // No transformation for QR codes to preserve quality. Gallery posters
+    // are shot/designed at a 3300x4200 (11:14) print-style frame — cap them
+    // at a much higher, but still web-reasonable, resolution at that same
+    // ratio instead of the generic 800x800 used elsewhere.
     const isQRCode = subfolder === 'qr-codes';
+    const isGalleryPoster = subfolder === 'gallery';
+
+    const transformation = isQRCode
+      ? []
+      : isGalleryPoster
+        ? [
+            { width: 1650, height: 2100, crop: 'limit' },
+            { quality: 'auto:good' },
+            { fetch_format: 'auto' },
+          ]
+        : [
+            { width: 800, height: 800, crop: 'limit' },
+            { quality: 'auto:good' },
+            { fetch_format: 'auto' },
+          ];
 
     const result = await cloudinary.uploader.upload(base64Data, {
       folder: `${FOLDER}/${subfolder}`,
       resource_type: 'image',
-      transformation: isQRCode ? [] : [
-        { width: 800, height: 800, crop: 'limit' },
-        { quality: 'auto:good' },
-        { fetch_format: 'auto' },
-      ],
+      transformation,
     });
 
     return {

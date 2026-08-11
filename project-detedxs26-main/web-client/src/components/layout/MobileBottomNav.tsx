@@ -15,19 +15,19 @@ const navItems: NavItem[] = [
   {
     href: "/",
     icon: <Home className="w-5 h-5" />,
-    label: "Trang chủ",
+    label: "Home",
     active: (pathname) => pathname === "/",
   },
   {
-    href: "/events/evt-tedx-2026/seats",
+    href: "/events/evt-tedx-2026/tickets",
     icon: <Ticket className="w-5 h-5" />,
-    label: "Đặt vé",
-    active: (pathname) => pathname.includes("/seats"),
+    label: "Book Tickets",
+    active: (pathname) => pathname.includes("/tickets"),
   },
   {
     href: "/#program",
     icon: <Calendar className="w-5 h-5" />,
-    label: "Lịch trình",
+    label: "Schedule",
   },
   {
     href: "/#speakers",

@@ -66,3 +66,16 @@ export async function getEventTimeline(
   return reply.send(successResponse(timeline));
 }
 
+// GET /events/:eventId/tickets
+// Ticket-class page: event meta + ticket types. NO seatMap, no availability counts.
+export async function getEventTickets(
+  request: FastifyRequest<{ Params: { eventId: string } }>,
+  reply: FastifyReply
+) {
+  const { eventId } = request.params;
+
+  const data = await eventService.getEventTickets(eventId);
+
+  return reply.send(successResponse(data));
+}
+
