@@ -1,6 +1,10 @@
 import {prisma} from '../../db/prisma.js'
 import {randomBytes, createHash} from 'crypto'
-import {generateTicketQRCode, generateTicketUrl} from '../qrcode.service.js'
+import {
+  generateTicketQRCode,
+  generateTicketUrl,
+  generateAttendeeTicketQRCode,
+} from '../qrcode.service.js'
 import {sendEmailByPurpose} from '../email.service.js'
 import {createAuditLog} from '../audit.service.js'
 import {execute, query as rawQuery} from '../../db/mysql.js'
@@ -41,7 +45,7 @@ export async function listOrders(input: ListOrdersInput) {
       where,
       include: {
         event: {select: {id: true, name: true, eventDate: true, venue: true}},
-        orderItems: {include: {seat: true}},
+        orderItems: true,
         payment: true,
       },
       orderBy: {createdAt: 'desc'},
@@ -56,12 +60,16 @@ export async function listOrders(input: ListOrdersInput) {
 
   const mappedOrders = orders.map((order: any) => ({
     ...order,
-    seats: (order.orderItems || []).map((item: any) => ({
-      seatNumber: item.seat?.seatNumber || item.seatNumber,
-      seatType: item.seat?.seatType || item.seatType,
-      section: item.seat?.section ?? '',
-      row: item.seat?.row ?? '',
+    tickets: (order.orderItems || []).map((item: any) => ({
+      id: item.id,
+      ticketTypeId: item.ticketTypeId ?? null,
+      ticketTypeName: item.ticketTypeName ?? null,
       price: Number(item.price),
+      attendeeName: item.attendeeName ?? null,
+      attendeeEmail: item.attendeeEmail ?? null,
+      attendeePhone: item.attendeePhone ?? null,
+      ticketCode: item.ticketCode ?? null,
+      checkedInAt: item.checkedInAt ?? null,
     })),
   }))
 
@@ -88,7 +96,7 @@ export async function getOrderById(id: string) {
     where: {id},
     include: {
       event: true,
-      orderItems: {include: {seat: true}},
+      orderItems: true,
       payment: true,
     },
   })
@@ -97,12 +105,16 @@ export async function getOrderById(id: string) {
 
   return {
     ...order,
-    seats: (order.orderItems || []).map((item: any) => ({
-      seatNumber: item.seat?.seatNumber || item.seatNumber,
-      seatType: item.seat?.seatType || item.seatType,
-      section: item.seat?.section ?? '',
-      row: item.seat?.row ?? '',
+    tickets: (order.orderItems || []).map((item: any) => ({
+      id: item.id,
+      ticketTypeId: item.ticketTypeId ?? null,
+      ticketTypeName: item.ticketTypeName ?? null,
       price: Number(item.price),
+      attendeeName: item.attendeeName ?? null,
+      attendeeEmail: item.attendeeEmail ?? null,
+      attendeePhone: item.attendeePhone ?? null,
+      ticketCode: item.ticketCode ?? null,
+      checkedInAt: item.checkedInAt ?? null,
     })),
   }
 }
@@ -131,7 +143,7 @@ export async function confirmPayment(
         where: {id: orderId},
         include: {
           event: true,
-          orderItems: {include: {seat: true}},
+          orderItems: true,
           payment: true,
         },
       })
@@ -194,23 +206,6 @@ export async function confirmPayment(
         })
       }
 
-      // Mark seats as SOLD
-      const seatIds = order.orderItems
-        .map((item: any) => item.seatId)
-        .filter((id: any): id is string => id !== null)
-      if (seatIds.length > 0) {
-        await tx.seat.updateMany({
-          where: {id: {in: seatIds}},
-          data: {status: 'SOLD'},
-        })
-
-        // Delete seat locks for these seats (they are now permanently SOLD)
-        await tx.seatLock.deleteMany({
-          where: {seatId: {in: seatIds}},
-        })
-        console.log(`[CONFIRM PAYMENT] Deleted ${seatIds.length} seat locks`)
-      }
-
       // Create audit log
       await tx.auditLog.create({
         data: {
@@ -230,7 +225,7 @@ export async function confirmPayment(
         },
       })
 
-      return {order, updatedOrder, accessToken, seatIds}
+      return {order, updatedOrder, accessToken}
     },
     {timeout: 30000}
   )
@@ -255,7 +250,7 @@ export async function rejectPayment(
         where: {id: orderId},
         include: {
           event: true,
-          orderItems: {include: {seat: true}},
+          orderItems: true,
           payment: true,
         },
       })
@@ -291,16 +286,8 @@ export async function rejectPayment(
         })
       }
 
-      // Release seats back to AVAILABLE
-      const seatIds = order.orderItems
-        .map((item: any) => item.seatId)
-        .filter((id: any): id is string => id !== null)
-      if (seatIds.length > 0) {
-        await tx.seat.updateMany({
-          where: {id: {in: seatIds}},
-          data: {status: 'AVAILABLE'},
-        })
-      }
+      // Nothing to release: a CANCELLED order stops counting against the
+      // ticket type's max_quantity, which frees the stock automatically.
 
       // Create audit log
       await tx.auditLog.create({
@@ -314,7 +301,6 @@ export async function rejectPayment(
           newValue: JSON.stringify({status: 'CANCELLED', reason}),
           metadata: JSON.stringify({
             orderNumber: order.orderNumber,
-            releasedSeats: seatIds.length,
             notes,
           }),
           ipAddress,
@@ -322,12 +308,147 @@ export async function rejectPayment(
         },
       })
 
-      return {order, updatedOrder, releasedSeats: seatIds.length}
+      return {order, updatedOrder}
     },
     {timeout: 30000}
   )
 
   return result
+}
+
+export interface AttendeeEmailOutcome {
+  orderItemId: string
+  ticketCode: string | null
+  /** Who the ticket was actually sent to. */
+  email: string
+  attendeeName: string | null
+  /** True when the attendee had no email of their own and the buyer got it. */
+  fellBackToBuyer: boolean
+  status: 'SENT' | 'FAILED'
+  error?: string
+}
+
+/**
+ * Send one ticket email per attendee, each carrying only that person's
+ * ticket and its own QR code.
+ *
+ * Every ticket in an order belongs to a specific attendee, so a single
+ * email to the buyer isn't enough — each attendee needs their own. Where
+ * an attendee has no email recorded (older orders, or a buyer who didn't
+ * fill the details in), their ticket falls back to the buyer's address so
+ * no ticket is silently dropped.
+ */
+export async function sendAttendeeTicketEmails(params: {
+  orderId: string
+  triggeredBy: string
+}): Promise<AttendeeEmailOutcome[]> {
+  const {orderId, triggeredBy} = params
+
+  const order = await prisma.order.findUnique({
+    where: {id: orderId},
+    include: {event: true, orderItems: true},
+  })
+  if (!order) throw new Error('Order not found')
+
+  const eventDate = new Date(order.event.eventDate)
+  const formattedDate = eventDate.toLocaleDateString('vi-VN', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+  const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  const accessToken = order.accessToken || ''
+  const ticketUrl = accessToken ? generateTicketUrl(order.orderNumber, accessToken) : ''
+
+  const outcomes: AttendeeEmailOutcome[] = []
+
+  for (const item of order.orderItems as any[]) {
+    // Each ticket needs a stable code: it identifies the ticket at check-in
+    // and makes each QR unique.
+    let ticketCode: string = item.ticketCode
+    if (!ticketCode) {
+      ticketCode = randomBytes(8).toString('hex').toUpperCase()
+      await prisma.orderItem.update({
+        where: {id: item.id},
+        data: {ticketCode},
+      })
+    }
+
+    const recipient = item.attendeeEmail?.trim() || order.customerEmail
+    const fellBackToBuyer = !item.attendeeEmail?.trim()
+
+    if (!recipient) {
+      outcomes.push({
+        orderItemId: item.id,
+        ticketCode,
+        email: '',
+        attendeeName: item.attendeeName ?? null,
+        fellBackToBuyer,
+        status: 'FAILED',
+        error: 'No email address available for this ticket',
+      })
+      continue
+    }
+
+    try {
+      const attendeeQrCodeUrl = await generateAttendeeTicketQRCode(order.orderNumber, ticketCode)
+
+      await prisma.orderItem.update({
+        where: {id: item.id},
+        data: {qrCodeUrl: attendeeQrCodeUrl},
+      })
+
+      const emailResult = await sendEmailByPurpose({
+        purpose: 'TICKET_CONFIRMED',
+        to: recipient,
+        orderId: order.id,
+        triggeredBy,
+        // One order legitimately produces several sends here, so the
+        // per-order anti-spam guard has to be bypassed.
+        allowDuplicate: true,
+        data: {
+          customerName: item.attendeeName || order.customerName,
+          eventName: order.event.name,
+          eventDate: formattedDate,
+          eventTime: formattedTime,
+          eventVenue: order.event.venue,
+          eventAddress: order.event.venue,
+          orderNumber: order.orderNumber,
+          tickets: item.ticketTypeName || '',
+          totalAmount: Number(item.price),
+          qrCodeUrl: attendeeQrCodeUrl,
+          ticketUrl,
+        },
+      })
+
+      outcomes.push({
+        orderItemId: item.id,
+        ticketCode,
+        email: recipient,
+        attendeeName: item.attendeeName ?? null,
+        fellBackToBuyer,
+        status: emailResult.success ? 'SENT' : 'FAILED',
+        error: emailResult.success ? undefined : emailResult.error || 'Unknown error',
+      })
+    } catch (err: any) {
+      outcomes.push({
+        orderItemId: item.id,
+        ticketCode,
+        email: recipient,
+        attendeeName: item.attendeeName ?? null,
+        fellBackToBuyer,
+        status: 'FAILED',
+        error: err?.message || 'Unknown error',
+      })
+    }
+  }
+
+  return outcomes
 }
 
 /**
@@ -341,7 +462,7 @@ export async function resendTicketEmail(
     where: {id: orderId},
     include: {
       event: true,
-      orderItems: {include: {seat: true}},
+      orderItems: true,
     },
   })
 
@@ -388,12 +509,12 @@ export async function resendTicketEmail(
     minute: '2-digit',
   })
 
-  // Format seats for email template (string format)
-  const seatsList = order.orderItems
-    .map(
-      (item: any) =>
-        `${item.seat?.seatNumber || item.seatNumber} (${item.seat?.seatType || item.seatType})`
-    )
+  // Format tickets for the email template (string format). Seating is
+  // arranged by the organisers after purchase, so a ticket is identified
+  // by its type rather than a seat number.
+  const ticketsList = order.orderItems
+    .map((item: any) => item.ticketTypeName || '')
+    .filter(Boolean)
     .join(', ')
 
   // Send email with allowDuplicate to bypass anti-spam
@@ -411,7 +532,7 @@ export async function resendTicketEmail(
       eventVenue: order.event.venue,
       eventAddress: order.event.venue,
       orderNumber: order.orderNumber,
-      seats: seatsList, // ✅ String: "A1 (VIP), A2 (Standard)"
+      tickets: ticketsList, // e.g. "VIP, Standard, Standard"
       totalAmount: Number(order.totalAmount),
       qrCodeUrl,
       ticketUrl,
@@ -437,11 +558,11 @@ export async function deleteOrder(
   adminUser: {userId: string; roleName: string},
   ipAddress?: string,
   userAgent?: string
-): Promise<{orderNumber: string; releasedSeats: number}> {
+): Promise<{orderNumber: string; ticketCount: number}> {
   const order = await prisma.order.findUnique({
     where: {id: orderId},
     include: {
-      orderItems: {include: {seat: true}},
+      orderItems: true,
       event: true,
     },
   })
@@ -450,33 +571,10 @@ export async function deleteOrder(
     throw new Error('Order not found')
   }
 
-  const seatIds = order.orderItems
-    .map((item: any) => item.seatId)
-    .filter((id: any) => id !== null) as string[]
+  const ticketCount = order.orderItems.length
 
-  // Release seats back to AVAILABLE
-  if (seatIds.length > 0) {
-    await execute(
-      `UPDATE seats
-       SET status = 'AVAILABLE', updated_at = NOW()
-       WHERE id IN (${seatIds.map(() => '?').join(',')})`,
-      seatIds
-    )
-  }
-
-  // Delete seat locks for this order
-  if (seatIds.length > 0) {
-    await execute(
-      `DELETE FROM seat_locks
-       WHERE event_id = ? AND seat_id IN (${seatIds.map(() => '?').join(',')})`,
-      [order.eventId, ...seatIds]
-    )
-  }
-
-  // Delete from Redis (correct key format)
-  for (const seatId of seatIds) {
-    await redis.del(`seat:${order.eventId}:${seatId}`)
-  }
+  // Deleting the order is enough to free its stock: only live orders count
+  // against a ticket type's max_quantity.
 
   // Delete order items first (foreign key constraint)
   await prisma.orderItem.deleteMany({where: {orderId}})
@@ -498,7 +596,7 @@ export async function deleteOrder(
       orderNumber: order.orderNumber,
       status: order.status,
       customerEmail: order.customerEmail,
-      releasedSeats: seatIds.length,
+      ticketCount,
       eventId: order.eventId,
     },
     ipAddress,
@@ -506,11 +604,11 @@ export async function deleteOrder(
   })
 
   console.log(
-    `[ADMIN DELETE ORDER] Deleted order ${order.orderNumber}, released ${seatIds.length} seats`
+    `[ADMIN DELETE ORDER] Deleted order ${order.orderNumber} (${ticketCount} ticket(s))`
   )
 
   return {
     orderNumber: order.orderNumber,
-    releasedSeats: seatIds.length,
+    ticketCount,
   }
 }

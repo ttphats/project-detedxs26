@@ -42,6 +42,45 @@ export async function generateTicketQRCode(
 }
 
 /**
+ * Per-attendee QR code. Each ticket in an order gets its own image so a
+ * single attendee's email only carries their own ticket.
+ *
+ * The URL keeps `orderNumber` as the path segment (the existing check-in
+ * scanner resolves orders by that, so these stay scannable today) and adds
+ * the per-ticket code as a query param for per-ticket check-in.
+ */
+export async function generateAttendeeTicketQRCode(
+  orderNumber: string,
+  ticketCode: string
+): Promise<string> {
+  const checkInUrl = `${config.clientUrl}/check-in/${orderNumber}?ticket=${ticketCode}`;
+
+  try {
+    const qrCodeDataUrl = await QRCode.toDataURL(checkInUrl, {
+      errorCorrectionLevel: 'H',
+      margin: 4,
+      width: 400,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF',
+      },
+    });
+
+    const uploadResult = await uploadImage(qrCodeDataUrl, 'qr-codes');
+
+    if (!uploadResult.success || !uploadResult.data) {
+      console.error('Failed to upload attendee QR code to Cloudinary:', uploadResult.error);
+      return qrCodeDataUrl;
+    }
+
+    return uploadResult.data.url;
+  } catch (error) {
+    console.error('Attendee QR Code generation error:', error);
+    throw new Error('Failed to generate attendee QR code');
+  }
+}
+
+/**
  * Generate check-in URL with embedded token
  */
 export function generateCheckInUrl(orderNumber: string, token: string): string {

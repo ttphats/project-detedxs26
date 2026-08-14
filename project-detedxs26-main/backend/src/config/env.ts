@@ -38,7 +38,6 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW: z.string().default('60'),
 
   // Seat Lock
-  SEAT_LOCK_TTL: z.string().default('300'),
 
   // CORS
   CORS_ORIGINS: z.string().default('http://localhost:3000,http://localhost:3002'),
@@ -99,7 +98,6 @@ export const config = {
     max: parseInt(env.RATE_LIMIT_MAX, 10),
     window: parseInt(env.RATE_LIMIT_WINDOW, 10),
   },
-  seatLockTtl: parseInt(env.SEAT_LOCK_TTL, 10),
   corsOrigins: env.CORS_ORIGINS.split(',').map((s) => s.trim()),
   cronSecret: env.CRON_SECRET,
   cloudinary: {

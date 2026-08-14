@@ -19,15 +19,15 @@ import { Button, StepIndicator, PendingOrderModal } from "@/components";
 import {
   saveCheckoutState,
   type CheckoutState,
-  type SelectedSeat,
+  type PurchasedTicket,
 } from "@/lib/checkout-store";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "";
-  let sessionId = sessionStorage.getItem("seat_session_id");
+  let sessionId = sessionStorage.getItem("tedx_session_id");
   if (!sessionId) {
     sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-    sessionStorage.setItem("seat_session_id", sessionId);
+    sessionStorage.setItem("tedx_session_id", sessionId);
   }
   return sessionId;
 }
@@ -41,6 +41,22 @@ interface TicketType {
   benefits: string[];
   color: string;
   level: number;
+  /** Ticket artwork; null falls back to the icon tile. */
+  imageUrl: string | null;
+  /** null = unlimited */
+  remaining: number | null;
+  soldOut: boolean;
+}
+
+interface EligiblePromotion {
+  promotionId: string;
+  name: string;
+  type: string;
+  code: string | null;
+  discountType: string;
+  discountValue: number;
+  discountAmount: number;
+  isBest: boolean;
 }
 
 interface EventData {
@@ -54,6 +70,15 @@ interface EventData {
   venue: string;
   ticketTypes: TicketType[];
 }
+
+/**
+ * Fades the artwork's right and bottom edges out so it melts into the card
+ * background and the quantity stepper rather than ending in a hard rectangle.
+ * Two linear gradients multiplied together via mask-composite.
+ */
+const TICKET_ART_MASK =
+  "linear-gradient(to right, #000 0%, #000 72%, transparent 100%), " +
+  "linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%)";
 
 const MAX_QTY_PER_TYPE = 10;
 const MAX_TOTAL = 20;
@@ -87,6 +112,9 @@ export default function TicketsPage({
     amount: number;
   } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
+  const [eligiblePromos, setEligiblePromos] = useState<EligiblePromotion[]>([]);
+  const [selectedPromoId, setSelectedPromoId] = useState<string | null>(null);
+  const [promoSearch, setPromoSearch] = useState("");
   const [isValidatingPromo, setIsValidatingPromo] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [sessionId, setSessionId] = useState("");
@@ -161,11 +189,82 @@ export default function TicketsPage({
   const rawTotal = cartItems.reduce((s, i) => s + i.lineTotal, 0);
   const total = Math.max(0, rawTotal - (discountInfo?.amount || 0));
 
+  // Load every promotion this cart qualifies for, so the customer can pick
+  // rather than having the largest one silently applied. Re-runs whenever the
+  // cart or an applied promo code changes.
+  useEffect(() => {
+    if (cartItems.length === 0) {
+      setEligiblePromos([]);
+      setSelectedPromoId(null);
+      setDiscountInfo(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadEligible = async () => {
+      try {
+        const items = cartItems.map((item) => ({
+          ticketTypeId: item.id,
+          quantity: item.qty,
+        }));
+        const res = await fetch(`${apiUrl}/promotions/eligible`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId: id, items, promoCode: promoCode.trim() || undefined }),
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        const list: EligiblePromotion[] = data?.data?.promotions || [];
+        setEligiblePromos(list);
+
+        // Keep the customer's choice if it still qualifies; otherwise fall
+        // back to the best available so they're never worse off by default.
+        setSelectedPromoId((current) => {
+          if (current && list.some((p) => p.promotionId === current)) return current;
+          return list.length > 0 ? list[0].promotionId : null;
+        });
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          console.debug("Eligible promotions lookup failed", err);
+        }
+      }
+    };
+
+    const timeout = setTimeout(loadEligible, 400);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartItems, id, apiUrl, promoCode]);
+
+  // Search filter over the eligible list (name or code).
+  const visiblePromos = useMemo(() => {
+    const q = promoSearch.trim().toLowerCase();
+    if (!q) return eligiblePromos;
+    return eligiblePromos.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.code ? p.code.toLowerCase().includes(q) : false),
+    );
+  }, [eligiblePromos, promoSearch]);
+
+  // Mirror the selected promotion into the discount shown on the total.
+  useEffect(() => {
+    const chosen = eligiblePromos.find((p) => p.promotionId === selectedPromoId);
+    setDiscountInfo(chosen ? { name: chosen.name, amount: chosen.discountAmount } : null);
+  }, [eligiblePromos, selectedPromoId]);
+
   const getMaxFor = (typeId: string) => {
     const current = cart[typeId] || 0;
     const others = cartCount - current;
     const roomTotal = Math.max(0, MAX_TOTAL - others);
-    return Math.min(MAX_QTY_PER_TYPE, roomTotal);
+    // Never let the cart exceed what's actually left, so the customer
+    // isn't rejected at checkout for stock that was already gone.
+    const tt = event?.ticketTypes.find((t) => t.id === typeId);
+    const stockCap = tt?.remaining ?? Infinity;
+    return Math.max(0, Math.min(MAX_QTY_PER_TYPE, roomTotal, stockCap));
   };
 
   const setQty = (typeId: string, qty: number) => {
@@ -191,28 +290,41 @@ export default function TicketsPage({
     setIsValidatingPromo(true);
     setPromoError(null);
     try {
-      const seatIds: string[] = [];
-      for (const item of cartItems) {
-        for (let i = 0; i < item.qty; i++) seatIds.push(`pseudo_${item.id}_${i}`);
-      }
+      // Send ticket-type + quantity: there are no seats in this system.
+      const items = cartItems.map((item) => ({ ticketTypeId: item.id, quantity: item.qty }));
       const res = await fetch(`${apiUrl}/promotions/validate-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: id, seatIds, promoCode: promoCode.trim() }),
+        body: JSON.stringify({ eventId: id, items, promoCode: promoCode.trim() }),
       });
       const data = await res.json();
       if (!data.success) {
         setPromoError(data.error || "Invalid promo code");
-        setDiscountInfo(null);
       } else if (data.data?.discount) {
-        setDiscountInfo({
-          name: data.data.discount.name,
-          amount: data.data.discount.discountAmount,
+        // Feed the validated code into the picker rather than setting the
+        // discount directly — the picker is the single source of truth for
+        // what's applied, so the customer can still switch back to a combo.
+        const d = data.data.discount;
+        setEligiblePromos((prev) => {
+          const without = prev.filter((p) => p.promotionId !== d.promotionId);
+          return [
+            {
+              promotionId: d.promotionId,
+              name: d.name,
+              type: "PROMO_CODE",
+              code: promoCode.trim(),
+              discountType: "",
+              discountValue: 0,
+              discountAmount: d.discountAmount,
+              isBest: false,
+            },
+            ...without,
+          ].sort((a, b) => b.discountAmount - a.discountAmount);
         });
+        setSelectedPromoId(d.promotionId);
         setPromoError(null);
       } else {
         setPromoError("Promo code not applicable");
-        setDiscountInfo(null);
       }
     } catch {
       setPromoError("Failed to validate promo code");
@@ -229,7 +341,7 @@ export default function TicketsPage({
     }
     setIsCheckingOut(true);
     try {
-      // 1) Create the pending order — backend auto-assigns real seats server-side
+      // 1) Create the pending order
       const createRes = await fetch(`${apiUrl}/orders/create-pending-by-type`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -237,6 +349,8 @@ export default function TicketsPage({
           eventId: id,
           sessionId,
           promoCode: promoCode.trim() || undefined,
+          // The discount the customer actually chose, not just the biggest.
+          promotionId: selectedPromoId || undefined,
           items: cartItems.map((i) => ({ ticketTypeId: i.id, quantity: i.qty })),
         }),
       });
@@ -249,8 +363,8 @@ export default function TicketsPage({
         throw new Error("Invalid server response: missing order token");
       }
 
-      // 2) Fetch the order back to get the REAL assigned seats (needed so
-      // attendee-info can save each attendee against a real seatId later)
+      // 2) Fetch the order back to get its ticket rows, so attendee-info
+      // can attach each attendee to a specific ticket (order_items.id)
       const orderRes = await fetch(
         `${apiUrl}/orders/${orderNumber}?token=${encodeURIComponent(accessToken)}`,
       );
@@ -259,23 +373,18 @@ export default function TicketsPage({
         throw new Error("Order created but failed to load its details.");
       }
 
-      const seats = (orderData.data.seats || []) as Array<{
-        seatId: string;
-        seatNumber: string;
-        seatType: string;
-        price: number;
+      const orderTickets = (orderData.data.tickets || []) as Array<{
+        id: string;
         ticketTypeId: string;
         ticketTypeName: string;
+        price: number;
       }>;
 
-      const selectedSeats: SelectedSeat[] = seats.map((s) => ({
-        id: s.seatId,
-        row: "",
-        number: 0,
-        seatNumber: s.seatNumber,
-        seatType: s.ticketTypeName || s.seatType,
-        price: s.price,
-        ticketTypeId: s.ticketTypeId,
+      const tickets: PurchasedTicket[] = orderTickets.map((t) => ({
+        id: t.id,
+        ticketTypeId: t.ticketTypeId,
+        ticketTypeName: t.ticketTypeName,
+        price: t.price,
       }));
 
       const checkoutStateData: CheckoutState = {
@@ -284,7 +393,7 @@ export default function TicketsPage({
         eventDate: event.date,
         orderNumber,
         accessToken,
-        selectedSeats,
+        tickets,
         attendees: [],
       };
       saveCheckoutState(checkoutStateData);
@@ -293,10 +402,24 @@ export default function TicketsPage({
       const attendeeUrl = `/checkout/attendee-info?event=${id}&order=${orderNumber}&token=${accessToken}`;
       router.push(attendeeUrl);
     } catch (err: unknown) {
-      console.error("[TICKETS] checkout error:", err);
+      // Stock rejections ("X is sold out.") are a normal outcome, not an app
+      // fault — surface them to the customer without logging as an error.
+      console.debug("[TICKETS] checkout rejected:", err);
       toast.error(
         err instanceof Error ? err.message : "Failed to proceed to checkout. Please try again.",
       );
+      // Re-sync stock so the card flips to "Sold out" instead of letting the
+      // customer retry the same doomed checkout.
+      try {
+        const res = await fetch(`${apiUrl}/events/${id}/tickets`);
+        const data = await res.json();
+        if (data.success && data.data) {
+          setEvent(data.data as EventData);
+          setCart({});
+        }
+      } catch {
+        // Non-fatal: the toast already told them what happened.
+      }
     } finally {
       setIsCheckingOut(false);
     }
@@ -389,44 +512,102 @@ export default function TicketsPage({
               const isVIP = tt.name.toUpperCase().includes("VIP");
               const maxAllowed = getMaxFor(tt.id);
               const accent = tt.color || "#dc2626";
+              const soldOut = tt.soldOut;
+              // Only nag about scarcity when it's actually scarce.
+              const lowStock =
+                !soldOut && tt.remaining !== null && tt.remaining <= 5;
 
               return (
                 <div
                   key={tt.id}
-                  className="glass-panel rounded-2xl p-5 sm:p-6 animate-fade-in"
+                  className={`glass-panel rounded-2xl p-5 sm:p-6 animate-fade-in ${
+                    soldOut ? "opacity-60" : ""
+                  }`}
                   style={{ animationDelay: `${idx * 0.06}s` }}
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                          style={{ background: cardAccent(tt.level, accent) }}
-                        >
-                          {isVIP ? (
-                            <Star className="w-5 h-5 text-white" />
-                          ) : (
-                            <Ticket className="w-5 h-5 text-white" />
-                          )}
-                        </div>
-                        <div>
-                          <h2 className="text-lg sm:text-xl font-black text-white leading-tight">
-                            {tt.name}
-                          </h2>
-                          {tt.subtitle && (
-                            <p className="text-xs text-gray-400">{tt.subtitle}</p>
-                          )}
-                        </div>
-                      </div>
-                      <p
-                        className="text-xl font-black mb-3"
-                        style={{ color: accent }}
-                      >
-                        {formatPrice(Number(tt.price))}{" "}
-                        <span className="text-xs text-gray-500 font-semibold">VND</span>
-                      </p>
+                      {tt.imageUrl ? (
+                        <>
+                          {/* Artwork leads the card. The mask fades its right
+                              and bottom edges into the panel so it blends into
+                              the background and the stepper instead of ending
+                              in a hard rectangle. */}
+                          <div className="relative w-full max-w-full overflow-hidden rounded-xl mb-3">
+                            <img
+                              src={tt.imageUrl}
+                              alt={`${tt.name} ticket artwork`}
+                              loading="lazy"
+                              className="w-full h-auto block"
+                              style={{
+                                WebkitMaskImage: TICKET_ART_MASK,
+                                maskImage: TICKET_ART_MASK,
+                                // Both gradients must BOTH be opaque for a
+                                // pixel to show; the default "add" would
+                                // union them and the fade would barely read.
+                                WebkitMaskComposite: "source-in",
+                                maskComposite: "intersect",
+                              }}
+                            />
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                            <div className="min-w-0">
+                              <h2 className="text-lg sm:text-xl font-black text-white leading-tight truncate">
+                                {tt.name}
+                              </h2>
+                              {tt.subtitle && (
+                                <p className="text-xs text-gray-400 truncate">
+                                  {tt.subtitle}
+                                </p>
+                              )}
+                            </div>
+                            <p
+                              className="text-xl font-black shrink-0"
+                              style={{ color: accent }}
+                            >
+                              {formatPrice(Number(tt.price))}{" "}
+                              <span className="text-xs text-gray-500 font-semibold">
+                                VND
+                              </span>
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* No artwork uploaded yet — keep the original
+                              icon-tile treatment so nothing regresses. */}
+                          <div className="flex items-center gap-3 mb-2">
+                            <div
+                              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                              style={{ background: cardAccent(tt.level, accent) }}
+                            >
+                              {isVIP ? (
+                                <Star className="w-5 h-5 text-white" />
+                              ) : (
+                                <Ticket className="w-5 h-5 text-white" />
+                              )}
+                            </div>
+                            <div>
+                              <h2 className="text-lg sm:text-xl font-black text-white leading-tight">
+                                {tt.name}
+                              </h2>
+                              {tt.subtitle && (
+                                <p className="text-xs text-gray-400">{tt.subtitle}</p>
+                              )}
+                            </div>
+                          </div>
+                          <p
+                            className="text-xl font-black mb-3"
+                            style={{ color: accent }}
+                          >
+                            {formatPrice(Number(tt.price))}{" "}
+                            <span className="text-xs text-gray-500 font-semibold">VND</span>
+                          </p>
+                        </>
+                      )}
+
                       {tt.benefits && tt.benefits.length > 0 && (
-                        <ul className="space-y-1.5">
+                        <ul className="space-y-1.5 mt-3">
                           {tt.benefits.slice(0, 4).map((b, i) => (
                             <li
                               key={i}
@@ -441,6 +622,17 @@ export default function TicketsPage({
 
                     {/* Quantity stepper */}
                     <div className="flex sm:flex-col items-center justify-between sm:justify-center gap-3 shrink-0">
+                      {soldOut ? (
+                        <span className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/15 text-xs font-semibold uppercase tracking-wide text-gray-300">
+                          Sold out
+                        </span>
+                      ) : (
+                        <>
+                          {lowStock && (
+                            <span className="text-[11px] font-medium text-amber-400 whitespace-nowrap">
+                              Only {tt.remaining} left
+                            </span>
+                          )}
                       <div className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 overflow-hidden">
                         <button
                           type="button"
@@ -464,6 +656,8 @@ export default function TicketsPage({
                           <Plus className="w-4 h-4" />
                         </button>
                       </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -537,13 +731,97 @@ export default function TicketsPage({
                   {promoError && (
                     <p className="text-red-400 text-[11px] mt-1.5">{promoError}</p>
                   )}
-                  {discountInfo && (
-                    <div className="flex justify-between items-center mt-2 text-green-400 text-xs">
-                      <span className="flex items-center gap-1">
-                        <Check className="w-3 h-3" />
-                        {discountInfo.name}
-                      </span>
-                      <span className="font-bold">−{formatPrice(discountInfo.amount)}</span>
+
+                  {/* Choose which discount to use. A cart can qualify for
+                      several (e.g. two different combos) — let the customer
+                      decide instead of forcing the largest. */}
+                  {eligiblePromos.length > 0 && (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                          Available discounts ({eligiblePromos.length})
+                        </span>
+                        {selectedPromoId && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPromoId(null)}
+                            className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Search only earns its place once the list is long. */}
+                      {eligiblePromos.length > 3 && (
+                        <input
+                          type="text"
+                          value={promoSearch}
+                          onChange={(e) => setPromoSearch(e.target.value)}
+                          placeholder="Search discounts..."
+                          className="w-full mb-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500/50 transition-colors placeholder:text-gray-600"
+                        />
+                      )}
+
+                      <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+                        {visiblePromos.length === 0 ? (
+                          <p className="text-[11px] text-gray-500 py-2">
+                            No discounts match &quot;{promoSearch}&quot;.
+                          </p>
+                        ) : (
+                          visiblePromos.map((promo) => {
+                            const active = promo.promotionId === selectedPromoId;
+                            return (
+                              <button
+                                key={promo.promotionId}
+                                type="button"
+                                onClick={() => setSelectedPromoId(promo.promotionId)}
+                                aria-pressed={active}
+                                className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+                                  active
+                                    ? "border-green-500/50 bg-green-500/10"
+                                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      {active && (
+                                        <Check className="w-3 h-3 text-green-400 shrink-0" />
+                                      )}
+                                      <span
+                                        className={`text-xs font-semibold truncate ${
+                                          active ? "text-green-300" : "text-white"
+                                        }`}
+                                      >
+                                        {promo.name}
+                                      </span>
+                                      {promo.isBest && (
+                                        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-amber-300 bg-amber-400/15 px-1.5 py-0.5 rounded">
+                                          Best
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-gray-500">
+                                      {promo.discountType === "PERCENTAGE"
+                                        ? `${promo.discountValue}% off`
+                                        : "Fixed discount"}
+                                      {promo.code ? ` · ${promo.code}` : ""}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={`text-xs font-bold shrink-0 tabular-nums ${
+                                      active ? "text-green-400" : "text-gray-400"
+                                    }`}
+                                  >
+                                    −{formatPrice(promo.discountAmount)}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -579,7 +857,7 @@ export default function TicketsPage({
                   <ShieldCheck className="w-3 h-3" /> Secure
                 </span>
                 <span className="flex items-center gap-1">
-                  <Zap className="w-3 h-3" /> Auto seat assign
+                  <Zap className="w-3 h-3" /> Instant confirmation
                 </span>
               </div>
             </div>

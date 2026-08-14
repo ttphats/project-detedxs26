@@ -8,21 +8,6 @@ export interface JWTPayload {
   roleName: string;
 }
 
-export interface Seat {
-  id: string;
-  event_id: string;
-  seat_number: string;
-  row: string;
-  col: string;
-  section: string;
-  seat_type: string;
-  price: number;
-  status: string;
-  position_x?: number;
-  position_y?: number;
-  is_disabled: boolean;
-}
-
 export interface Event {
   id: string;
   name: string;
@@ -57,39 +42,13 @@ export interface Order {
   updated_at?: Date;
 }
 
-export interface SeatLock {
-  id: string;
-  seat_id: string;
-  event_id: string;
-  session_id: string;
-  expires_at: Date;
-}
-
 // API Request types
-export interface CreatePendingOrderRequest {
-  eventId: string;
-  seatIds: string[];
-  sessionId: string;
-}
-
 export interface ConfirmPaymentRequest {
   orderNumber: string;
   accessToken: string;
   customerName: string;
   customerEmail: string;
   customerPhone?: string;
-}
-
-export interface LockSeatRequest {
-  eventId: string;
-  seatId: string;
-  sessionId: string;
-}
-
-export interface UnlockSeatRequest {
-  eventId: string;
-  seatId: string;
-  sessionId: string;
 }
 
 // Pagination

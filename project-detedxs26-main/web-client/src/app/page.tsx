@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   Calendar,
@@ -348,6 +348,7 @@ export default function Home() {
     null,
   );
   const [loading, setLoading] = useState(true);
+  const hasHandledHashRef = useRef(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
@@ -487,6 +488,78 @@ export default function Home() {
     fetchPartners();
   }, []);
 
+  // Hash links arriving from another page (the header's "/#program" while on
+  // /gallery or the tickets page) used to dump you at the top of the home
+  // page. This page renders only a spinner until its fetches resolve, so the
+  // browser looked for #program the moment it landed, found a DOM with no
+  // sections in it, and gave up before the real content ever mounted.
+  // Re-running the scroll once the sections exist is what makes it land.
+  useEffect(() => {
+    // Only ever auto-scroll once per landing, so a later timeline/partner
+    // fetch can't yank the page back while the visitor is already reading.
+    if (loading || !featuredEvent || hasHandledHashRef.current) return;
+
+    const targetId = decodeURIComponent(window.location.hash.slice(1));
+    if (!targetId) return;
+
+    const HEADER_OFFSET = 80; // the fixed header's h-20
+
+    let frame = 0;
+    let attempts = 0;
+    let settledFrames = 0;
+    let aborted = false;
+
+    // Sections keep mounting while we scroll (#program waits on its own
+    // fetch, images resize as they decode), which moves the target. A smooth
+    // scrollIntoView locks its destination at call time and so lands short
+    // whenever that happens. Nudging instantly and re-checking each frame
+    // converges on the real position instead of chasing a stale one.
+    const settle = () => {
+      const el = document.getElementById(targetId);
+      if (!el) {
+        if (attempts++ < 120) frame = requestAnimationFrame(settle);
+        return;
+      }
+
+      const delta = el.getBoundingClientRect().top - HEADER_OFFSET;
+      if (Math.abs(delta) > 2) {
+        window.scrollTo({ top: window.scrollY + delta, behavior: "auto" });
+        settledFrames = 0;
+      } else {
+        settledFrames++;
+      }
+
+      // Hold the position steady for a few frames before declaring it done.
+      if (settledFrames < 5 && attempts++ < 120) {
+        frame = requestAnimationFrame(settle);
+      } else {
+        hasHandledHashRef.current = true;
+      }
+    };
+
+    // Never fight a visitor who has started scrolling on their own.
+    const abort = () => {
+      aborted = true;
+      hasHandledHashRef.current = true;
+      cancelAnimationFrame(frame);
+      cleanup();
+    };
+    const cleanup = () => {
+      window.removeEventListener("wheel", abort);
+      window.removeEventListener("touchstart", abort);
+      window.removeEventListener("keydown", abort);
+    };
+    window.addEventListener("wheel", abort, { passive: true, once: true });
+    window.addEventListener("touchstart", abort, { passive: true, once: true });
+    window.addEventListener("keydown", abort, { once: true });
+
+    frame = requestAnimationFrame(settle);
+
+    return () => {
+      if (!aborted) cancelAnimationFrame(frame);
+      cleanup();
+    };
+  }, [loading, featuredEvent, timeline.length, partners.length]);
 
   // Loading state
   if (loading || !featuredEvent) {
@@ -646,7 +719,7 @@ export default function Home() {
                 >
                   <button className="w-full sm:w-auto group relative px-6 sm:px-8 py-3 sm:py-4 bg-red-600 text-white font-bold uppercase tracking-wider rounded-full overflow-hidden transition-all hover:bg-red-500 hover:shadow-lg hover:shadow-red-500/30 btn-ripple mobile-tap-feedback">
                     <span className="relative z-10 flex items-center justify-center gap-2">
-                      Buy Ticket
+                      Get Tickets
                       <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                     </span>
                   </button>
@@ -787,7 +860,8 @@ export default function Home() {
       </section>
 
       {/* Speaker Lineup Section - TEDx Hanoi Style */}
-      <section id="speakers" className="bg-black relative overflow-hidden">
+      {/* scroll-mt-20 clears the fixed 80px header when jumped to via /#speakers */}
+      <section id="speakers" className="scroll-mt-20 bg-black relative overflow-hidden">
         {/* Section Header */}
         <div className="py-20 border-b border-white/10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -887,7 +961,7 @@ export default function Home() {
       {/* Program/Timeline Section - Only show when there are published timeline items */}
       {timeline.length > 0 && <section
         id="program"
-        className="py-12 sm:py-24 bg-black relative overflow-hidden"
+        className="scroll-mt-20 py-12 sm:py-24 bg-black relative overflow-hidden"
       >
         {/* Background decoration - removed for horizontal layout */}
 
@@ -963,7 +1037,7 @@ export default function Home() {
       {/* Partners/Sponsors Section */}
       <section
         id="partners"
-        className="py-16 sm:py-28 bg-black relative overflow-hidden border-t border-white/5"
+        className="scroll-mt-20 py-16 sm:py-28 bg-black relative overflow-hidden border-t border-white/5"
       >
         {/* Subtle background glow elements */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-red-600/5 rounded-full blur-3xl pointer-events-none" />

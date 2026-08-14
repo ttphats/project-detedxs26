@@ -16,7 +16,6 @@ export interface Promotion {
   end_date: Date;
   max_usage: number | null;
   used_count: number;
-  max_per_customer: number;
   ticket_type_ids: string | null;
   is_active: boolean;
   created_at: Date;
@@ -35,7 +34,6 @@ export interface CreatePromotionInput {
   startDate: string;
   endDate: string;
   maxUsage?: number;
-  maxPerCustomer?: number;
   ticketTypeIds?: string[];
   isActive?: boolean;
 }
@@ -61,7 +59,14 @@ export async function getPromotion(id: string) {
 
 export async function createPromotion(input: CreatePromotionInput) {
   const id = randomUUID();
-  
+
+  // Validate name uniqueness — Promotion Name is the business-facing
+  // identifier for a promotion, so duplicates must be rejected explicitly
+  // (the DB's UNIQUE constraint on `name` is the backstop, but this gives
+  // a clean error message instead of a raw SQL duplicate-key failure).
+  const nameCheck = await queryOne('SELECT id FROM promotions WHERE name = ?', [input.name]);
+  if (nameCheck) throw new BadRequestError('Promotion name already exists');
+
   // Validate code uniqueness if provided
   if (input.code) {
     const existing = await queryOne('SELECT id FROM promotions WHERE code = ?', [input.code]);
@@ -70,10 +75,10 @@ export async function createPromotion(input: CreatePromotionInput) {
 
   await execute(
     `INSERT INTO promotions (
-      id, event_id, name, type, discount_type, discount_value, 
-      code, min_tickets, max_tickets, start_date, end_date, 
-      max_usage, max_per_customer, ticket_type_ids, is_active
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, event_id, name, type, discount_type, discount_value,
+      code, min_tickets, max_tickets, start_date, end_date,
+      max_usage, ticket_type_ids, is_active
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.eventId,
@@ -87,7 +92,6 @@ export async function createPromotion(input: CreatePromotionInput) {
       new Date(input.startDate),
       new Date(input.endDate),
       input.maxUsage || null,
-      input.maxPerCustomer || 1,
       input.ticketTypeIds ? JSON.stringify(input.ticketTypeIds) : null,
       input.isActive !== undefined ? input.isActive : true
     ]
@@ -98,7 +102,12 @@ export async function createPromotion(input: CreatePromotionInput) {
 
 export async function updatePromotion(id: string, input: UpdatePromotionInput) {
   const existing = await getPromotion(id);
-  
+
+  if (input.name && input.name !== existing.name) {
+    const nameCheck = await queryOne('SELECT id FROM promotions WHERE name = ? AND id != ?', [input.name, id]);
+    if (nameCheck) throw new BadRequestError('Promotion name already exists');
+  }
+
   if (input.code && input.code !== existing.code) {
     const codeCheck = await queryOne('SELECT id FROM promotions WHERE code = ? AND id != ?', [input.code, id]);
     if (codeCheck) throw new BadRequestError('Promo code already exists');
@@ -118,7 +127,6 @@ export async function updatePromotion(id: string, input: UpdatePromotionInput) {
     start_date: 'startDate',
     end_date: 'endDate',
     max_usage: 'maxUsage',
-    max_per_customer: 'maxPerCustomer',
     is_active: 'isActive'
   };
 

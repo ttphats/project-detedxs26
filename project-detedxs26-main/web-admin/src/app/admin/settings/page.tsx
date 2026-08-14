@@ -344,7 +344,7 @@ export default function SettingsPage() {
         <Card title='Quản lý Database' className='mb-6'>
           <Alert
             title='Cảnh báo'
-            description='Reset data sẽ xóa tất cả đơn hàng, seat locks và khôi phục về trạng thái mặc định. Thao tác này không thể hoàn tác!'
+            description='Reset data sẽ xóa tất cả đơn hàng và khôi phục về trạng thái mặc định. Thao tác này không thể hoàn tác!'
             type='warning'
             icon={<WarningOutlined />}
             showIcon
@@ -357,13 +357,7 @@ export default function SettingsPage() {
               <li>✅ Giữ nguyên: Events, Ticket Types, Email Templates</li>
               <li>✅ Giữ nguyên: Tài khoản admin và users</li>
               <li>🗑️ Xóa tất cả: Orders (đơn hàng)</li>
-              <li>🗑️ Xóa tất cả: Seat Locks (ghế đang giữ)</li>
               <li>🗑️ Xóa tất cả: Email Logs</li>
-              <li>🗑️ Xóa tất cả: Layout Versions (phiên bản layout)</li>
-              <li>
-                🔄 Reset: Tạo lại 100 ghế mới (10 rows x 10 seats với LEFT/RIGHT sections) - Tất cả
-                ghế có vé Level 1 (rẻ nhất)
-              </li>
             </ul>
           </div>
 

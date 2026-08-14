@@ -28,7 +28,7 @@ export async function generateTicketPDF(
       where: {orderNumber},
       include: {
         event: true,
-        orderItems: {include: {seat: true}},
+        orderItems: true,
       },
     })
 
@@ -68,9 +68,9 @@ export async function generateTicketPDF(
       eventDate: formattedDate,
       eventTime: formattedTime,
       eventVenue: order.event.venue,
-      seats: order.orderItems.map((item: any) => ({
-        number: item.seat?.seatNumber || item.seatNumber,
-        type: item.seat?.seatType || item.seatType,
+      tickets: order.orderItems.map((item: any) => ({
+        type: item.ticketTypeName || '',
+        attendeeName: item.attendeeName || null,
       })),
       qrCodeUrl: order.qrCodeUrl,
       totalAmount: Number(order.totalAmount),
@@ -109,7 +109,7 @@ export async function generateTicketPDF(
 
 /**
  * Generate HTML template for ticket PDF
- * Structure matches web design: Status → Event Info → Attendee → Seats → QR
+ * Structure matches web design: Status → Event Info → Attendee → Tickets → QR
  */
 function generateTicketHTML(data: {
   orderNumber: string
@@ -118,7 +118,7 @@ function generateTicketHTML(data: {
   eventDate: string
   eventTime: string
   eventVenue: string
-  seats: Array<{number: string; type: string}>
+  tickets: Array<{type: string; attendeeName: string | null}>
   qrCodeUrl: string | null
   totalAmount: number
 }): string {
@@ -313,13 +313,13 @@ function generateTicketHTML(data: {
       font-family: monospace;
     }
 
-    /* Seats */
-    .seats-grid {
+    /* Tickets */
+    .tickets-grid {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
     }
-    .seat-card {
+    .ticket-card {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 10px;
@@ -327,17 +327,17 @@ function generateTicketHTML(data: {
       text-align: center;
       min-width: 80px;
     }
-    .seat-card.vip {
+    .ticket-card.vip {
       background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(234, 88, 12, 0.2));
       border-color: rgba(245, 158, 11, 0.3);
     }
-    .seat-number {
+    .ticket-name {
       font-size: 16px;
       font-weight: 700;
       color: white;
       margin-bottom: 2px;
     }
-    .seat-type {
+    .ticket-type {
       font-size: 10px;
       color: #9ca3af;
     }
@@ -414,7 +414,7 @@ function generateTicketHTML(data: {
       <div class="perforation-line"></div>
     </div>
 
-    <!-- Body: Attendee, Seats, QR -->
+    <!-- Body: Attendee, Tickets, QR -->
     <div class="body">
       <!-- Attendee Info -->
       <div class="section">
@@ -425,23 +425,23 @@ function generateTicketHTML(data: {
         <div class="attendee-name">${data.customerName}</div>
         <div class="order-meta">
           <span class="order-number">#${data.orderNumber}</span>
-          <span>${data.seats.length} ticket${data.seats.length !== 1 ? 's' : ''}</span>
+          <span>${data.tickets.length} ticket${data.tickets.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
 
-      <!-- Seats -->
+      <!-- Tickets -->
       <div class="section">
         <div class="section-header">
           <span class="section-icon">🎫</span>
-          <span class="section-title">Seats</span>
+          <span class="section-title">Tickets</span>
         </div>
-        <div class="seats-grid">
-          ${data.seats
+        <div class="tickets-grid">
+          ${data.tickets
             .map(
-              (seat) => `
-          <div class="seat-card ${seat.type === 'VIP' ? 'vip' : ''}">
-            <div class="seat-number">${seat.number}</div>
-            <div class="seat-type">${seat.type}</div>
+              (ticket, index) => `
+          <div class="ticket-card ${ticket.type === 'VIP' ? 'vip' : ''}">
+            <div class="ticket-name">${ticket.attendeeName || `Ticket ${index + 1}`}</div>
+            <div class="ticket-type">${ticket.type}</div>
           </div>
           `
             )

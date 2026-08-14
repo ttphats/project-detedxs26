@@ -5,12 +5,20 @@ export interface DashboardStats {
   totalOrders: number;
   ticketsSold: number;
   revenue: number;
-  availableSeats: number;
+  /** Remaining capacity across ticket types that declare a max_quantity. */
+  ticketsRemaining: number;
   pendingOrders: number;
 }
 
+/** Order statuses whose tickets count as sold/held. */
+const SOLD_STATUSES = ['PAID', 'PENDING_CONFIRMATION'];
+
 /**
- * Get dashboard statistics
+ * Get dashboard statistics.
+ *
+ * Ticket counts come from order_items rather than seats: the venue has no
+ * seat map, so capacity is defined by ticket_types.max_quantity and usage
+ * by how many tickets have actually been ordered.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   const [
@@ -18,17 +26,22 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     totalOrders,
     ticketsSold,
     revenueResult,
-    availableSeats,
+    capacityResult,
     pendingOrders,
   ] = await Promise.all([
     prisma.event.count(),
     prisma.order.count(),
-    prisma.seat.count({ where: { status: 'SOLD' } }),
+    prisma.orderItem.count({
+      where: { order: { status: { in: SOLD_STATUSES } } },
+    }),
     prisma.order.aggregate({
       _sum: { totalAmount: true },
       where: { status: 'PAID' },
     }),
-    prisma.seat.count({ where: { status: 'AVAILABLE' } }),
+    // ticket_types isn't modelled in Prisma, so query it directly.
+    prisma.$queryRaw<Array<{ capacity: number | null }>>`
+      SELECT SUM(max_quantity) AS capacity FROM ticket_types WHERE is_active = 1
+    `,
     prisma.order.count({
       where: {
         status: { in: ['PENDING', 'PENDING_CONFIRMATION'] },
@@ -36,13 +49,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     }),
   ]);
 
+  const capacity = Number(capacityResult?.[0]?.capacity || 0);
+
   return {
     totalEvents,
     totalOrders,
     ticketsSold,
     revenue: Number(revenueResult._sum.totalAmount || 0),
-    availableSeats,
+    ticketsRemaining: Math.max(0, capacity - ticketsSold),
     pendingOrders,
   };
 }
-

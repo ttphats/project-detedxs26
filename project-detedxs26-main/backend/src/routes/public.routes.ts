@@ -1,9 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import * as eventController from '../controllers/event.controller.js';
-import * as seatController from '../controllers/seat.controller.js';
 import * as orderController from '../controllers/order.controller.js';
 import * as cronController from '../controllers/cron.controller.js';
-import * as seatLockController from '../controllers/seat-lock.controller.js';
 import * as ticketController from '../controllers/ticket.controller.js';
 import * as paymentController from '../controllers/payment.controller.js';
 import * as partnersController from '../controllers/admin/partners.controller.js';
@@ -35,12 +33,6 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /events/slug/:slug - Get event by slug
   fastify.get('/events/slug/:slug', eventController.getEventBySlug)
 
-  // GET /events/:eventId/seats - Get seats for an event
-  fastify.get('/events/:eventId/seats', seatController.getEventSeats)
-
-  // GET /events/:eventId/seats/stream - SSE stream for real-time seat updates
-  fastify.get('/events/:eventId/seats/stream', seatController.seatsStream)
-
   // GET /events/:eventId/speakers - Get speakers for an event
   fastify.get('/events/:eventId/speakers', eventController.getEventSpeakers)
 
@@ -49,25 +41,6 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
 
   // GET /events/:eventId/tickets - Ticket-class page: event meta + ticket types, no seatMap
   fastify.get('/events/:eventId/tickets', eventController.getEventTickets)
-
-  // =====================================
-  // SEAT ROUTES
-  // =====================================
-
-  // GET /seats/lock - Get session locks
-  fastify.get('/seats/lock', seatController.getSessionLocks)
-
-  // POST /seats/lock - Lock seats
-  fastify.post('/seats/lock', seatController.lockSeats)
-
-  // DELETE /seats/lock - Unlock seats
-  fastify.delete('/seats/lock', seatController.unlockSeats)
-
-  // POST /seats/unlock - Unlock seats (for sendBeacon which only supports POST)
-  fastify.post('/seats/unlock', seatController.unlockSeats)
-
-  // POST /seats/extend-lock - Extend lock duration for checkout
-  fastify.post('/seats/extend-lock', seatLockController.extendLock)
 
   // =====================================
   // ORDER ROUTES
@@ -79,15 +52,13 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   const promotionsController = await import('../controllers/promotions.controller.js')
   fastify.post('/promotions/check', promotionsController.checkPromotions)
   fastify.post('/promotions/validate-code', promotionsController.validatePromoCode)
+  fastify.post('/promotions/eligible', promotionsController.listEligiblePromotions)
 
 
   // GET /orders/check-pending - Check if session has pending order (must be before /:orderNumber)
   fastify.get('/orders/check-pending', orderController.checkPendingOrder)
 
-  // POST /orders/create-pending - Create pending order
-  fastify.post('/orders/create-pending', orderController.createPendingOrder)
-
-  // POST /orders/create-pending-by-type - Create pending order by ticket type + quantity (no seat selection)
+  // POST /orders/create-pending-by-type - Create pending order by ticket type + quantity
   fastify.post('/orders/create-pending-by-type', orderController.createPendingOrderByType)
 
   // POST /orders/confirm-payment - Confirm payment
@@ -124,19 +95,4 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /cron/expire-orders - Expire pending orders (cron job)
   fastify.get('/cron/expire-orders', cronController.expireOrders)
 
-  // GET /cron/cleanup-locks - Cleanup expired locks (cron job)
-  fastify.get('/cron/cleanup-locks', cronController.cleanupLocks)
-
-  // =====================================
-  // DEBUG ROUTES
-  // =====================================
-
-  // GET /debug/seat-locks - Debug endpoint for seat locks
-  fastify.get('/debug/seat-locks', seatLockController.getDebugInfo)
-
-  // POST /debug/seat-locks - Create seat_locks table
-  fastify.post('/debug/seat-locks', seatLockController.createTable)
-
-  // DELETE /debug/seat-locks - Clear expired locks
-  fastify.delete('/debug/seat-locks', seatLockController.clearExpired)
 }

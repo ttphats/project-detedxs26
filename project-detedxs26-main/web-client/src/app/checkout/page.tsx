@@ -25,21 +25,11 @@ import {
 } from "lucide-react";
 
 // Type definitions for event data
-interface Seat {
+interface PurchasedTicket {
   id: string;
-  seatNumber: string;
-  row: string;
-  number: number;
-  section: string;
-  status: string;
   ticketTypeId: string;
-  seatType: string;
+  ticketTypeName: string;
   price: number;
-}
-
-interface SeatRow {
-  row: string;
-  seats: Seat[];
 }
 
 interface EventData {
@@ -48,7 +38,6 @@ interface EventData {
   venue: string;
   eventDate?: string;
   date?: string; // API /api/events/[id] returns 'date' instead of 'eventDate'
-  seatMap: SeatRow[];
 }
 
 // Bank account info for transfer
@@ -66,7 +55,6 @@ function CheckoutContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const eventId = searchParams.get("event");
-  const seatIds = searchParams.get("seats")?.split(",") || [];
   const orderNumber = searchParams.get("order"); // Order number from create-pending
   const accessToken = searchParams.get("token"); // Access token from create-pending
 
@@ -88,13 +76,12 @@ function CheckoutContent() {
     eventId,
     orderNumber,
     accessToken: accessToken ? `${accessToken.substring(0, 10)}...` : null,
-    seatIds: seatIds.length,
   });
 
   // Fetch order data to get accurate expiration time
   useEffect(() => {
     const fetchOrder = async () => {
-      // If no order number, this is old flow (direct from seats page without creating order)
+      // If no order number we cannot proceed — the order is created on the tickets page
       // Just load event data instead
       if (!orderNumber || !accessToken) {
         console.log("[CHECKOUT] No order number - using legacy flow");
@@ -184,7 +171,6 @@ function CheckoutContent() {
           venue: orderData.event.venue,
           eventDate: orderData.event.eventDate,
           date: orderData.event.eventDate,
-          seatMap: [],
         });
         return;
       }
@@ -235,27 +221,19 @@ function CheckoutContent() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Get selected seats from order data (preferred) or event data (fallback)
-  const selectedSeats: Seat[] = orderData?.seats
-    ? orderData.seats.map((s: any) => ({
-        id: s.seatId,
-        seatNumber: s.seatNumber,
-        row: s.row,
-        number: parseInt(s.seatNumber.replace(/\D/g, "")) || 0,
-        section: s.section,
-        status: "RESERVED",
-        ticketTypeId: s.ticketTypeId || "",
-        seatType: s.ticketTypeName || s.seatType,
-        price: s.price,
-      }))
-    : event
-      ? event.seatMap
-          .flatMap((row) => row.seats)
-          .filter((seat) => seatIds.includes(seat.id))
-      : [];
+  // Tickets on this order. There is no seat map — organisers arrange
+  // seating after purchase.
+  const purchasedTickets: PurchasedTicket[] = (orderData?.tickets || []).map(
+    (t: any) => ({
+      id: t.id,
+      ticketTypeId: t.ticketTypeId || "",
+      ticketTypeName: t.ticketTypeName || "Ticket",
+      price: Number(t.price),
+    }),
+  );
   const totalPrice =
     orderData?.totalAmount ||
-    selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
+    purchasedTickets.reduce((sum, t) => sum + t.price, 0);
   const transferContent = `Ticket payment order ${orderCode}`;
 
   const copyToClipboard = (text: string, field: string) => {
@@ -276,7 +254,7 @@ function CheckoutContent() {
 
     if (!orderNumber || !accessToken) {
       setOrderError(
-        "Missing order information. Please return to the seat selection page.",
+        "Missing order information. Please return to the ticket selection page.",
       );
       return;
     }
@@ -300,7 +278,7 @@ function CheckoutContent() {
           customerEmail: formData.email,
           customerPhone: formData.phone,
           attendees: attendees.length > 0 ? attendees.map((a) => ({
-            seatId: a.seatId,
+            orderItemId: a.orderItemId,
             name: a.name,
             email: a.email,
             phone: a.phone,
@@ -345,7 +323,7 @@ function CheckoutContent() {
     );
   }
 
-  if (!event || selectedSeats.length === 0) {
+  if (!event || purchasedTickets.length === 0) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center glass-panel p-8 rounded-2xl">
@@ -491,7 +469,7 @@ function CheckoutContent() {
                 <div className="space-y-3 relative">
                   {attendees.map((attendee, idx) => (
                     <div
-                      key={attendee.seatId}
+                      key={attendee.orderItemId}
                       className="flex items-center gap-4 p-3 bg-white/5 rounded-xl border border-white/5"
                     >
                       <div className="w-8 h-8 bg-red-600/20 rounded-lg flex items-center justify-center text-red-400 text-sm font-bold">
@@ -506,7 +484,7 @@ function CheckoutContent() {
                         </p>
                       </div>
                       <span className="text-xs text-gray-500 whitespace-nowrap">
-                        {attendee.seatLabel}
+                        {attendee.ticketTypeName}
                       </span>
                     </div>
                   ))}
@@ -628,7 +606,7 @@ function CheckoutContent() {
                       <br />
                       banking/e-wallet app to pay
                     </p>
-                    <div className="border-2 border-white/10 rounded-2xl p-3 bg-white relative overflow-hidden">
+                    <div className="border-2 border-white/10 rounded-2xl p-2 bg-white relative overflow-hidden">
                       {/* VietQR Header */}
                       <div className="flex items-center justify-center gap-1 mb-3">
                         <span className="text-blue-600 font-bold text-lg">
@@ -639,7 +617,7 @@ function CheckoutContent() {
                         </span>
                       </div>
                       {/* QR Code - Static bank QR image */}
-                      <div className="w-80 h-80 bg-white rounded-lg flex items-center justify-center relative overflow-hidden">
+                      <div className="w-[310px] h-[310px] bg-white rounded-lg flex items-center justify-center relative overflow-hidden">
                         <img
                           src="/bank-qr.png"
                           alt="Bank transfer QR code"
@@ -706,16 +684,16 @@ function CheckoutContent() {
                 </div>
 
                 <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
-                  {selectedSeats.map((seat) => (
+                  {purchasedTickets.map((ticket) => (
                     <div
-                      key={seat.id}
+                      key={ticket.id}
                       className="flex justify-between text-sm py-2 border-b border-white/5"
                     >
                       <span className="text-gray-300">
-                        {seat.seatType || "Ticket"}
+                        {ticket.ticketTypeName}
                       </span>
                       <span className="font-medium text-white">
-                        {seat.price.toLocaleString()} VND
+                        {ticket.price.toLocaleString()} VND
                       </span>
                     </div>
                   ))}
@@ -802,8 +780,8 @@ function CheckoutContent() {
                   ? attendees
                   : [
                       {
-                        seatId: "buyer",
-                        seatLabel: "Ticket",
+                        orderItemId: "buyer",
+                        ticketTypeName: "Ticket",
                         name: formData.name,
                         email: formData.email,
                         phone: formData.phone,
@@ -811,7 +789,7 @@ function CheckoutContent() {
                     ]
                 ).map((attendee, idx) => (
                   <div
-                    key={attendee.seatId}
+                    key={attendee.orderItemId}
                     className="bg-white/5 p-4 rounded-xl border border-white/10"
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -819,7 +797,7 @@ function CheckoutContent() {
                         Ticket {idx + 1}
                       </span>
                       <span className="text-xs text-gray-500">
-                        {attendee.seatLabel}
+                        {attendee.ticketTypeName}
                       </span>
                     </div>
                     <div className="space-y-2">

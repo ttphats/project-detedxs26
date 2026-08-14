@@ -34,58 +34,23 @@ export async function expireOrders(): Promise<ExpireOrdersResult> {
   let successCount = 0;
   let errorCount = 0;
 
-  // Process each expired order
+  // Process each expired order. There are no seats to release — the
+  // ticket stock a PENDING order was holding is freed simply by it no
+  // longer counting as live once its status flips to EXPIRED.
   for (const order of expiredOrders) {
     try {
-      // Get seat IDs for this order
-      const seatIds = await query<{ seat_id: string }>(
-        'SELECT seat_id FROM order_items WHERE order_id = ?',
+      await execute(
+        `UPDATE orders SET status = 'EXPIRED', updated_at = NOW() WHERE id = ?`,
         [order.id]
       );
 
-      const seatIdList = seatIds.map((s) => s.seat_id);
+      await execute(
+        `UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE order_id = ?`,
+        [order.id]
+      );
 
-      if (seatIdList.length > 0) {
-        const placeholders = seatIdList.map(() => '?').join(',');
-
-        // 1. Update order status to EXPIRED
-        await execute(
-          `UPDATE orders 
-           SET status = 'EXPIRED', 
-               updated_at = NOW() 
-           WHERE id = ?`,
-          [order.id]
-        );
-
-        // 2. Update payment status to FAILED
-        await execute(
-          `UPDATE payments 
-           SET status = 'FAILED', 
-               updated_at = NOW() 
-           WHERE order_id = ?`,
-          [order.id]
-        );
-
-        // 3. Release seats back to AVAILABLE
-        await execute(
-          `UPDATE seats
-           SET status = 'AVAILABLE',
-               updated_at = NOW()
-           WHERE id COLLATE utf8mb4_unicode_ci IN (${placeholders})`,
-          seatIdList
-        );
-
-        // 4. Delete seat locks
-        await execute(
-          `DELETE FROM seat_locks
-           WHERE event_id COLLATE utf8mb4_unicode_ci = ?
-           AND seat_id COLLATE utf8mb4_unicode_ci IN (${placeholders})`,
-          [order.event_id, ...seatIdList]
-        );
-
-        console.log(`[EXPIRE ORDERS] Expired order ${order.order_number}, released ${seatIdList.length} seats`);
-        successCount++;
-      }
+      console.log(`[EXPIRE ORDERS] Expired order ${order.order_number}`);
+      successCount++;
     } catch (error) {
       console.error(`[EXPIRE ORDERS] Error processing order ${order.order_number}:`, error);
       errorCount++;
@@ -99,10 +64,9 @@ export async function expireOrders(): Promise<ExpireOrdersResult> {
   };
 }
 
-// Clean up expired seat locks
+// Seat locks no longer exist; kept as a no-op so the /cron/cleanup-locks
+// schedule (and anything still calling it) doesn't break.
 export async function cleanupExpiredLocks(): Promise<number> {
-  const result = await execute('DELETE FROM seat_locks WHERE expires_at < NOW()');
-  console.log(`[CLEANUP] Deleted ${result.affectedRows} expired seat locks`);
-  return result.affectedRows;
+  return 0;
 }
 

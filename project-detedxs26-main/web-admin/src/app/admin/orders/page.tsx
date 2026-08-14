@@ -80,12 +80,16 @@ interface Order {
     eventDate: string
     venue: string
   }
-  seats: Array<{
-    seatNumber: string
-    seatType: string
-    section: string
-    row: string
+  tickets: Array<{
+    id: string
+    ticketTypeId: string | null
+    ticketTypeName: string | null
     price: number
+    attendeeName: string | null
+    attendeeEmail: string | null
+    attendeePhone: string | null
+    ticketCode: string | null
+    checkedInAt: string | null
   }>
   payment: {
     id: string
@@ -372,12 +376,11 @@ export default function OrdersPage() {
       if (data.success) {
         const emailStatus = data.data?.emailStatus
         const emailError = data.data?.emailError
-        const released = data.data?.releasedSeats ?? 0
         if (emailStatus === 'SENT') {
-          message.success(`Đã từ chối đơn hàng. ${released} ghế đã mở lại. Email thông báo đã gửi.`)
+          message.success(`Đã từ chối đơn hàng. Email thông báo đã gửi.`)
         } else {
           message.warning({
-            content: `Đã từ chối đơn hàng (${released} ghế mở lại) nhưng gửi email thất bại: ${emailError || 'Unknown error'}.`,
+            content: `Đã từ chối đơn hàng nhưng gửi email thất bại: ${emailError || 'Unknown error'}.`,
             duration: 8,
           })
         }
@@ -428,7 +431,7 @@ export default function OrdersPage() {
           const data = await res.json()
           if (data.success) {
             message.success(
-              `Đã xóa đơn hàng ${record.orderNumber}. ${data.data?.releasedSeats || 0} ghế đã được giải phóng.`
+              `Đã xóa đơn hàng ${record.orderNumber}.`
             )
             fetchData()
           } else {
@@ -636,7 +639,6 @@ export default function OrdersPage() {
         const token = localStorage.getItem('token')
         let successCount = 0
         let failCount = 0
-        let totalReleasedSeats = 0
 
         for (const order of selectedOrders) {
           try {
@@ -649,7 +651,6 @@ export default function OrdersPage() {
             const data = await res.json()
             if (data.success) {
               successCount++
-              totalReleasedSeats += data.data?.releasedSeats || 0
             } else {
               failCount++
             }
@@ -661,7 +662,6 @@ export default function OrdersPage() {
         setBatchLoading(false)
         setSelectedRowKeys([])
         const parts = [`Đã xóa ${successCount} đơn hàng`]
-        if (totalReleasedSeats > 0) parts.push(`${totalReleasedSeats} ghế đã được giải phóng`)
         if (failCount > 0) parts.push(`${failCount} thất bại`)
 
         if (failCount > 0) {
@@ -724,22 +724,35 @@ export default function OrdersPage() {
       ),
     },
     {
-      title: 'Ghế',
-      key: 'seats',
-      width: 150,
-      render: (_, record) => (
-        <div>
-          {(record.seats || []).slice(0, 3).map((s, i) => (
-            <Tag
-              key={i}
-              color={s.seatType === 'VIP' ? 'red' : s.seatType === 'STANDARD' ? 'blue' : 'default'}
-            >
-              {s.seatNumber}
-            </Tag>
-          ))}
-          {(record.seats?.length || 0) > 3 && <Tag>+{record.seats.length - 3}</Tag>}
-        </div>
-      ),
+      title: 'Vé',
+      key: 'ticketCount',
+      width: 90,
+      render: (_, record) => <Tag color='blue'>{record.tickets?.length || 0} vé</Tag>,
+    },
+    {
+      // Ticket types on the order. Seating is arranged by the organisers
+      // afterwards, so there is no seat to show here.
+      title: 'Loại vé',
+      key: 'ticketTypes',
+      width: 190,
+      render: (_, record) => {
+        const tickets = record.tickets || []
+        if (tickets.length === 0) return <span className='text-gray-400'>—</span>
+        const counts = new Map<string, number>()
+        for (const t of tickets) {
+          const name = t.ticketTypeName || '—'
+          counts.set(name, (counts.get(name) || 0) + 1)
+        }
+        return (
+          <div className='flex flex-wrap gap-1'>
+            {[...counts.entries()].map(([name, count]) => (
+              <Tag key={name} color={name === 'VIP' ? 'red' : 'blue'} style={{marginInlineEnd: 0}}>
+                {count}x {name}
+              </Tag>
+            ))}
+          </div>
+        )
+      },
     },
     {
       title: 'Tổng tiền',
@@ -854,8 +867,11 @@ export default function OrdersPage() {
                   eventName: order.event.name,
                   eventDate: order.event.eventDate,
                   venue: order.event.venue,
-                  seats: order.seats.map((s) => s.seatNumber).join(', '),
-                  seatTypes: order.seats.map((s) => s.seatType).join(', '),
+                  tickets: order.tickets.map((t) => t.ticketTypeName || '').join(', '),
+                  attendees: order.tickets
+                    .map((t) => t.attendeeName || '')
+                    .filter(Boolean)
+                    .join(', '),
                   totalAmount: order.totalAmount,
                   paymentMethod: order.payment?.paymentMethod || null,
                   paymentStatus: order.payment?.status || null,
@@ -924,7 +940,7 @@ export default function OrdersPage() {
         <Card>
           <Space size='middle' wrap>
             <Input.Search
-              placeholder='Tìm mã đơn, email, tên...'
+              placeholder='Tìm mã đơn, email, tên, ghế...'
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               onSearch={handleSearch}
@@ -1011,6 +1027,68 @@ export default function OrdersPage() {
               showTotal: (total) => `Tổng ${total} đơn hàng`,
             }}
             scroll={{x: 'max-content'}}
+            // One order can cover several tickets, each with its own
+            // attendee. Actions (xác nhận/từ chối) stay at order level, so
+            // tickets live in an expanded panel rather than as top-level rows.
+            expandable={{
+              rowExpandable: (record) => (record.tickets?.length || 0) > 0,
+              expandedRowRender: (record) => (
+                <Table
+                  size='small'
+                  dataSource={record.tickets}
+                  rowKey='id'
+                  pagination={false}
+                  columns={[
+                    {
+                      title: 'Vé',
+                      key: 'index',
+                      width: 70,
+                      render: (_: unknown, __: unknown, index: number) => `Vé ${index + 1}`,
+                    },
+                    {
+                      title: 'Loại vé',
+                      dataIndex: 'ticketTypeName',
+                      key: 'ticketTypeName',
+                      width: 140,
+                      render: (name: string | null) => (
+                        <Tag color={name === 'VIP' ? 'red' : 'blue'}>{name || '—'}</Tag>
+                      ),
+                    },
+                    {
+                      title: 'Người tham dự',
+                      dataIndex: 'attendeeName',
+                      key: 'attendeeName',
+                      render: (name: string | null) =>
+                        name || <span className='text-gray-400'>—</span>,
+                    },
+                    {
+                      title: 'Email',
+                      dataIndex: 'attendeeEmail',
+                      key: 'attendeeEmail',
+                      render: (email: string | null) =>
+                        email || <span className='text-gray-400'>—</span>,
+                    },
+                    {
+                      title: 'SĐT',
+                      dataIndex: 'attendeePhone',
+                      key: 'attendeePhone',
+                      width: 130,
+                      render: (phone: string | null) =>
+                        phone || <span className='text-gray-400'>—</span>,
+                    },
+                    {
+                      title: 'Giá',
+                      dataIndex: 'price',
+                      key: 'price',
+                      width: 120,
+                      align: 'right' as const,
+                      render: (price: number) =>
+                        `${Math.round(Number(price || 0)).toLocaleString('vi-VN')} ₫`,
+                    },
+                  ]}
+                />
+              ),
+            }}
           />
         </Card>
 
@@ -1054,31 +1132,48 @@ export default function OrdersPage() {
                 </Descriptions.Item>
               </Descriptions>
               <div>
-                <h4 className='font-medium mb-2'>Ghế đã đặt:</h4>
+                <h4 className='font-medium mb-2'>Vé đã đặt:</h4>
                 <Table
                   size='small'
-                  dataSource={detailModal.seats}
-                  rowKey='seatNumber'
+                  dataSource={detailModal.tickets}
+                  rowKey='id'
                   pagination={false}
+                  scroll={{x: 'max-content'}}
                   columns={[
                     {
-                      title: 'Ghế',
-                      dataIndex: 'seatNumber',
-                      key: 'seatNumber',
+                      title: 'Vé',
+                      key: 'index',
+                      width: 60,
+                      render: (_: unknown, __: unknown, index: number) => `Vé ${index + 1}`,
                     },
-                    {title: 'Khu vực', dataIndex: 'section', key: 'section'},
-                    {title: 'Hàng', dataIndex: 'row', key: 'row'},
                     {
-                      title: 'Loại',
-                      dataIndex: 'seatType',
-                      key: 'seatType',
-                      render: (type: string) => (
-                        <Tag
-                          color={type === 'VIP' ? 'red' : type === 'STANDARD' ? 'blue' : 'default'}
-                        >
-                          {type}
-                        </Tag>
+                      title: 'Loại vé',
+                      dataIndex: 'ticketTypeName',
+                      key: 'ticketTypeName',
+                      render: (name: string | null) => (
+                        <Tag color={name === 'VIP' ? 'red' : 'blue'}>{name || '—'}</Tag>
                       ),
+                    },
+                    {
+                      title: 'Người tham dự',
+                      dataIndex: 'attendeeName',
+                      key: 'attendeeName',
+                      render: (name: string | null) =>
+                        name || <span className='text-gray-400'>—</span>,
+                    },
+                    {
+                      title: 'Email',
+                      dataIndex: 'attendeeEmail',
+                      key: 'attendeeEmail',
+                      render: (email: string | null) =>
+                        email || <span className='text-gray-400'>—</span>,
+                    },
+                    {
+                      title: 'SĐT',
+                      dataIndex: 'attendeePhone',
+                      key: 'attendeePhone',
+                      render: (phone: string | null) =>
+                        phone || <span className='text-gray-400'>—</span>,
                     },
                     {
                       title: 'Giá',
@@ -1131,7 +1226,8 @@ export default function OrdersPage() {
                   {Math.round(Number(confirmModal?.totalAmount || 0)).toLocaleString('vi-VN')} ₫
                 </p>
                 <p>
-                  <strong>Ghế:</strong> {confirmModal?.seats.map((s) => s.seatNumber).join(', ')}
+                  <strong>Vé:</strong>{' '}
+                  {confirmModal?.tickets.map((t) => t.ticketTypeName).join(', ')}
                 </p>
               </div>
             </div>

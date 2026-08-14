@@ -64,7 +64,7 @@ export async function getPublishedEvents(status: string = 'PUBLISHED', featured?
 }
 
 // Get event by ID
-export async function getEventById(eventId: string, sessionId?: string) {
+export async function getEventById(eventId: string) {
   const event = await queryOne<Event & {speaker_count: number}>(
     `SELECT e.*,
       (SELECT COUNT(*) FROM speakers WHERE event_id = e.id AND is_active = 1) as speaker_count
@@ -92,69 +92,6 @@ export async function getEventById(eventId: string, sessionId?: string) {
     [eventId]
   )
 
-  // Get seats grouped by row with lock information
-  const seats = await query<{
-    id: string
-    seat_number: number
-    row: string
-    section: string | null
-    seat_type: string
-    price: number
-    status: string
-    locked_by: string | null
-    lock_expires_at: Date | null
-  }>(
-    `SELECT s.id, s.seat_number, s.row, s.section, s.seat_type, s.price, s.status,
-            sl.session_id as locked_by, sl.expires_at as lock_expires_at
-     FROM seats s
-     LEFT JOIN seat_locks sl ON s.id = sl.seat_id AND sl.expires_at > NOW()
-     WHERE s.event_id = ?
-     ORDER BY s.row ASC, s.seat_number ASC`,
-    [eventId]
-  )
-
-  // Extract level from seat_type (LEVEL_1 -> 1)
-  const getSeatLevel = (seatType: string): number => {
-    const upperType = seatType?.toUpperCase() || ''
-    if (upperType.startsWith('LEVEL_')) {
-      return parseInt(upperType.replace('LEVEL_', ''), 10)
-    }
-    return 2 // Default to level 2 (standard)
-  }
-
-  // Group seats by row
-  const seatMap = seats.reduce((acc, seat) => {
-    const existing = acc.find((r) => r.row === seat.row)
-    const level = getSeatLevel(seat.seat_type)
-
-    // Determine final status based on DB status and locks
-    // IMPORTANT: Check SOLD/RESERVED first - these override any lock status
-    let finalStatus = seat.status.toLowerCase()
-    if (finalStatus === 'sold' || finalStatus === 'reserved') {
-      finalStatus = 'sold'
-    } else if (seat.locked_by) {
-      finalStatus = seat.locked_by === sessionId ? 'locked_by_me' : 'locked'
-    }
-
-    const seatData = {
-      id: seat.id,
-      seatNumber: seat.seat_number,
-      row: seat.row,
-      number: seat.seat_number,
-      status: finalStatus,
-      price: Number(seat.price),
-      seatType: seat.seat_type, // Keep original LEVEL_X format
-      level: level, // Add level for client-side mapping
-      section: seat.section,
-    }
-    if (existing) {
-      existing.seats.push(seatData)
-    } else {
-      acc.push({row: seat.row, seats: [seatData]})
-    }
-    return acc
-  }, [] as {row: string; seats: {id: string; seatNumber: number; row: string; number: number; status: string; price: number; seatType: string; level: number; section: string | null}[]}[])
-
   return {
     id: event.id,
     name: event.name,
@@ -180,8 +117,7 @@ export async function getEventById(eventId: string, sessionId?: string) {
       benefits: tt.benefits ? JSON.parse(tt.benefits) : [],
       level: tt.level,
       color: tt.color,
-    })),
-    seatMap,
+    }))
   }
 }
 
@@ -285,9 +221,10 @@ export async function getEventTimeline(eventId: string) {
 }
 
 /**
- * Ticket-class page: event meta + ticket types. NO seatMap, NO availability
- * counts (the ticket-type "available" counter is intentionally not shown —
- * stock is enforced server-side at order-creation time instead).
+ * Ticket-class page: event meta + ticket types, including how many of each
+ * type are still available so the UI can stop customers selecting a type
+ * that's already gone. Stock is still enforced server-side at
+ * order-creation time — this is the shop window, not the gate.
  */
 export async function getEventTickets(eventIdOrSlug: string) {
   // First check if eventId is an ID or slug
@@ -318,18 +255,35 @@ export async function getEventTickets(eventIdOrSlug: string) {
     level: number
     color: string
     icon: string | null
+    image_url: string | null
     max_quantity: number | null
     sort_order: number
   }
 
   const ticketTypeRows = await query<TtRow>(
     `SELECT id, name, subtitle, description, price, benefits, level, color, icon,
-            max_quantity, sort_order
+            image_url, max_quantity, sort_order
      FROM ticket_types
      WHERE event_id = ? AND is_active = 1
      ORDER BY sort_order ASC, level ASC, name ASC`,
     [realEventId]
   )
+
+  // How many tickets of each type are already spoken for. Mirrors the
+  // guard in order.service.ts: PENDING counts only while unexpired, so
+  // abandoned carts free their stock automatically.
+  const takenRows = await query<{ticket_type_id: string; taken: number}>(
+    `SELECT oi.ticket_type_id, COUNT(*) AS taken
+     FROM order_items oi
+     JOIN orders o ON o.id = oi.order_id
+     WHERE o.event_id = ?
+       AND oi.ticket_type_id IS NOT NULL
+       AND o.status IN ('PAID', 'PENDING_CONFIRMATION', 'PENDING')
+       AND (o.status <> 'PENDING' OR o.expires_at > NOW())
+     GROUP BY oi.ticket_type_id`,
+    [realEventId]
+  )
+  const takenByType = new Map(takenRows.map((r) => [r.ticket_type_id, Number(r.taken)]))
 
   const ticketTypes = ticketTypeRows.map((tt) => {
     let benefits: string[] = []
@@ -352,7 +306,18 @@ export async function getEventTickets(eventIdOrSlug: string) {
       level: Number(tt.level) || 1,
       color: tt.color || '#e62b1e',
       icon: tt.icon || null,
+      // Ticket artwork shown on the purchase page; null falls back to the icon tile.
+      imageUrl: tt.image_url || null,
       maxQuantity: tt.max_quantity != null ? Number(tt.max_quantity) : null,
+      // null = unlimited. Never negative, even if a type was oversold
+      // before limits existed.
+      remaining:
+        tt.max_quantity != null
+          ? Math.max(0, Number(tt.max_quantity) - (takenByType.get(tt.id) || 0))
+          : null,
+      soldOut:
+        tt.max_quantity != null &&
+        Number(tt.max_quantity) - (takenByType.get(tt.id) || 0) <= 0,
       sortOrder: Number(tt.sort_order) || 0,
     }
   })
@@ -369,7 +334,6 @@ export async function getEventTickets(eventIdOrSlug: string) {
     status: event.status,
     bannerImageUrl: event.banner_image_url,
     thumbnailUrl: event.thumbnail_url,
-    // Explicit: no seatMap, no availability on this endpoint
     ticketTypes,
   }
 }

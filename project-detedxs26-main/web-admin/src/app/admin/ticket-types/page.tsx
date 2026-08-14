@@ -16,6 +16,7 @@ import {
   Popconfirm,
   message,
   ColorPicker,
+  Upload,
 } from 'antd'
 import {
   PlusOutlined,
@@ -38,6 +39,7 @@ interface TicketType {
   level: number // 1 = cheapest, 2 = mid, 3 = expensive
   color: string
   icon: string
+  image_url: string | null
   max_quantity: number | null
   sold_quantity: number
   is_active: boolean
@@ -58,6 +60,7 @@ export default function TicketTypesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formKey, setFormKey] = useState(0)
+  const [uploadingArtwork, setUploadingArtwork] = useState(false)
   const [initialFormValues, setInitialFormValues] = useState<any>({
     color: '#10b981',
     icon: '🎫',
@@ -116,6 +119,43 @@ export default function TicketTypesPage() {
   }, [isModalOpen, initialFormValues, form])
 
   const formatVND = (price: number) => `${Math.round(price).toLocaleString('vi-VN')} ₫`
+
+  /**
+   * Upload ticket artwork to Cloudinary and store the returned URL on the
+   * form. Same flow the gallery/partners pages use; the "ticket-types"
+   * subfolder gets a landscape-friendly size cap server-side so the wide
+   * banner isn't squashed to 800px.
+   */
+  const handleArtworkUpload = async (file: File) => {
+    setUploadingArtwork(true)
+    try {
+      const token = localStorage.getItem('token')
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('subfolder', 'ticket-types')
+
+      const res = await fetch('/api/admin/upload', {
+        method: 'POST',
+        headers: {Authorization: `Bearer ${token}`},
+        body: formData,
+      })
+      const data = await res.json()
+
+      if (data.success && data.data?.url) {
+        form.setFieldValue('image_url', data.data.url)
+        message.success('Đã tải ảnh vé lên')
+      } else {
+        message.error(data.error || 'Tải ảnh thất bại')
+      }
+    } catch (err) {
+      console.error('[TICKET TYPES] artwork upload failed:', err)
+      message.error('Tải ảnh thất bại')
+    } finally {
+      setUploadingArtwork(false)
+    }
+    // Returning false stops antd from uploading the file itself.
+    return false
+  }
 
   const handleSubmit = async (values: any) => {
     try {
@@ -445,6 +485,53 @@ export default function TicketTypesPage() {
                 />
               </Form.Item>
             </div>
+            {/* Ticket artwork — shown as the main visual on the public
+                purchase page. Optional: without it the card falls back to
+                the icon + colour tile. */}
+            <Form.Item
+              label='Ảnh vé (Ticket artwork)'
+              tooltip='Ảnh ngang hiển thị trên trang mua vé. Bỏ trống sẽ dùng icon + màu sắc.'
+            >
+              <Form.Item name='image_url' noStyle>
+                <Input placeholder='https://... (tải lên hoặc dán URL)' />
+              </Form.Item>
+              <div className='mt-2 flex items-center gap-3'>
+                <Upload
+                  accept='image/*'
+                  showUploadList={false}
+                  beforeUpload={handleArtworkUpload}
+                >
+                  <Button loading={uploadingArtwork}>
+                    {uploadingArtwork ? 'Đang tải...' : 'Tải ảnh lên'}
+                  </Button>
+                </Upload>
+                <Form.Item shouldUpdate noStyle>
+                  {({getFieldValue}) => {
+                    const url = getFieldValue('image_url')
+                    return url ? (
+                      <div className='flex items-center gap-2'>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt='Ticket artwork preview'
+                          className='h-12 rounded border border-gray-200 object-contain bg-gray-50'
+                        />
+                        <Button
+                          size='small'
+                          danger
+                          onClick={() => form.setFieldValue('image_url', '')}
+                        >
+                          Xoá ảnh
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className='text-xs text-gray-400'>Chưa có ảnh</span>
+                    )
+                  }}
+                </Form.Item>
+              </div>
+            </Form.Item>
+
             <div className='grid grid-cols-4 gap-4'>
               <Form.Item name='icon' label='Icon'>
                 <Input placeholder='🎫' />

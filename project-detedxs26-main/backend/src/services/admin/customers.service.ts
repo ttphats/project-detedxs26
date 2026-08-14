@@ -10,8 +10,8 @@ interface Customer extends RowDataPacket {
   event_id: string;
   event_name: string;
   total_amount: number;
-  seat_count: number;
-  seat_numbers: string;
+  ticket_count: number;
+  ticket_types: string;
   status: string;
   checked_in: boolean;
   checked_in_at: Date | null;
@@ -49,8 +49,8 @@ export async function listCustomers(eventId?: string, search?: string) {
       o.created_at,
       o.paid_at,
       (o.checked_in_at IS NOT NULL) as checked_in,
-      COUNT(oi.id) as seat_count,
-      GROUP_CONCAT(oi.seat_number ORDER BY oi.seat_number SEPARATOR ', ') as seat_numbers
+      COUNT(oi.id) as ticket_count,
+      GROUP_CONCAT(oi.ticket_type_name ORDER BY oi.ticket_type_name SEPARATOR ', ') as ticket_types
     FROM orders o
     JOIN events e ON o.event_id = e.id
     LEFT JOIN order_items oi ON o.id = oi.order_id
@@ -135,14 +135,16 @@ export async function getCustomerByOrderId(orderId: string) {
 
   const customer = orders[0];
 
-  // Get order items (seats)
+  // Get the individual tickets on this order
   const [items] = await pool.query<any[]>(
-    `SELECT id, seat_number, seat_type, price FROM order_items WHERE order_id = ?`,
+    `SELECT id, ticket_type_id, ticket_type_name, price,
+            attendee_name, attendee_email, attendee_phone, ticket_code
+     FROM order_items WHERE order_id = ?`,
     [orderId]
   );
 
   return {
     ...customer,
-    seats: items,
+    tickets: items,
   };
 }

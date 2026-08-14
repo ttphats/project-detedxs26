@@ -18,7 +18,6 @@ import { formatVNDate } from "@/lib/date-utils";
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderCode = searchParams.get("code") || "ORD-UNKNOWN";
-  const seatIds = searchParams.get("seats")?.split(",") || [];
   const event = events[0]; // Default to first event for demo
 
   return (
@@ -105,20 +104,6 @@ function OrderSuccessContent() {
               </div>
             </div>
 
-            {/* Seats */}
-            <div className="mt-4 pt-4 border-t border-white/10">
-              <p className="text-sm text-gray-400 mb-3">Selected seats:</p>
-              <div className="flex flex-wrap gap-2">
-                {seatIds.map((seatId) => (
-                  <span
-                    key={seatId}
-                    className="px-3 py-1.5 bg-red-600/20 text-red-400 rounded-full text-sm font-medium border border-red-500/30"
-                  >
-                    {seatId}
-                  </span>
-                ))}
-              </div>
-            </div>
           </div>
 
           {/* Actions */}

@@ -18,38 +18,30 @@ export const TEST_CONFIG = {
 }
 
 /**
- * Select N available seats on the seat selection page
+ * Add N tickets of the first ticket type to the cart.
  */
-export async function selectSeats(page: Page, count: number = 1) {
-  const seats = page.locator('button[data-status="available"]')
-  
+export async function selectTickets(page: Page, count: number = 1) {
+  const plus = page.locator('[data-testid="qty-increase"]').first()
   for (let i = 0; i < count; i++) {
-    await seats.nth(i).click()
-    await page.waitForTimeout(500) // Wait for API response
+    await plus.click()
+    await page.waitForTimeout(200)
   }
-  
-  // Verify selection
-  const counter = page.locator('[data-testid="selected-count"]')
-  await expect(counter).toContainText(count.toString())
-  
-  return seats
 }
 
 /**
- * Navigate to seat selection page and wait for load
+ * Navigate to the ticket selection page and wait for load
  */
-export async function goToSeatSelection(page: Page, eventId: string = TEST_CONFIG.EVENT_ID) {
-  await page.goto(`/events/${eventId}/seats`)
-  await page.waitForSelector('[data-testid="seat-map"]', { timeout: 10000 })
+export async function goToTicketSelection(page: Page, eventId: string = TEST_CONFIG.EVENT_ID) {
+  await page.goto(`/events/${eventId}/tickets`)
+  await page.waitForLoadState('networkidle')
 }
 
 /**
  * Complete checkout flow up to payment confirmation page
  */
-export async function checkoutSeats(page: Page, seatCount: number = 1) {
-  // Select seats
-  await goToSeatSelection(page)
-  await selectSeats(page, seatCount)
+export async function checkoutTickets(page: Page, ticketCount: number = 1) {
+  await goToTicketSelection(page)
+  await selectTickets(page, ticketCount)
   
   // Click checkout
   const checkoutBtn = page.locator('[data-testid="checkout-button"]')
@@ -84,8 +76,8 @@ export async function fillCustomerInfo(
 /**
  * Complete full customer purchase flow
  */
-export async function completePurchase(page: Page, seatCount: number = 1) {
-  const orderInfo = await checkoutSeats(page, seatCount)
+export async function completePurchase(page: Page, ticketCount: number = 1) {
+  const orderInfo = await checkoutTickets(page, ticketCount)
   await fillCustomerInfo(page)
   
   // Confirm payment
@@ -158,60 +150,3 @@ export async function waitForToast(page: Page, expectedText?: string) {
   return toast.first()
 }
 
-/**
- * Clean up test data - unlock all seats for a session
- */
-export async function cleanupSession(page: Page) {
-  const sessionId = await getSessionId(page)
-  
-  if (sessionId) {
-    // Call API to unlock all seats for this session
-    await page.evaluate(
-      async ({ apiBase, sessionId, eventId }) => {
-        await fetch(`${apiBase}/seats/unlock`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, eventId }),
-        })
-      },
-      {
-        apiBase: TEST_CONFIG.API_BASE,
-        sessionId,
-        eventId: TEST_CONFIG.EVENT_ID,
-      }
-    )
-  }
-}
-
-/**
- * Create a test order via API (for testing ticket/admin features)
- */
-export async function createTestOrder(page: Page, seatIds: string[]) {
-  const sessionId = await getSessionId(page)
-  
-  const response = await page.request.post(
-    `${TEST_CONFIG.API_BASE}/orders/create-pending`,
-    {
-      data: {
-        eventId: TEST_CONFIG.EVENT_ID,
-        seatIds,
-        sessionId,
-      },
-    }
-  )
-  
-  const data = await response.json()
-  return data.data
-}
-
-/**
- * Assert seat has specific status
- */
-export async function assertSeatStatus(
-  page: Page,
-  seatId: string,
-  expectedStatus: string
-) {
-  const seat = page.locator(`button[data-seat-id="${seatId}"]`)
-  await expect(seat).toHaveAttribute('data-status', expectedStatus)
-}

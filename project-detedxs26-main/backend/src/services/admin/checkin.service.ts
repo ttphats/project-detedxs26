@@ -9,7 +9,7 @@ export interface CheckInResult {
     customerEmail: string
     customerPhone: string | null
     totalAmount: number
-    seatNumbers: string[]
+    ticketTypes: string[]
     checkedInAt: Date
     event: {
       name: string
@@ -75,7 +75,7 @@ export async function checkInOrder(
       customerEmail: updatedOrder.customerEmail,
       customerPhone: updatedOrder.customerPhone,
       totalAmount: parseFloat(updatedOrder.totalAmount.toString()),
-      seatNumbers: updatedOrder.orderItems.map((item: any) => item.seatNumber),
+      ticketTypes: updatedOrder.orderItems.map((item: any) => item.ticketTypeName || ""),
       checkedInAt: updatedOrder.checkedInAt!,
       event: {
         name: updatedOrder.event.name,
@@ -121,7 +121,7 @@ export async function getCheckInStatus(orderNumber: string) {
           username: order.checkedInByUser.username,
         }
       : null,
-    seatNumbers: order.orderItems.map((item: any) => item.seatNumber),
+    ticketTypes: order.orderItems.map((item: any) => item.ticketTypeName || ""),
     event: {
       name: order.event.name,
       venue: order.event.venue,

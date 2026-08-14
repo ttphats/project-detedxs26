@@ -153,6 +153,7 @@ export async function seedDefaultData() {
       benefits TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
       color VARCHAR(20),
       icon VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+      image_url VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
       max_quantity INT,
       sold_quantity INT DEFAULT 0,
       is_active TINYINT(1) DEFAULT 1,
