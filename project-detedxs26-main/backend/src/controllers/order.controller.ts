@@ -3,33 +3,16 @@ import * as orderService from '../services/order.service.js'
 import {successResponse} from '../utils/helpers.js'
 import {BadRequestError} from '../utils/errors.js'
 
-// POST /orders/create-pending
-export async function createPendingOrder(
-  request: FastifyRequest<{
-    Body: {eventId: string; seatIds: string[]; sessionId: string; promoCode?: string}
-  }>,
-  reply: FastifyReply
-) {
-  const {eventId, seatIds, sessionId, promoCode} = request.body
-
-  if (!eventId || !seatIds?.length || !sessionId) {
-    throw new BadRequestError('Missing required fields')
-  }
-
-  const result = await orderService.createPendingOrder({eventId, seatIds, sessionId, promoCode})
-
-  return reply.send(successResponse(result))
-}
-
 // POST /orders/create-pending-by-type
 // Ticket-class booking: multi-type cart OR single type + quantity.
-// Backend auto-assigns available seats. No seat map needed.
+// There is no seat map — organisers arrange seating themselves.
 export async function createPendingOrderByType(
   request: FastifyRequest<{
     Body: {
       eventId: string
       sessionId: string
       promoCode?: string
+      promotionId?: string
       // Multi-type cart (preferred)
       items?: Array<{ticketTypeId: string; quantity: number}>
       // Legacy single-type (backward compatible)
@@ -39,7 +22,7 @@ export async function createPendingOrderByType(
   }>,
   reply: FastifyReply
 ) {
-  const {eventId, sessionId, promoCode, items, ticketTypeId, quantity} = request.body
+  const {eventId, sessionId, promoCode, promotionId, items, ticketTypeId, quantity} = request.body
 
   if (!eventId || !sessionId) {
     throw new BadRequestError('Missing required fields: eventId, sessionId')
@@ -63,6 +46,7 @@ export async function createPendingOrderByType(
     eventId,
     sessionId,
     promoCode,
+    promotionId,
     items: normalizedItems,
   })
 
@@ -78,7 +62,7 @@ export async function confirmPayment(
       customerName: string
       customerEmail: string
       customerPhone: string
-      attendees?: Array<{seatId: string; name: string; email: string; phone: string}>
+      attendees?: Array<{orderItemId?: string; name: string; email: string; phone: string}>
     }
   }>,
   reply: FastifyReply

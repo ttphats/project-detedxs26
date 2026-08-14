@@ -89,12 +89,25 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       minute: '2-digit',
     })
 
-    // Format seats for email template (string format)
-    const seatsList = result.order.orderItems
-      .map((item: any) => `${item.seat.seatNumber} (${item.seat.seatType})`)
+    // Tickets are identified by type — seating is arranged by the
+    // organisers after purchase.
+    const ticketsList = result.order.orderItems
+      .map((item: any) => item.ticketTypeName || '')
+      .filter(Boolean)
       .join(', ')
 
-    // ALWAYS send confirmation email (with existing or new token)
+    // Fan out one ticket email per attendee (each with their own QR),
+    // then send the buyer an order-level summary.
+    let attendeeEmails: ordersService.AttendeeEmailOutcome[] = []
+    try {
+      attendeeEmails = await ordersService.sendAttendeeTicketEmails({
+        orderId: result.order.id,
+        triggeredBy: user.userId,
+      })
+    } catch (err: any) {
+      console.error('Failed to send attendee ticket emails:', err)
+    }
+
     let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
     let emailError: string | null = null
 
@@ -104,6 +117,9 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         to: result.order.customerEmail,
         orderId: result.order.id,
         triggeredBy: user.userId,
+        // Per-attendee sends above already used this order+purpose within
+        // the anti-spam window, so the buyer summary must opt out of it too.
+        allowDuplicate: true,
         data: {
           customerName: result.order.customerName,
           eventName: result.order.event.name,
@@ -112,7 +128,7 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
           eventVenue: result.order.event.venue,
           eventAddress: result.order.event.venue,
           orderNumber: result.order.orderNumber,
-          seats: seatsList,
+          tickets: ticketsList,
           totalAmount: Number(result.order.totalAmount),
           qrCodeUrl,
           ticketUrl,
@@ -120,22 +136,25 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       })
       if (emailResult.success) {
         emailStatus = 'SENT'
-        console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`)
+        console.log(`📧 Order summary sent to buyer ${result.order.customerEmail}`)
       } else {
         emailError = emailResult.error || 'Unknown error'
         console.error(
-          `❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`
+          `❌ Buyer summary failed for ${result.order.customerEmail}: ${emailError}`
         )
       }
     } catch (err: any) {
       emailError = err?.message || 'Unknown error'
-      console.error('Failed to send confirmation email:', err)
+      console.error('Failed to send buyer summary email:', err)
     }
 
+    const attendeesSent = attendeeEmails.filter((a) => a.status === 'SENT').length
+    const attendeesFailed = attendeeEmails.length - attendeesSent
+
     const message =
-      emailStatus === 'SENT'
-        ? 'Xác nhận thanh toán thành công. Email đã gửi.'
-        : 'Xác nhận thanh toán thành công nhưng gửi email thất bại.'
+      attendeesFailed === 0
+        ? `Xác nhận thanh toán thành công. Đã gửi ${attendeesSent} vé qua email.`
+        : `Xác nhận thanh toán thành công. Gửi ${attendeesSent}/${attendeeEmails.length} vé thành công, ${attendeesFailed} thất bại.`
 
     return reply.send({
       success: true,
@@ -147,6 +166,9 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         emailStatus,
         emailError,
         emailSentTo: result.order.customerEmail,
+        attendeeEmails,
+        attendeesSent,
+        attendeesFailed,
       },
       message,
     })
@@ -217,7 +239,6 @@ export async function rejectPayment(request: FastifyRequest, reply: FastifyReply
         orderId: result.updatedOrder.id,
         orderNumber: result.updatedOrder.orderNumber,
         status: result.updatedOrder.status,
-        releasedSeats: result.releasedSeats,
         emailStatus,
         emailError,
         emailSentTo: result.order.customerEmail,

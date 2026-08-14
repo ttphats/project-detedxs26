@@ -17,7 +17,7 @@ interface Stats {
   totalOrders: number;
   ticketsSold: number;
   revenue: number;
-  availableSeats: number;
+  ticketsRemaining: number;
   pendingOrders: number;
 }
 
@@ -138,11 +138,11 @@ export default function DashboardPage() {
               <div className="font-medium">Manage Events</div>
             </Link>
             <Link
-              href="/admin/seats"
+              href="/admin/ticket-types"
               className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-[#e62b1e] hover:bg-red-50 transition-colors text-center"
             >
               <Armchair className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-              <div className="font-medium">Manage Seats</div>
+              <div className="font-medium">Ticket Types</div>
             </Link>
             <Link
               href="/admin/orders"
@@ -165,13 +165,13 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Available Seats
+              Tickets Remaining
             </h2>
             <p className="text-4xl font-bold text-green-600">
-              {loading ? "-" : stats?.availableSeats || 0}
+              {loading ? "-" : stats?.ticketsRemaining || 0}
             </p>
             <p className="text-sm text-gray-500 mt-1">
-              Seats ready for booking
+              Across ticket types with a capacity set
             </p>
           </div>
           <div className="bg-white rounded-lg shadow p-6">

@@ -7,8 +7,7 @@ import {seedDefaultData} from '@/lib/seed'
 /**
  * POST /api/admin/settings/reset-data
  * Reset database to default state (for testing)
- * - Deletes all orders, seat_locks, email_logs
- * - Resets all seats to AVAILABLE
+ * - Deletes all orders, order items and email logs
  * - Keeps events, ticket_types, email_templates, users
  */
 export async function POST(request: NextRequest) {
@@ -41,25 +40,9 @@ export async function POST(request: NextRequest) {
     await query('DELETE FROM orders')
     console.log('[RESET] ✓ Deleted orders')
 
-    // 5. Delete seat_locks
-    await query('DELETE FROM seat_locks')
-    console.log('[RESET] ✓ Deleted seat_locks')
-
-    // 6. Delete layout versions
-    await query('DELETE FROM seat_layout_versions')
-    console.log('[RESET] ✓ Deleted layout versions')
-
-    // 7. Delete ALL seats (will be recreated from Layout Editor)
-    await query('DELETE FROM seats')
-    console.log('[RESET] ✓ Deleted all seats')
-
-    // 8. Update ticket_types sold_quantity to 0
+    // 5. Reset ticket_types sold_quantity (legacy column, kept at 0)
     await query('UPDATE ticket_types SET sold_quantity = 0')
     console.log('[RESET] ✓ Reset ticket types sold_quantity')
-
-    // 9. Update events available_seats to 0 (no seats yet)
-    await query('UPDATE events SET available_seats = 0, max_capacity = 0')
-    console.log('[RESET] ✓ Reset events capacity to 0 (no seats)')
 
     // Create audit log
     await query(
@@ -86,10 +69,8 @@ export async function POST(request: NextRequest) {
       message: 'Database reset and seeded successfully',
       data: {
         deletedOrders: true,
-        deletedSeatLocks: true,
         deletedEmailLogs: true,
         deletedLayoutVersions: true,
-        resetSeats: true,
         updatedEvents: true,
         seedResult,
       },

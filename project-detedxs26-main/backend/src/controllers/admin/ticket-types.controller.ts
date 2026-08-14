@@ -12,6 +12,8 @@ interface CreateTicketTypeBody {
   level?: number;
   color?: string;
   icon?: string;
+  /** Cloudinary URL of the ticket artwork shown on the purchase page. */
+  image_url?: string | null;
   max_quantity?: number;
   sort_order?: number;
 }
@@ -98,37 +100,6 @@ export async function update(request: FastifyRequest, reply: FastifyReply) {
     return reply.status(500).send({
       success: false,
       error: error.message || 'Failed to update ticket type',
-    });
-  }
-}
-
-/**
- * PUT /api/admin/ticket-types
- * Bulk update - assign ticket type to seats
- */
-export async function bulkAssign(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    requireAdmin(request.user!);
-    const { seatIds, ticket_type_id } = request.body as { seatIds: string[]; ticket_type_id: string | null };
-
-    if (!seatIds || !Array.isArray(seatIds) || seatIds.length === 0) {
-      return reply.status(400).send({
-        success: false,
-        error: 'Seat IDs are required',
-      });
-    }
-
-    await ticketTypesService.assignTicketTypeToSeats(ticket_type_id, seatIds);
-
-    return reply.send({
-      success: true,
-      message: `Assigned ticket type to ${seatIds.length} seats`,
-    });
-  } catch (error: any) {
-    console.error('Assign ticket type error:', error);
-    return reply.status(500).send({
-      success: false,
-      error: error.message || 'Failed to assign ticket type',
     });
   }
 }

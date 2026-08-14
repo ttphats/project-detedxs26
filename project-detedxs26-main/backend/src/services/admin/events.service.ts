@@ -55,7 +55,6 @@ export async function listEvents(status?: string) {
     include: {
       _count: {
         select: {
-          seats: true,
           orders: true,
         },
       },
@@ -69,14 +68,20 @@ export async function listEvents(status?: string) {
   // Get additional stats
   const eventsWithStats = await Promise.all(
     events.map(async (event: any) => {
-      const bookedSeats = await prisma.seat.count({
-        where: {eventId: event.id, status: 'SOLD'},
+      // Tickets sold for this event (no seats: capacity lives on ticket types)
+      const ticketsSold = await prisma.orderItem.count({
+        where: {order: {eventId: event.id, status: {in: ['PAID', 'PENDING_CONFIRMATION']}}},
       })
+
+      const capacityRows = await prisma.$queryRaw<Array<{capacity: number | null}>>`
+        SELECT SUM(max_quantity) AS capacity FROM ticket_types
+        WHERE event_id = ${event.id} AND is_active = 1
+      `
 
       return {
         ...event,
-        total_seats: event._count.seats,
-        booked_seats: bookedSeats,
+        total_tickets: Number(capacityRows?.[0]?.capacity || 0),
+        tickets_sold: ticketsSold,
         order_count: event._count.orders,
       }
     })
@@ -92,10 +97,6 @@ export async function getEventById(id: string) {
   return prisma.event.findUnique({
     where: {id},
     include: {
-      seats: {
-        select: {id: true, seatNumber: true, status: true, seatType: true, price: true},
-        take: 100,
-      },
       timelines: {
         orderBy: {orderIndex: 'asc'},
         where: {status: 'PUBLISHED'},
@@ -169,22 +170,19 @@ export async function updateEvent(id: string, input: UpdateEventInput) {
 }
 
 /**
- * Delete event (only if no booked seats)
+ * Delete event (only if no tickets have been sold)
  */
 export async function deleteEvent(id: string) {
-  // Check for booked seats
-  const bookedCount = await prisma.seat.count({
-    where: {eventId: id, status: 'SOLD'},
+  const soldCount = await prisma.orderItem.count({
+    where: {order: {eventId: id, status: {in: ['PAID', 'PENDING_CONFIRMATION']}}},
   })
 
-  if (bookedCount > 0) {
-    throw new Error(`Cannot delete event with ${bookedCount} booked seats`)
+  if (soldCount > 0) {
+    throw new Error(`Cannot delete event with ${soldCount} sold ticket(s)`)
   }
 
   // Delete related data first
-  await prisma.seat.deleteMany({where: {eventId: id}})
   await prisma.eventTimeline.deleteMany({where: {eventId: id}})
-  await prisma.seatLayout.deleteMany({where: {eventId: id}})
 
   return prisma.event.delete({where: {id}})
 }

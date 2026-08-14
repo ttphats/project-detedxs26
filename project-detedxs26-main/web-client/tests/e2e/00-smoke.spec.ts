@@ -43,17 +43,6 @@ test.describe('Smoke Tests - Basic Setup Verification', () => {
     expect(bodyText).not.toContain('Not Found')
   })
 
-  test('Seat selection page loads', async ({ page }) => {
-    await page.goto(`/events/${EVENT_ID}/seats`)
-    
-    // Should load within 10 seconds
-    await page.waitForLoadState('networkidle', { timeout: 10000 })
-    
-    // Page should have content
-    const bodyText = await page.textContent('body')
-    expect(bodyText!.length).toBeGreaterThan(100)
-  })
-
   test('Backend API is accessible', async ({ page }) => {
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
     
@@ -70,7 +59,7 @@ test.describe('Smoke Tests - Basic Setup Verification', () => {
   })
 
   test('Session ID is generated', async ({ page }) => {
-    await page.goto(`/events/${EVENT_ID}/seats`)
+    await page.goto(`/events/${EVENT_ID}/tickets`)
     
     // Check localStorage has sessionId
     const sessionId = await page.evaluate(() => {
@@ -81,24 +70,6 @@ test.describe('Smoke Tests - Basic Setup Verification', () => {
     expect(sessionId!.length).toBeGreaterThan(10)
   })
 
-  test('Seats render (at least one seat visible)', async ({ page }) => {
-    await page.goto(`/events/${EVENT_ID}/seats`)
-    
-    // Wait for any seat to appear
-    const hasSeat = await page
-      .locator('button[data-seat-id], .seat, [class*="seat"]')
-      .first()
-      .isVisible({ timeout: 10000 })
-      .catch(() => false)
-    
-    if (!hasSeat) {
-      // If no seats found with data-testid, that's expected
-      // Just verify page loaded
-      const bodyText = await page.textContent('body')
-      expect(bodyText).toBeTruthy()
-    }
-  })
-
   test('Can navigate between pages', async ({ page }) => {
     // Start at home
     await page.goto('/')
@@ -107,18 +78,18 @@ test.describe('Smoke Tests - Basic Setup Verification', () => {
     await page.goto(`/events/${EVENT_ID}`)
     await page.waitForLoadState('networkidle')
     
-    // Navigate to seats
-    await page.goto(`/events/${EVENT_ID}/seats`)
+    // Navigate to ticket selection
+    await page.goto(`/events/${EVENT_ID}/tickets`)
     await page.waitForLoadState('networkidle')
     
-    // Should be on seats page
-    expect(page.url()).toContain('/seats')
+    // Should be on the ticket selection page
+    expect(page.url()).toContain('/tickets')
   })
 
   test('Responsive layout works', async ({ page }) => {
     // Desktop
     await page.setViewportSize({ width: 1920, height: 1080 })
-    await page.goto(`/events/${EVENT_ID}/seats`)
+    await page.goto(`/events/${EVENT_ID}/tickets`)
     await page.waitForLoadState('networkidle')
     
     let bodyText = await page.textContent('body')
@@ -126,7 +97,7 @@ test.describe('Smoke Tests - Basic Setup Verification', () => {
     
     // Mobile
     await page.setViewportSize({ width: 375, height: 667 })
-    await page.goto(`/events/${EVENT_ID}/seats`)
+    await page.goto(`/events/${EVENT_ID}/tickets`)
     await page.waitForLoadState('networkidle')
     
     bodyText = await page.textContent('body')
@@ -141,7 +112,7 @@ test.describe('Smoke Tests - Basic Setup Verification', () => {
   })
 
   test('Playwright can click buttons', async ({ page }) => {
-    await page.goto(`/events/${EVENT_ID}/seats`)
+    await page.goto(`/events/${EVENT_ID}/tickets`)
     
     // Try to find any clickable button
     const button = page.locator('button').first()
@@ -167,7 +138,7 @@ test.describe('Smoke Tests - Test Infrastructure', () => {
     
     expect(testUtils).toBeDefined()
     expect(testUtils.TEST_CONFIG).toBeDefined()
-    expect(testUtils.goToSeatSelection).toBeDefined()
+    expect(testUtils.goToTicketSelection).toBeDefined()
   })
 
   test('Multiple browser contexts work', async ({ browser }) => {

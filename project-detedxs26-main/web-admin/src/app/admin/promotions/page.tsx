@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Plus, Edit2, Trash2, Tag } from "lucide-react";
-import { Modal, Form, Input, InputNumber, Select, DatePicker, message } from "antd";
+import { Modal, Form, Input, InputNumber, Select, DatePicker, Switch, message } from "antd";
 import { AdminLayout } from "@/components/admin";
 import dayjs from "dayjs";
 
@@ -20,7 +20,6 @@ interface Promotion {
   end_date: string;
   max_usage: number | null;
   used_count: number;
-  max_per_customer: number;
   ticket_type_ids: string | null;
   is_active: boolean;
 }
@@ -145,8 +144,8 @@ export default function PromotionsPage() {
       max_tickets: promo.max_tickets,
       dateRange: [dayjs(promo.start_date), dayjs(promo.end_date)],
       max_usage: promo.max_usage,
-      max_per_customer: promo.max_per_customer,
       ticket_type_ids: promo.ticket_type_ids ? JSON.parse(promo.ticket_type_ids) : [],
+      is_active: promo.is_active,
     });
     setIsModalVisible(true);
   };
@@ -166,8 +165,8 @@ export default function PromotionsPage() {
         startDate: values.dateRange[0].toISOString(),
         endDate: values.dateRange[1].toISOString(),
         maxUsage: values.max_usage || undefined,
-        maxPerCustomer: values.max_per_customer || 1,
         ticketTypeIds: values.ticket_type_ids?.length ? values.ticket_type_ids : undefined,
+        isActive: values.is_active !== undefined ? values.is_active : true,
       };
 
       const url = editingId ? `/api/admin/promotions/${editingId}` : "/api/admin/promotions";
@@ -346,7 +345,7 @@ export default function PromotionsPage() {
           onFinish={handleCreate}
           initialValues={{
             discount_type: "PERCENTAGE",
-            max_per_customer: 1,
+            is_active: true,
           }}
         >
           <div className="grid grid-cols-2 gap-4">
@@ -418,18 +417,18 @@ export default function PromotionsPage() {
               <InputNumber className="w-full" min={1} placeholder="Unlimited" />
             </Form.Item>
 
-            <Form.Item name="max_per_customer" label="Max Uses Per Customer">
-              <InputNumber className="w-full" min={1} />
+            <Form.Item name="is_active" label="Status" valuePropName="checked">
+              <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
             </Form.Item>
 
             <Form.Item
               name="ticket_type_ids"
-              label="Áp dụng cho loại vé (để trống nếu áp dụng tất cả)"
+              label="Apply to ticket type(s) (leave empty to apply to all)"
               className="col-span-2"
             >
               <Select
                 mode="multiple"
-                placeholder="Chọn loại vé áp dụng..."
+                placeholder="Select applicable ticket types..."
                 options={ticketTypes.map((t) => ({ value: t.id, label: t.name }))}
               />
             </Form.Item>

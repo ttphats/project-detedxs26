@@ -20,7 +20,6 @@ import {
   saveAttendees,
   type AttendeeInfo,
   type CheckoutState,
-  buildSeatLabel,
 } from "@/lib/checkout-store";
 
 function AttendeeInfoContent() {
@@ -40,7 +39,7 @@ function AttendeeInfoContent() {
   // Load checkout state on mount
   useEffect(() => {
     const state = loadCheckoutState();
-    if (!state || !state.selectedSeats?.length) {
+    if (!state || !state.tickets?.length) {
       // No checkout state — redirect back to home
       router.replace("/");
       return;
@@ -48,13 +47,13 @@ function AttendeeInfoContent() {
     setCheckoutState(state);
 
     // Initialize attendee forms from saved state or create empty ones
-    if (state.attendees?.length === state.selectedSeats.length) {
+    if (state.attendees?.length === state.tickets.length) {
       setAttendees(state.attendees);
     } else {
-      const initialAttendees: AttendeeInfo[] = state.selectedSeats.map(
-        (seat) => ({
-          seatId: seat.id,
-          seatLabel: buildSeatLabel(seat),
+      const initialAttendees: AttendeeInfo[] = state.tickets.map(
+        (ticket) => ({
+          orderItemId: ticket.id,
+          ticketTypeName: ticket.ticketTypeName,
           name: "",
           email: "",
           phone: "",
@@ -153,8 +152,8 @@ function AttendeeInfoContent() {
     );
   }
 
-  const totalPrice = checkoutState.selectedSeats.reduce(
-    (sum, seat) => sum + Number(seat.price),
+  const totalPrice = checkoutState.tickets.reduce(
+    (sum, ticket) => sum + Number(ticket.price),
     0,
   );
 
@@ -196,49 +195,49 @@ function AttendeeInfoContent() {
         {/* Attendee Forms */}
         <div className="space-y-6 mb-8">
           {attendees.map((attendee, index) => {
-            const seat = checkoutState.selectedSeats[index];
-            const seatColor =
-              seat?.seatType === "VIP"
+            const ticket = checkoutState.tickets[index];
+            const accentBg =
+              ticket?.ticketTypeName === "VIP"
                 ? "from-orange-600/20 to-orange-600/5"
                 : "from-emerald-600/20 to-emerald-600/5";
-            const seatBorderColor =
-              seat?.seatType === "VIP"
+            const accentBorder =
+              ticket?.ticketTypeName === "VIP"
                 ? "border-orange-500/30"
                 : "border-emerald-500/30";
-            const seatTextColor =
-              seat?.seatType === "VIP" ? "text-orange-400" : "text-emerald-400";
+            const accentText =
+              ticket?.ticketTypeName === "VIP" ? "text-orange-400" : "text-emerald-400";
 
             return (
               <div
-                key={attendee.seatId}
+                key={attendee.orderItemId}
                 id={`attendee-block-${index}`}
                 className="glass-panel rounded-2xl overflow-hidden animate-fade-in relative"
                 style={{ animationDelay: `${index * 0.08}s` }}
               >
-                {/* Header with seat info */}
+                {/* Header with ticket info */}
                 <div
-                  className={`bg-gradient-to-r ${seatColor} px-6 py-4 border-b ${seatBorderColor}`}
+                  className={`bg-gradient-to-r ${accentBg} px-6 py-4 border-b ${accentBorder}`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div
                         className={`w-10 h-10 rounded-xl flex items-center justify-center bg-white/10`}
                       >
-                        <User className={`w-5 h-5 ${seatTextColor}`} />
+                        <User className={`w-5 h-5 ${accentText}`} />
                       </div>
                       <div>
                         <p className="font-bold text-white text-lg">
                           Attendee {index + 1}
                         </p>
-                        <p className={`text-sm ${seatTextColor}`}>
-                          {attendee.seatLabel}
+                        <p className={`text-sm ${accentText}`}>
+                          {attendee.ticketTypeName}
                         </p>
                       </div>
                     </div>
                     <span
-                      className={`text-sm font-bold px-3 py-1 rounded-full bg-white/10 ${seatTextColor}`}
+                      className={`text-sm font-bold px-3 py-1 rounded-full bg-white/10 ${accentText}`}
                     >
-                      {Number(seat?.price || 0).toLocaleString()} VND
+                      {Number(ticket?.price || 0).toLocaleString()} VND
                     </span>
                   </div>
                 </div>

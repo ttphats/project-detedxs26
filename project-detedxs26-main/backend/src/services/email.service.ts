@@ -196,7 +196,7 @@ export async function sendEmailByPurpose(options: SendEmailByPurposeOptions): Pr
 export async function sendOrderNotificationToDevs(orderInfo: {
   orderNumber: string;
   eventName: string;
-  seats: { seatNumber: string; seatType: string; price: number }[];
+  tickets: { ticketTypeName: string; price: number }[];
   totalAmount: number;
   discountAmount?: number | null;
   promoCode?: string | null;
@@ -210,8 +210,8 @@ export async function sendOrderNotificationToDevs(orderInfo: {
     return;
   }
 
-  const seatsList = orderInfo.seats
-    .map((s) => `${s.seatNumber} (${s.seatType}) - ${Number(s.price).toLocaleString('vi-VN')}đ`)
+  const ticketsList = orderInfo.tickets
+    .map((t) => `${t.ticketTypeName} - ${Number(t.price).toLocaleString('vi-VN')}đ`)
     .join('<br/>');
 
   const now = new Date();
@@ -244,8 +244,8 @@ export async function sendOrderNotificationToDevs(orderInfo: {
             <td style="padding:8px 12px;border:1px solid #e5e7eb;">${orderInfo.eventName}</td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Ghế / Seats (${orderInfo.seats.length})</td>
-            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${seatsList}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Vé / Tickets (${orderInfo.tickets.length})</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${ticketsList}</td>
           </tr>
           ${discountHtml}
           <tr>
@@ -270,7 +270,7 @@ export async function sendOrderNotificationToDevs(orderInfo: {
     </div>
   `;
 
-  const subject = `🎫 [TEDx] Đơn hàng mới #${orderInfo.orderNumber} - ${orderInfo.seats.length} ghế - ${Number(orderInfo.totalAmount).toLocaleString('vi-VN')}đ`;
+  const subject = `🎫 [TEDx] Đơn hàng mới #${orderInfo.orderNumber} - ${orderInfo.tickets.length} vé - ${Number(orderInfo.totalAmount).toLocaleString('vi-VN')}đ`;
 
   // Send to all notification emails (fire-and-forget, don't block order creation)
   for (const email of emails) {
@@ -297,7 +297,7 @@ export async function sendOnDutyStaffNotification(orderInfo: {
   customerEmail: string
   customerPhone: string
   eventName: string
-  seats: { seatNumber: string; seatType: string; price: number }[]
+  tickets: { ticketTypeName: string; price: number }[]
   totalAmount: number
   discountAmount?: number | null
   promoCode?: string | null
@@ -311,8 +311,8 @@ export async function sendOnDutyStaffNotification(orderInfo: {
     return
   }
 
-  const seatsList = orderInfo.seats
-    .map((s) => `${s.seatNumber} (${s.seatType}) — ${Number(s.price).toLocaleString('vi-VN')}đ`)
+  const ticketsList = orderInfo.tickets
+    .map((t) => `${t.ticketTypeName} — ${Number(t.price).toLocaleString('vi-VN')}đ`)
     .join('<br/>')
 
   const now = new Date()
@@ -366,11 +366,11 @@ export async function sendOnDutyStaffNotification(orderInfo: {
           </tr>
           <tr>
             <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">S&#x1ED1; gh&#x1EBF; / Qty</td>
-            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${orderInfo.seats.length} v&#x00E9; / ticket(s)</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${orderInfo.tickets.length} v&#x00E9; / ticket(s)</td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Gh&#x1EBF; / Seats</td>
-            <td style="padding:8px 12px;border:1px solid #e5e7eb;line-height:1.8;">${seatsList}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">V&#x00E9; / Tickets</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;line-height:1.8;">${ticketsList}</td>
           </tr>
           ${discountHtml}
           <tr>

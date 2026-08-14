@@ -94,36 +94,6 @@ function createRedisClient() {
 
 export const redis = createRedisClient();
 
-// Seat locking utilities
-export async function lockSeat(eventId: string, seatId: string, userId: string): Promise<boolean> {
-  const key = `seat:${eventId}:${seatId}`;
-  const result = await redis.set(key, userId, { ex: config.seatLock.ttl, nx: true });
-  return result === 'OK';
-}
-
-export async function unlockSeat(eventId: string, seatId: string): Promise<void> {
-  const key = `seat:${eventId}:${seatId}`;
-  await redis.del(key);
-}
-
-export async function getSeatLock(eventId: string, seatId: string): Promise<string | null> {
-  const key = `seat:${eventId}:${seatId}`;
-  return await redis.get(key);
-}
-
-export async function extendSeatLock(eventId: string, seatId: string): Promise<boolean> {
-  const key = `seat:${eventId}:${seatId}`;
-  const exists = await redis.exists(key);
-  if (!exists) return false;
-
-  await redis.expire(key, config.seatLock.ttl);
-  return true;
-}
-
-export async function unlockSeats(eventId: string, seatIds: string[]): Promise<void> {
-  await Promise.all(seatIds.map(seatId => unlockSeat(eventId, seatId)));
-}
-
 // Rate limiting utilities
 export async function checkRateLimit(identifier: string): Promise<{ allowed: boolean; remaining: number }> {
   const key = `ratelimit:${identifier}`;

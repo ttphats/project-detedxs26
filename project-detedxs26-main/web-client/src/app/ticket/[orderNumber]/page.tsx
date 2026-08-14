@@ -41,9 +41,9 @@ interface TicketData {
     bannerImageUrl: string | null
     thumbnailUrl: string | null
   } | null
-  seats: {
-    seatNumber: string
-    seatType: string
+  tickets: {
+    id: string
+    ticketTypeName: string
     price: number
   }[]
 }
@@ -75,7 +75,7 @@ const TRANSLATIONS: Record<string, string> = {
   'venue': 'Venue',
   'attendeeInfo': 'Attendee Information',
   'tickets': 'tickets',
-  'seat': 'Seat',
+  'seat': 'Ticket type',
   'checkinCode': 'Check-in Code',
   'scanInstruction': 'Please present this code to the staff at the event',
   'checkinSuccess': 'Checked-in',
@@ -423,33 +423,33 @@ export default function TicketPage({params}: {params: Promise<{orderNumber: stri
                   <span className='font-mono bg-white/5 px-2 py-1 rounded'>
                     #{ticket.orderNumber}
                   </span>
-                  <span>{ticket.seats.length} {t('tickets')}</span>
+                  <span>{ticket.tickets.length} {t('tickets')}</span>
                 </div>
               </div>
 
-              {/* Seats Grid */}
+              {/* Tickets Grid */}
               <div className='mb-6'>
                 <div className='flex items-center gap-2 mb-3'>
                   <Ticket className='w-4 h-4 text-gray-500' />
                   <span className='text-xs text-gray-500 uppercase tracking-wide'>{t('seat')}</span>
                 </div>
                 <div className='flex flex-wrap gap-2'>
-                  {ticket.seats.map((seat, index) => (
+                  {ticket.tickets.map((tk, index) => (
                     <div
                       key={index}
                       className={`relative group px-4 py-3 rounded-xl border transition-all ${
-                        seat.seatType === 'VIP'
+                        tk.ticketTypeName === 'VIP'
                           ? 'bg-gradient-to-br from-amber-500/20 to-orange-600/20 border-amber-500/30'
-                          : seat.seatType === 'PREMIUM'
+                          : tk.ticketTypeName === 'PREMIUM'
                           ? 'bg-gradient-to-br from-purple-500/20 to-pink-600/20 border-purple-500/30'
                           : 'bg-white/5 border-white/10'
                       }`}
                     >
-                      {seat.seatType === 'VIP' && (
+                      {tk.ticketTypeName === 'VIP' && (
                         <Sparkles className='absolute -top-1 -right-1 w-4 h-4 text-amber-400' />
                       )}
-                      <p className='text-lg font-bold text-white'>{seat.seatNumber}</p>
-                      <p className='text-xs text-gray-400'>{seat.seatType}</p>
+                      <p className='text-lg font-bold text-white'>{tk.ticketTypeName}</p>
+                      <p className='text-xs text-gray-400'>Ticket {index + 1}</p>
                     </div>
                   ))}
                 </div>

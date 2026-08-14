@@ -7,12 +7,11 @@ import { useEffect, useState } from "react";
 interface PendingOrderData {
   orderNumber: string;
   totalAmount: number;
-  seatCount: number;
+  ticketCount: number;
   timeRemaining: number;
   expiresAt: string;
-  seats: {
-    seatNumber: string;
-    seatType: string;
+  tickets: {
+    ticketTypeName: string;
     price: number;
   }[];
   accessToken: string;
@@ -74,7 +73,7 @@ export default function PendingOrderModal({
     );
   };
 
-  const handleSelectOtherSeats = async () => {
+  const handleSelectOtherTickets = async () => {
     setIsCanceling(true);
     try {
       // Call API to cancel the pending order
@@ -94,7 +93,7 @@ export default function PendingOrderModal({
       // Wait a bit for UI feedback, then close modal
       await new Promise((resolve) => setTimeout(resolve, 300));
 
-      // Close modal and let user select new seats
+      // Close modal and let the user pick different tickets
       onContinue();
     } catch (error) {
       console.error("Error canceling order:", error);
@@ -163,10 +162,11 @@ export default function PendingOrderModal({
             </div>
 
             <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="text-gray-400">Seats:</span>
+              <span className="text-gray-400">Tickets:</span>
               <span className="font-semibold text-white flex items-center gap-1">
                 <Ticket className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                {order.seatCount} seats
+                {order.ticketCount ?? 0} ticket
+                {(order.ticketCount ?? 0) === 1 ? "" : "s"}
               </span>
             </div>
 
@@ -180,22 +180,31 @@ export default function PendingOrderModal({
             </div>
           </div>
 
-          {/* Seats List (collapsed) */}
-          <div className="p-2.5 sm:p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
-            <div className="text-[10px] sm:text-xs text-gray-400 mb-1.5 sm:mb-2">
-              Selected seats:
+          {/* Ticket list (collapsed). Defensive default: an older cached
+              response (or a a partial payload) must not crash the modal. */}
+          {(order.tickets?.length ?? 0) > 0 && (
+            <div className="p-2.5 sm:p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+              <div className="text-[10px] sm:text-xs text-gray-400 mb-1.5 sm:mb-2">
+                Your tickets:
+              </div>
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                {Object.entries(
+                  (order.tickets ?? []).reduce<Record<string, number>>((acc, t) => {
+                    const name = t.ticketTypeName || "Ticket";
+                    acc[name] = (acc[name] || 0) + 1;
+                    return acc;
+                  }, {}),
+                ).map(([name, count]) => (
+                  <span
+                    key={name}
+                    className="px-2 py-0.5 sm:py-1 bg-gray-700/50 rounded text-[10px] sm:text-xs text-gray-300"
+                  >
+                    {count}x {name}
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1.5 sm:gap-2">
-              {order.seats.map((seat) => (
-                <span
-                  key={seat.seatNumber}
-                  className="px-2 py-0.5 sm:py-1 bg-gray-700/50 rounded text-[10px] sm:text-xs text-gray-300 font-mono"
-                >
-                  {seat.seatNumber}
-                </span>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -208,7 +217,7 @@ export default function PendingOrderModal({
             Continue Payment
           </button>
           <button
-            onClick={handleSelectOtherSeats}
+            onClick={handleSelectOtherTickets}
             disabled={isCanceling}
             className="w-full py-2.5 sm:py-3 px-3 sm:px-4 bg-gray-700/50 hover:bg-gray-700 text-gray-300 text-xs sm:text-sm font-semibold rounded-lg sm:rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
@@ -233,7 +242,7 @@ export default function PendingOrderModal({
                 <span>Canceling...</span>
               </div>
             ) : (
-              "Select Other Seats"
+              "Choose Different Tickets"
             )}
           </button>
         </div>

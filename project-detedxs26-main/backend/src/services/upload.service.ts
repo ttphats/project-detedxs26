@@ -40,8 +40,13 @@ export async function uploadImage(
     // are shot/designed at a 3300x4200 (11:14) print-style frame — cap them
     // at a much higher, but still web-reasonable, resolution at that same
     // ratio instead of the generic 800x800 used elsewhere.
+    //
+    // Ticket-type artwork is a wide banner (roughly 2.3:1). The generic
+    // 800x800 limit would cap it at 800px wide and leave it visibly soft on
+    // a full-width card, so it gets its own landscape-friendly ceiling.
     const isQRCode = subfolder === 'qr-codes';
     const isGalleryPoster = subfolder === 'gallery';
+    const isTicketArtwork = subfolder === 'ticket-types';
 
     const transformation = isQRCode
       ? []
@@ -51,11 +56,17 @@ export async function uploadImage(
             { quality: 'auto:good' },
             { fetch_format: 'auto' },
           ]
-        : [
-            { width: 800, height: 800, crop: 'limit' },
-            { quality: 'auto:good' },
-            { fetch_format: 'auto' },
-          ];
+        : isTicketArtwork
+          ? [
+              { width: 1600, height: 800, crop: 'limit' },
+              { quality: 'auto:good' },
+              { fetch_format: 'auto' },
+            ]
+          : [
+              { width: 800, height: 800, crop: 'limit' },
+              { quality: 'auto:good' },
+              { fetch_format: 'auto' },
+            ];
 
     const result = await cloudinary.uploader.upload(base64Data, {
       folder: `${FOLDER}/${subfolder}`,

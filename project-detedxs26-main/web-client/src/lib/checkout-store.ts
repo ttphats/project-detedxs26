@@ -1,30 +1,29 @@
 /**
  * Checkout Store — SessionStorage-backed state for the 3-step purchase flow.
  *
- * Persists: selected seats, attendee info, event/order context across pages.
- * Cleared automatically after successful payment confirmation.
+ * Persists: purchased tickets, attendee info, event/order context across
+ * pages. Cleared automatically after successful payment confirmation.
  */
 
 const STORAGE_KEY = "tedx_checkout_state";
 
 export interface AttendeeInfo {
-  seatId: string;
-  seatLabel: string; // e.g. "A3 — VIP"
+  /** order_items.id — identifies which ticket this attendee holds. */
+  orderItemId: string;
+  /** Display label for the form header, e.g. "VIP". */
+  ticketTypeName: string;
   name: string;
   email: string;
   phone: string;
 }
 
-export interface SelectedSeat {
+/** One purchased ticket. The venue has no seat map — organisers seat people afterwards. */
+export interface PurchasedTicket {
+  /** order_items.id */
   id: string;
-  row: string;
-  number: number;
-  seatNumber?: string;
-  section?: string;
-  seatType?: string;
-  level?: number;
-  price: number;
   ticketTypeId: string;
+  ticketTypeName: string;
+  price: number;
 }
 
 export interface CheckoutState {
@@ -33,7 +32,7 @@ export interface CheckoutState {
   eventDate: string;
   orderNumber: string;
   accessToken: string;
-  selectedSeats: SelectedSeat[];
+  tickets: PurchasedTicket[];
   attendees: AttendeeInfo[];
 }
 
@@ -76,14 +75,4 @@ export function saveAttendees(attendees: AttendeeInfo[]): void {
   if (!state) return;
   state.attendees = attendees;
   saveCheckoutState(state);
-}
-
-/**
- * Human-readable label for an attendee form header.
- * Ticket-class flow: seats are auto-assigned server-side and never shown to
- * the buyer, so the label is the purchased ticket type (e.g. "VIP"), not a
- * seat code.
- */
-export function buildSeatLabel(seat: SelectedSeat): string {
-  return seat.seatType || "STANDARD";
 }

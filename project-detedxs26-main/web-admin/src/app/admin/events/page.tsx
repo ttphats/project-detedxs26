@@ -47,8 +47,8 @@ interface Event {
   banner_image_url: string | null;
   thumbnail_url: string | null;
   is_published: boolean;
-  total_seats: number;
-  booked_seats: number;
+  total_tickets: number;
+  tickets_sold: number;
   speaker_count: number;
 }
 
@@ -288,11 +288,11 @@ export default function EventsPage() {
       width: 120,
     },
     {
-      title: "Ghế",
-      key: "seats",
+      title: "Vé",
+      key: "tickets",
       render: (_, record) => (
         <span>
-          {record.booked_seats}/{record.total_seats}
+          {record.tickets_sold}/{record.total_tickets || "∞"}
         </span>
       ),
       width: 80,

@@ -36,8 +36,8 @@ interface Customer {
   event_id: string;
   event_name: string;
   total_amount: number;
-  seat_count: number;
-  seat_numbers: string;
+  ticket_count: number;
+  ticket_types: string;
   status: string;
   checked_in: boolean;
   checked_in_at: string | null;
@@ -153,8 +153,8 @@ export default function CustomersPage() {
         Email: customer.customer_email,
         "Số điện thoại": customer.customer_phone,
         "Sự kiện": customer.event_name,
-        "Số ghế": customer.seat_count,
-        "Danh sách ghế": customer.seat_numbers,
+        "Số vé": customer.ticket_count,
+        "Loại vé": customer.ticket_types,
         "Tổng tiền": customer.total_amount.toLocaleString("vi-VN") + " ₫",
         "Trạng thái":
           customer.status === "PAID" ? "Đã thanh toán" : customer.status,
@@ -235,14 +235,14 @@ export default function CustomersPage() {
       ),
     },
     {
-      title: "Ghế",
-      key: "seats",
+      title: "Vé",
+      key: "tickets",
       width: 160,
       render: (_: any, record: Customer) => (
         <div>
-          <div style={{ fontWeight: 500 }}>{record.seat_count} ghế</div>
+          <div style={{ fontWeight: 500 }}>{record.ticket_count} vé</div>
           <div style={{ fontSize: "12px", color: "#666" }}>
-            {record.seat_numbers}
+            {record.ticket_types}
           </div>
         </div>
       ),

@@ -153,7 +153,7 @@ export async function preview(request: FastifyRequest, reply: FastifyReply) {
     eventTime: '18:00',
     venue: 'Nhà hát Thành phố Hồ Chí Minh',
     totalAmount: '500.000 đ',
-    seats: 'A1, A2, A3',
+    tickets: 'VIP, Standard, Standard',
     qrCodeUrl: 'https://via.placeholder.com/200x200?text=QR+Code',
     ...data,
   };

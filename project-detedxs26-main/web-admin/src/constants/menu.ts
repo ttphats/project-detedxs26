@@ -9,8 +9,6 @@ export const MENU_LABELS = {
   PROMOTIONS: 'Promotions',
   SPEAKERS: 'Speakers',
   TIMELINE: 'Timeline',
-  SEATS_LAYOUT: 'Seat Layout',
-  SEAT_LOCKS: 'Seat Locks',
   ORDERS: 'Orders',
   CUSTOMERS: 'Customers',
   EMAIL_TEMPLATES: 'Email Templates',

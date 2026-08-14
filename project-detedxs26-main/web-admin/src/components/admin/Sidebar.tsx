@@ -51,12 +51,6 @@ const menuItems = [
   { href: "/admin/partners", label: "Partners", icon: Handshake },
   { href: "/admin/gallery", label: "Gallery", icon: Images },
   { href: "/admin/timelines", label: MENU_LABELS.TIMELINE, icon: Clock },
-  {
-    href: "/admin/layout-editor",
-    label: MENU_LABELS.SEATS_LAYOUT,
-    icon: Grid3X3,
-  },
-  { href: "/admin/seat-locks", label: MENU_LABELS.SEAT_LOCKS, icon: Lock },
   { href: "/admin/promotions", label: MENU_LABELS.PROMOTIONS, icon: Tag },
   { href: "/admin/orders", label: MENU_LABELS.ORDERS, icon: ShoppingCart },
   { href: "/admin/customers", label: MENU_LABELS.CUSTOMERS, icon: UserCheck },

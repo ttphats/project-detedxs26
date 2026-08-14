@@ -12,6 +12,7 @@ interface TicketType extends RowDataPacket {
   price: number;
   color: string;
   icon: string;
+  image_url: string | null;
   max_quantity: number | null;
   sort_order: number;
   event_name: string;
@@ -23,8 +24,55 @@ interface Event extends RowDataPacket {
   status: string;
 }
 
-interface SeatCount extends RowDataPacket {
+interface CountRow extends RowDataPacket {
   count: number;
+}
+
+interface SoldCount extends RowDataPacket {
+  ticket_type_id: string | null;
+  sold: number;
+}
+
+/**
+ * Order statuses that count as a ticket being sold: money is committed
+ * either way. PENDING is an in-progress cart that can still expire, and
+ * CANCELLED/EXPIRED no longer hold stock, so neither counts.
+ */
+const SOLD_ORDER_STATUSES = ['PAID', 'PENDING_CONFIRMATION'];
+
+/**
+ * Real sold counts per ticket type, derived from order_items.
+ *
+ * The `ticket_types.sold_quantity` column is NOT used: nothing in the
+ * app ever increments it (it is only ever written back to 0 by seeding
+ * and reset-data), so it always read 0 no matter how many orders came
+ * in. Deriving from orders means the number can't drift out of sync.
+ */
+async function getSoldCounts(eventId?: string): Promise<Map<string, number>> {
+  const pool = getPool();
+
+  const params: any[] = [...SOLD_ORDER_STATUSES];
+  let eventFilter = '';
+  if (eventId) {
+    eventFilter = ' AND o.event_id = ?';
+    params.push(eventId);
+  }
+
+  const [rows] = await pool.query<SoldCount[]>(
+    `SELECT oi.ticket_type_id AS ticket_type_id, COUNT(*) AS sold
+     FROM order_items oi
+     JOIN orders o ON o.id = oi.order_id
+     WHERE o.status IN (?, ?)${eventFilter}
+       AND oi.ticket_type_id IS NOT NULL
+     GROUP BY oi.ticket_type_id`,
+    params
+  );
+
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (row.ticket_type_id) counts.set(row.ticket_type_id, Number(row.sold));
+  }
+  return counts;
 }
 
 /**
@@ -48,7 +96,14 @@ export async function listTicketTypes(eventId?: string) {
 
   sql += ' ORDER BY tt.sort_order, tt.name';
 
-  const [ticketTypes] = await pool.query<TicketType[]>(sql, params);
+  const [rawTicketTypes] = await pool.query<TicketType[]>(sql, params);
+  const soldCounts = await getSoldCounts(eventId);
+
+  const ticketTypes = rawTicketTypes.map((tt) => ({
+    ...tt,
+    sold_quantity: soldCounts.get(tt.id) ?? 0,
+  }));
+
   // Get events - PUBLISHED first
   const [events] = await pool.query<Event[]>('SELECT id, name, status FROM events ORDER BY status ASC, created_at DESC');
 
@@ -68,14 +123,15 @@ export async function createTicketType(data: {
   level?: number;
   color?: string;
   icon?: string;
+  image_url?: string | null;
   max_quantity?: number;
   sort_order?: number;
 }) {
   const pool = getPool();
   const id = randomUUID();
   await pool.query(
-    `INSERT INTO ticket_types (id, event_id, name, description, subtitle, benefits, price, level, color, icon, max_quantity, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ticket_types (id, event_id, name, description, subtitle, benefits, price, level, color, icon, image_url, max_quantity, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       data.event_id,
@@ -87,6 +143,7 @@ export async function createTicketType(data: {
       data.level || 1, // Default to level 1 if not provided
       data.color || '#10b981',
       data.icon || '🎫',
+      data.image_url || null,
       data.max_quantity || null,
       data.sort_order || 0
     ]
@@ -107,6 +164,7 @@ export async function updateTicketType(id: string, data: {
   level?: number;
   color?: string;
   icon?: string;
+  image_url?: string | null;
   max_quantity?: number;
   sort_order?: number;
   is_active?: boolean;
@@ -147,6 +205,10 @@ export async function updateTicketType(id: string, data: {
     updates.push('icon = ?');
     params.push(data.icon);
   }
+  if (data.image_url !== undefined) {
+    updates.push('image_url = ?');
+    params.push(data.image_url || null);
+  }
   if (data.max_quantity !== undefined) {
     updates.push('max_quantity = ?');
     params.push(data.max_quantity || null);
@@ -176,33 +238,20 @@ export async function updateTicketType(id: string, data: {
 }
 
 /**
- * Bulk update - assign ticket type to seats
- */
-export async function assignTicketTypeToSeats(ticketTypeId: string | null, seatIds: string[]) {
-  const pool = getPool();
-  const placeholders = seatIds.map(() => '?').join(',');
-  await pool.query(
-    `UPDATE seats SET ticket_type_id = ?, updated_at = NOW() WHERE id IN (${placeholders})`,
-    [ticketTypeId, ...seatIds]
-  );
-
-  return { affected: seatIds.length };
-}
-
-/**
  * Delete ticket type
  */
 export async function deleteTicketType(id: string) {
   const pool = getPool();
 
-  // Check if any seats use this ticket type
-  const [seats] = await pool.query<SeatCount[]>(
-    'SELECT COUNT(*) as count FROM seats WHERE ticket_type_id = ?',
+  // Block deletion while tickets of this type exist, so historical
+  // orders never end up pointing at a ticket type that's gone.
+  const [sold] = await pool.query<CountRow[]>(
+    'SELECT COUNT(*) as count FROM order_items WHERE ticket_type_id = ?',
     [id]
   );
 
-  if (seats[0].count > 0) {
-    throw new Error(`Cannot delete: ${seats[0].count} seats use this ticket type`);
+  if (sold[0].count > 0) {
+    throw new Error(`Cannot delete: ${sold[0].count} ticket(s) of this type have been ordered`);
   }
 
   await pool.query('DELETE FROM ticket_types WHERE id = ?', [id]);

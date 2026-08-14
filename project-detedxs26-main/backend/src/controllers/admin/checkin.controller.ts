@@ -13,8 +13,11 @@ const checkInStatusSchema = z.object({
   orderNumber: z.string().min(1, 'Order number is required'),
 })
 
+// Event ids in this project are human-readable slugs (e.g. "evt-tedx-2026"),
+// not UUIDs — a .uuid() check here rejected every real event and made the
+// stats endpoint always fail.
 const statsSchema = z.object({
-  eventId: z.string().uuid('Invalid event ID'),
+  eventId: z.string().min(1, 'Invalid event ID'),
 })
 
 /**
@@ -130,7 +133,7 @@ export async function getCheckedInList(request: FastifyRequest, reply: FastifyRe
       orderNumber: order.orderNumber,
       customerName: order.customerName,
       customerEmail: order.customerEmail,
-      seatNumbers: order.orderItems.map((item: any) => item.seatNumber),
+      ticketTypes: order.orderItems.map((item: any) => item.ticketTypeName || ""),
       checkedInAt: order.checkedInAt,
       checkedInBy: order.checkedInByUser?.fullName,
     })),

@@ -137,7 +137,6 @@ async function main() {
 ║      POST /api/auth/register   - Register                    ║
 ║      GET  /api/auth/me         - Get current user            ║
 ║      GET  /api/events          - List events                 ║
-║      POST /api/seats/lock      - Lock seats                  ║
 ║      POST /api/orders/create-pending - Create order          ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝

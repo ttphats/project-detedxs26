@@ -104,7 +104,7 @@ async function processPaymentConfirmation(
         where: {id: orderId},
         include: {
           payment: true,
-          orderItems: {include: {seat: true}},
+          orderItems: true,
           event: true,
         },
       })
@@ -160,17 +160,6 @@ async function processPaymentConfirmation(
         },
       })
 
-      // Mark seats as SOLD
-      const seatIds = order.orderItems
-        .map((item: any) => item.seatId)
-        .filter((id: any): id is string => id !== null)
-      if (seatIds.length > 0) {
-        await tx.seat.updateMany({
-          where: {id: {in: seatIds}},
-          data: {status: 'SOLD'},
-        })
-      }
-
       // Generate QR code and ticket URL
       const qrCodeUrl = await qrcodeService.generateTicketQRCode(order.orderNumber, order.eventId)
       const ticketUrl = qrcodeService.generateTicketUrl(order.orderNumber, accessToken)
@@ -178,9 +167,10 @@ async function processPaymentConfirmation(
       // Send email (fire and forget)
       const eventDate = new Date(order.event.eventDate)
 
-      // Format seats for email template
-      const seatsList = order.orderItems
-        .map((item: any) => `${item.seatNumber} (${item.seatType})`)
+      // Format tickets for email template
+      const ticketsList = order.orderItems
+        .map((item: any) => item.ticketTypeName || '')
+        .filter(Boolean)
         .join(', ')
 
       // Format date and time
@@ -214,7 +204,7 @@ async function processPaymentConfirmation(
           eventVenue: order.event.venue,
           eventAddress: order.event.venue,
           orderNumber: order.orderNumber,
-          seats: seatsList, // String: "A1 (VIP), A2 (VIP)"
+          tickets: ticketsList,
           totalAmount: Number(order.totalAmount),
           qrCodeUrl,
           ticketUrl,

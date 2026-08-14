@@ -258,9 +258,9 @@ export interface TicketDocumentProps {
     eventDate: string;
     startTime: string;
   } | null;
-  seats: {
-    seatNumber: string;
-    seatType: string;
+  tickets: {
+    id: string;
+    ticketTypeName: string;
     price: number;
   }[];
 }
@@ -327,7 +327,7 @@ export function TicketDocument({
   totalAmount,
   qrCodeUrl,
   event,
-  seats,
+  tickets,
 }: TicketDocumentProps) {
   const statusConfig = getStatusConfig(status);
 
@@ -384,25 +384,24 @@ export function TicketDocument({
             <Text style={styles.orderNumber}>#{orderNumber}</Text>
           </View>
 
-          {/* Seats */}
+          {/* Tickets */}
           <View style={styles.seatsSection}>
             <Text style={styles.sectionTitle}>
-              Seats ({seats.length} tickets)
+              Tickets ({tickets.length})
             </Text>
             <View style={styles.seatsGrid}>
-              {seats.map((seat, index) => {
-                // Determine seat style based on type
-                const seatStyle =
-                  seat.seatType === "VIP"
+              {tickets.map((ticket, index) => {
+                const itemStyle =
+                  ticket.ticketTypeName === "VIP"
                     ? [styles.seatItem, styles.seatVIP]
-                    : seat.seatType === "PREMIUM"
+                    : ticket.ticketTypeName === "PREMIUM"
                       ? [styles.seatItem, styles.seatPremium]
                       : [styles.seatItem];
 
                 return (
-                  <View key={index} style={seatStyle}>
-                    <Text style={styles.seatNumber}>{seat.seatNumber}</Text>
-                    <Text style={styles.seatType}>{seat.seatType}</Text>
+                  <View key={ticket.id || index} style={itemStyle}>
+                    <Text style={styles.seatNumber}>{ticket.ticketTypeName}</Text>
+                    <Text style={styles.seatType}>Ticket {index + 1}</Text>
                   </View>
                 );
               })}

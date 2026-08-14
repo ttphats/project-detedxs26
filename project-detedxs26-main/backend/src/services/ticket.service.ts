@@ -31,13 +31,13 @@ interface Event extends RowDataPacket {
 
 interface OrderItem extends RowDataPacket {
   id: string;
-  seat_number: string;
-  seat_type: string;
+  ticket_type_id: string | null;
+  ticket_type_name: string | null;
   price: number;
   attendee_name: string | null;
   attendee_email: string | null;
   attendee_phone: string | null;
-  ticket_type_name: string | null;
+  ticket_code: string | null;
 }
 
 // Rate limiting map (in production, use Redis)
@@ -137,15 +137,14 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
     [order.event_id]
   );
 
-  // Get order items (seats) — joined with ticket_types for the purchased
-  // ticket type name, since the ticket-class flow never shows real seat codes
-  const [seats] = await pool.query<OrderItem[]>(
-    `SELECT oi.id, oi.seat_number, oi.seat_type, oi.price,
+  // The individual tickets on this order. Seating is arranged by the
+  // organisers after purchase, so a ticket carries its type and attendee
+  // rather than a seat code.
+  const [tickets] = await pool.query<OrderItem[]>(
+    `SELECT oi.id, oi.ticket_type_id, oi.ticket_type_name, oi.price,
             oi.attendee_name, oi.attendee_email, oi.attendee_phone,
-            tt.name AS ticket_type_name
+            oi.ticket_code
      FROM order_items oi
-     LEFT JOIN seats s ON oi.seat_id = s.id
-     LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
      WHERE oi.order_id = ?`,
     [order.id]
   );
@@ -173,13 +172,14 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
         bannerImageUrl: event.banner_image_url,
         thumbnailUrl: event.thumbnail_url,
       } : null,
-      seats: seats.map((seat: OrderItem) => ({
-        seatNumber: seat.seat_number,
-        seatType: seat.ticket_type_name || seat.seat_type,
-        price: Number(seat.price),
-        attendeeName: seat.attendee_name,
-        attendeeEmail: seat.attendee_email,
-        attendeePhone: seat.attendee_phone,
+      tickets: tickets.map((ticket: any) => ({
+        id: ticket.id,
+        ticketTypeName: ticket.ticket_type_name || '',
+        price: Number(ticket.price),
+        attendeeName: ticket.attendee_name,
+        attendeeEmail: ticket.attendee_email,
+        attendeePhone: ticket.attendee_phone,
+        ticketCode: ticket.ticket_code,
       })),
     },
   };

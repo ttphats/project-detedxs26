@@ -46,7 +46,7 @@ describe('Event Service', () => {
   });
 
   describe('getEventById', () => {
-    it('should return full event details including ticket types and seat map', async () => {
+    it('should return full event details including ticket types', async () => {
       const mockEvent = {
         id: 'e1',
         name: 'TEDxEvent: Finding Flow',
@@ -77,36 +77,16 @@ describe('Event Service', () => {
         },
       ];
 
-      const mockSeats = [
-        {
-          id: 'seat-1',
-          seat_number: 1,
-          row: 'A',
-          section: 'VIP',
-          seat_type: 'LEVEL_1',
-          price: 150,
-          status: 'AVAILABLE',
-          locked_by: null,
-          lock_expires_at: null,
-        },
-      ];
-
       vi.mocked(queryOne).mockResolvedValue(mockEvent as any);
-      vi.mocked(query)
-        .mockResolvedValueOnce(mockTicketTypes) // first call in getEventById for ticket_types
-        .mockResolvedValueOnce(mockSeats);       // second call in getEventById for seats
+      vi.mocked(query).mockResolvedValueOnce(mockTicketTypes); // ticket_types
 
-      const result = await getEventById('e1', 'session-client-1');
+      const result = await getEventById('e1');
 
       expect(queryOne).toHaveBeenCalled();
       expect(result.id).toBe('e1');
       expect(result.ticketTypes).toHaveLength(1);
       expect(result.ticketTypes[0].name).toBe('VIP');
       expect(result.ticketTypes[0].benefits).toEqual(['Exclusive Dinner', 'Front Row']);
-      expect(result.seatMap).toHaveLength(1);
-      expect(result.seatMap[0].row).toBe('A');
-      expect(result.seatMap[0].seats).toHaveLength(1);
-      expect(result.seatMap[0].seats[0].id).toBe('seat-1');
     });
 
     it('should throw NotFoundError if event does not exist', async () => {

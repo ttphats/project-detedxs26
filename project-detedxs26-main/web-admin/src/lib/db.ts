@@ -38,30 +38,6 @@ export async function execute(sql: string, params?: any[]): Promise<mysql.Result
 }
 
 // Helper types
-export interface Seat {
-  id: string
-  event_id: string
-  seat_number: string
-  row: string
-  col: number
-  section: string
-  section_code: string | null
-  seat_key: string | null
-  seat_type: 'VIP' | 'STANDARD' | 'ECONOMY'
-  price: number
-  status: 'AVAILABLE' | 'RESERVED' | 'SOLD' | 'LOCKED' | 'REMOVED'
-  position_x: number | null
-  position_y: number | null
-  is_disabled: boolean
-  locked_until: Date | null
-  locked_by_session: string | null
-  layout_id: string | null
-  section_id: string | null
-  order_id: string | null
-  created_at: Date
-  updated_at: Date
-}
-
 export interface EmailTemplate {
   id: string
   name: string
@@ -142,23 +118,6 @@ export interface LayoutSection {
   sort_order: number
   created_at: Date
   updated_at: Date
-}
-
-// Seat comparison types for publish algorithm
-export interface GeneratedSeat {
-  section_code: string
-  row: string
-  col: number
-  seat_key: string
-  seat_number: string
-  seat_type: 'VIP' | 'STANDARD' | 'ECONOMY'
-  price: number
-}
-
-export interface SeatComparisonResult {
-  toKeep: Seat[] // Seats that exist in both old and new
-  toRemove: Seat[] // Seats in old but not in new (mark as REMOVED if BOOKED/HOLD)
-  toAdd: GeneratedSeat[] // Seats in new but not in old (insert as AVAILABLE)
 }
 
 export interface EventTimeline {
