@@ -1,0 +1,148 @@
+import {Redis} from 'ioredis'
+import {config} from '../config/env.js'
+
+// Mock Redis for development without Redis server
+class MockRedis {
+  private store = new Map<string, {value: string; expiresAt?: number}>()
+
+  async set(
+    key: string,
+    value: string,
+    options?: {ex?: number; nx?: boolean}
+  ): Promise<'OK' | null> {
+    if (options?.nx && this.store.has(key)) {
+      const item = this.store.get(key)
+      if (item && (!item.expiresAt || Date.now() < item.expiresAt)) {
+        return null
+      }
+    }
+
+    const expiresAt = options?.ex ? Date.now() + options.ex * 1000 : undefined
+    this.store.set(key, {value, expiresAt})
+
+    if (expiresAt && options?.ex) {
+      setTimeout(() => this.store.delete(key), options.ex * 1000)
+    }
+
+    return 'OK'
+  }
+
+  async get(key: string): Promise<string | null> {
+    const item = this.store.get(key)
+    if (!item) return null
+
+    if (item.expiresAt && Date.now() > item.expiresAt) {
+      this.store.delete(key)
+      return null
+    }
+
+    return item.value
+  }
+
+  async del(key: string): Promise<number> {
+    const existed = this.store.has(key)
+    this.store.delete(key)
+    return existed ? 1 : 0
+  }
+
+  async exists(key: string): Promise<number> {
+    const item = this.store.get(key)
+    if (!item) return 0
+
+    if (item.expiresAt && Date.now() > item.expiresAt) {
+      this.store.delete(key)
+      return 0
+    }
+
+    return 1
+  }
+
+  async ttl(key: string): Promise<number> {
+    const item = this.store.get(key)
+    if (!item) return -2
+    if (!item.expiresAt) return -1
+
+    const remaining = Math.floor((item.expiresAt - Date.now()) / 1000)
+    return remaining > 0 ? remaining : -2
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    const item = this.store.get(key)
+    if (!item) return 0
+
+    item.expiresAt = Date.now() + seconds * 1000
+    setTimeout(() => this.store.delete(key), seconds * 1000)
+    return 1
+  }
+}
+
+function createRedisClient() {
+  if (!config.redis.url) {
+    console.log('⚠️ Redis not configured, using in-memory mock')
+    return new MockRedis() as any
+  }
+
+  try {
+    // Parse Redis URL: redis://[password]@host:port/db
+    const redisUrl = new URL(config.redis.url)
+
+    const redisConfig = {
+      host: redisUrl.hostname,
+      port: parseInt(redisUrl.port) || 6379,
+      password: redisUrl.password || config.redis.token || undefined,
+      db: parseInt(redisUrl.pathname.slice(1)) || 0,
+      retryStrategy: (times: number) => {
+        const delay = Math.min(times * 50, 2000)
+        return delay
+      },
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: true,
+      lazyConnect: false,
+    }
+
+    const client = new Redis(redisConfig)
+
+    client.on('connect', () => {
+      console.log(`✅ Redis connected to ${redisUrl.hostname}:${redisUrl.port}`)
+    })
+
+    client.on('error', (err: Error) => {
+      console.error('❌ Redis connection error:', err.message)
+    })
+
+    client.on('ready', () => {
+      console.log('🚀 Redis is ready')
+    })
+
+    return client
+  } catch (error) {
+    console.error('❌ Failed to create Redis client:', error)
+    console.log('⚠️ Falling back to in-memory mock')
+    return new MockRedis() as any
+  }
+}
+
+export const redis = createRedisClient()
+
+
+// Rate limiting
+export async function checkRateLimit(
+  identifier: string
+): Promise<{allowed: boolean; remaining: number}> {
+  const key = `ratelimit:${identifier}`
+  const current = await redis.get(key)
+
+  if (!current) {
+    await redis.set(key, '1', 'EX', config.rateLimit.window)
+    return {allowed: true, remaining: config.rateLimit.max - 1}
+  }
+
+  const count = parseInt(current, 10)
+
+  if (count >= config.rateLimit.max) {
+    return {allowed: false, remaining: 0}
+  }
+
+  await redis.set(key, (count + 1).toString(), 'EX', config.rateLimit.window)
+  return {allowed: true, remaining: config.rateLimit.max - count - 1}
+}
