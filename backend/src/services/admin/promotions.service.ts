@@ -1,6 +1,44 @@
-import { query, execute, queryOne, transaction } from '../../db/mysql.js';
+import { query, execute, queryOne, transaction, getPool } from '../../db/mysql.js';
 import { randomUUID } from 'crypto';
 import { NotFoundError, BadRequestError } from '../../utils/errors.js';
+import { RowDataPacket } from 'mysql2';
+
+let promotionsSchemaEnsured = false;
+
+/** Prod schema predates these columns. INSERT names them → 500 if missing. */
+async function ensurePromotionsSchema() {
+  if (promotionsSchemaEnsured) return;
+  const pool = getPool();
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'promotions'
+         AND COLUMN_NAME IN ('max_per_customer', 'ticket_type_ids')`
+    );
+    const existing = new Set(rows.map((r) => String(r.COLUMN_NAME)));
+
+    if (!existing.has('max_per_customer')) {
+      await pool.query(
+        `ALTER TABLE promotions
+         ADD COLUMN max_per_customer INT NOT NULL DEFAULT 1 AFTER used_count`
+      );
+      console.log('[promotions] Added column max_per_customer');
+    }
+    if (!existing.has('ticket_type_ids')) {
+      await pool.query(
+        `ALTER TABLE promotions
+         ADD COLUMN ticket_type_ids TEXT NULL AFTER max_per_customer`
+      );
+      console.log('[promotions] Added column ticket_type_ids');
+    }
+    promotionsSchemaEnsured = true;
+  } catch (err) {
+    console.error('[promotions] ensure schema failed:', err);
+    promotionsSchemaEnsured = false;
+    throw err;
+  }
+}
 
 export interface Promotion {
   id: string;
@@ -43,6 +81,7 @@ export interface CreatePromotionInput {
 export interface UpdatePromotionInput extends Partial<CreatePromotionInput> {}
 
 export async function listPromotions(eventId: string) {
+  await ensurePromotionsSchema();
   const promotions = await query<Promotion>(
     'SELECT * FROM promotions WHERE event_id = ? ORDER BY created_at DESC',
     [eventId]
@@ -60,8 +99,9 @@ export async function getPromotion(id: string) {
 }
 
 export async function createPromotion(input: CreatePromotionInput) {
+  await ensurePromotionsSchema();
   const id = randomUUID();
-  
+
   // Validate code uniqueness if provided
   if (input.code) {
     const existing = await queryOne('SELECT id FROM promotions WHERE code = ?', [input.code]);
@@ -97,6 +137,7 @@ export async function createPromotion(input: CreatePromotionInput) {
 }
 
 export async function createPromotionsBulk(input: CreatePromotionInput & { codes: string[] }) {
+  await ensurePromotionsSchema();
   const { codes } = input;
   
   // Validate array uniqueness and non-emptiness
@@ -150,6 +191,7 @@ export async function createPromotionsBulk(input: CreatePromotionInput & { codes
 }
 
 export async function updatePromotion(id: string, input: UpdatePromotionInput) {
+  await ensurePromotionsSchema();
   const existing = await getPromotion(id);
   
   if (input.code && input.code !== existing.code) {
