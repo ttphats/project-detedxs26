@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { calculateBestDiscount } from '../services/promotions.service.js';
+import { calculateBestDiscount, listEligiblePromotions } from '../services/promotions.service.js';
 import { query } from '../db/mysql.js';
 
 vi.mock('../db/mysql.js', () => ({
@@ -162,5 +162,106 @@ describe('Promotions Service - calculateBestDiscount', () => {
     });
     expect(result?.promotionId).toBe('promo-2');
     expect(result?.discountAmount).toBe(120000);
+  });
+});
+
+describe('Promotions Service - ticket-class eligibility', () => {
+  const combo = {
+    id: 'promo-combo',
+    event_id: 'e1',
+    name: 'Combo 3',
+    type: 'COMBO',
+    discount_type: 'FIXED_AMOUNT',
+    discount_value: 100000,
+    code: null,
+    min_tickets: 3,
+    max_tickets: null,
+    ticket_type_ids: null,
+    is_active: 1,
+    start_date: new Date(Date.now() - 100000),
+    end_date: new Date(Date.now() + 100000),
+    max_usage: null,
+    used_count: 0,
+  };
+  const earlyBird = {
+    id: 'promo-eb',
+    event_id: 'e1',
+    name: 'Early Bird',
+    type: 'EARLY_BIRD',
+    discount_type: 'PERCENTAGE',
+    discount_value: 20,
+    code: null,
+    min_tickets: null,
+    max_tickets: null,
+    ticket_type_ids: null,
+    is_active: 1,
+    start_date: new Date(Date.now() - 100000),
+    end_date: new Date(Date.now() + 100000),
+    max_usage: null,
+    used_count: 0,
+  };
+  const promoCode = {
+    id: 'promo-code',
+    event_id: 'e1',
+    name: 'SUMMER26',
+    type: 'PROMO_CODE',
+    discount_type: 'PERCENTAGE',
+    discount_value: 10,
+    code: 'SUMMER26',
+    min_tickets: null,
+    max_tickets: null,
+    ticket_type_ids: null,
+    is_active: 1,
+    start_date: new Date(Date.now() - 100000),
+    end_date: new Date(Date.now() + 100000),
+    max_usage: null,
+    used_count: 0,
+  };
+
+  const threeTickets = [
+    { id: 'tt_std_0', price: 200000, ticketTypeId: 'tt-std' },
+    { id: 'tt_std_1', price: 200000, ticketTypeId: 'tt-std' },
+    { id: 'tt_std_2', price: 200000, ticketTypeId: 'tt-std' },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(query).mockResolvedValue([combo, earlyBird, promoCode] as any);
+  });
+
+  it('lists auto promotions without a code and hides unused promo codes', async () => {
+    const list = await listEligiblePromotions({ eventId: 'e1', tickets: threeTickets });
+    expect(list.map((p) => p.promotionId)).toEqual(['promo-eb', 'promo-combo']);
+    expect(list[0].isBest).toBe(true);
+    expect(list.find((p) => p.type === 'PROMO_CODE')).toBeUndefined();
+  });
+
+  it('includes a promo code only after it is entered', async () => {
+    const list = await listEligiblePromotions({
+      eventId: 'e1',
+      tickets: threeTickets,
+      promoCode: 'SUMMER26',
+    });
+    expect(list.some((p) => p.promotionId === 'promo-code')).toBe(true);
+    expect(list.find((p) => p.promotionId === 'promo-code')?.discountAmount).toBe(60000);
+  });
+
+  it('applies the chosen promotionId even when it is not the biggest', async () => {
+    const result = await calculateBestDiscount({
+      eventId: 'e1',
+      tickets: threeTickets,
+      promotionId: 'promo-combo',
+    });
+    expect(result?.promotionId).toBe('promo-combo');
+    expect(result?.discountAmount).toBe(100000);
+  });
+
+  it('rejects a promo-code promotionId unless the matching code is also sent', async () => {
+    const result = await calculateBestDiscount({
+      eventId: 'e1',
+      tickets: threeTickets,
+      promotionId: 'promo-code',
+    });
+    expect(result).toBeNull();
   });
 });

@@ -80,6 +80,17 @@ interface CartLine {
   color: string;
 }
 
+interface EligiblePromotion {
+  promotionId: string;
+  name: string;
+  type: string;
+  code: string | null;
+  discountType: string;
+  discountValue: number;
+  discountAmount: number;
+  isBest: boolean;
+}
+
 const MAX_QTY_PER_TYPE = 10;
 const MAX_TOTAL = 20;
 
@@ -124,6 +135,9 @@ export default function TicketClassPage({
     amount: number;
   } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
+  const [eligiblePromos, setEligiblePromos] = useState<EligiblePromotion[]>([]);
+  const [selectedPromoId, setSelectedPromoId] = useState<string | null>(null);
+  const [promoSearch, setPromoSearch] = useState("");
   const [isValidatingPromo, setIsValidatingPromo] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [sessionId, setSessionId] = useState("");
@@ -359,6 +373,77 @@ export default function TicketClassPage({
   const rawTotal = cartItems.reduce((s, i) => s + i.lineTotal, 0);
   const total = Math.max(0, rawTotal - (discountInfo?.amount || 0));
 
+  const cartPayload = useMemo(
+    () =>
+      cartItems.map((item) => ({
+        ticketTypeId: item.id,
+        quantity: item.qty,
+      })),
+    [cartItems],
+  );
+
+  useEffect(() => {
+    if (cartItems.length === 0) {
+      setEligiblePromos([]);
+      setSelectedPromoId(null);
+      setDiscountInfo(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadEligible = async () => {
+      try {
+        const res = await fetch(`${apiUrl}/promotions/eligible`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId: id,
+            items: cartPayload,
+            promoCode: promoCode.trim() || undefined,
+          }),
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        const list: EligiblePromotion[] = data?.data?.promotions || [];
+        setEligiblePromos(list);
+        setSelectedPromoId((current) => {
+          if (current && list.some((p) => p.promotionId === current))
+            return current;
+          return list.length > 0 ? list[0].promotionId : null;
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.debug("Eligible promotions lookup failed", err);
+        }
+      }
+    };
+
+    const timeout = setTimeout(loadEligible, 400);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [cartPayload, cartItems.length, id, apiUrl, promoCode]);
+
+  const visiblePromos = useMemo(() => {
+    const q = promoSearch.trim().toLowerCase();
+    if (!q) return eligiblePromos;
+    return eligiblePromos.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.code ? p.code.toLowerCase().includes(q) : false),
+    );
+  }, [eligiblePromos, promoSearch]);
+
+  useEffect(() => {
+    const chosen = eligiblePromos.find(
+      (p) => p.promotionId === selectedPromoId,
+    );
+    setDiscountInfo(
+      chosen ? { name: chosen.name, amount: chosen.discountAmount } : null,
+    );
+  }, [eligiblePromos, selectedPromoId]);
+
   const getMaxFor = (typeId: string) => {
     const avail = availability.find((a) => a.ticketTypeId === typeId);
     // Unknown availability (endpoint missing) → allow up to per-type max
@@ -401,35 +486,40 @@ export default function TicketClassPage({
     setIsValidatingPromo(true);
     setPromoError(null);
     try {
-      const seatIds: string[] = [];
-      for (const item of cartItems) {
-        for (let i = 0; i < item.qty; i++) {
-          seatIds.push(`pseudo_${item.id}_${i}`);
-        }
-      }
       const res = await fetch(`${apiUrl}/promotions/validate-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: id,
-          seatIds,
+          items: cartPayload,
           promoCode: promoCode.trim(),
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!data.success) {
         setPromoError(data.error || "Invalid promo code");
-        setDiscountInfo(null);
       } else if (data.data?.discount) {
-        setDiscountInfo({
-          name: data.data.discount.name,
-          amount: data.data.discount.discountAmount,
+        const d = data.data.discount;
+        setEligiblePromos((prev) => {
+          const without = prev.filter((p) => p.promotionId !== d.promotionId);
+          return [
+            {
+              promotionId: d.promotionId,
+              name: d.name,
+              type: "PROMO_CODE",
+              code: promoCode.trim(),
+              discountType: "",
+              discountValue: 0,
+              discountAmount: d.discountAmount,
+              isBest: false,
+            },
+            ...without,
+          ].sort((a, b) => b.discountAmount - a.discountAmount);
         });
+        setSelectedPromoId(d.promotionId);
         setPromoError(null);
       } else {
         setPromoError("Promo code not applicable");
-        setDiscountInfo(null);
       }
     } catch {
       setPromoError("Failed to validate promo code");
@@ -466,6 +556,7 @@ export default function TicketClassPage({
           eventId: id,
           sessionId,
           promoCode: promoCode.trim() || undefined,
+          promotionId: selectedPromoId || undefined,
           items: cartItems.map((i) => ({
             ticketTypeId: i.id,
             quantity: i.qty,
@@ -783,6 +874,12 @@ export default function TicketClassPage({
                 promoError={promoError}
                 isValidatingPromo={isValidatingPromo}
                 onApplyPromo={handleApplyPromoCode}
+                eligiblePromos={eligiblePromos}
+                visiblePromos={visiblePromos}
+                selectedPromoId={selectedPromoId}
+                promoSearch={promoSearch}
+                setPromoSearch={setPromoSearch}
+                onSelectPromo={setSelectedPromoId}
                 onRemove={removeFromCart}
                 onCheckout={handleCheckout}
                 isCheckingOut={isCheckingOut}
@@ -1022,6 +1119,14 @@ export default function TicketClassPage({
                       </span>
                     </div>
                   )}
+                  <PromoPicker
+                    eligiblePromos={eligiblePromos}
+                    visiblePromos={visiblePromos}
+                    selectedPromoId={selectedPromoId}
+                    promoSearch={promoSearch}
+                    setPromoSearch={setPromoSearch}
+                    onSelect={setSelectedPromoId}
+                  />
                 </div>
               </div>
 
@@ -1077,6 +1182,89 @@ export default function TicketClassPage({
   );
 }
 
+function PromoPicker({
+  eligiblePromos,
+  visiblePromos,
+  selectedPromoId,
+  promoSearch,
+  setPromoSearch,
+  onSelect,
+}: {
+  eligiblePromos: EligiblePromotion[];
+  visiblePromos: EligiblePromotion[];
+  selectedPromoId: string | null;
+  promoSearch: string;
+  setPromoSearch: (v: string) => void;
+  onSelect: (id: string | null) => void;
+}) {
+  if (eligiblePromos.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+          Available discounts ({eligiblePromos.length})
+        </span>
+        {selectedPromoId && (
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {eligiblePromos.length > 3 && (
+        <input
+          type="text"
+          value={promoSearch}
+          onChange={(e) => setPromoSearch(e.target.value)}
+          placeholder="Search discounts..."
+          className="w-full mb-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500/50 transition-colors placeholder:text-gray-600"
+        />
+      )}
+      <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+        {visiblePromos.length === 0 ? (
+          <p className="text-[11px] text-gray-500 py-2">
+            No discounts match &quot;{promoSearch}&quot;.
+          </p>
+        ) : (
+          visiblePromos.map((promo) => {
+            const active = promo.promotionId === selectedPromoId;
+            return (
+              <button
+                key={promo.promotionId}
+                type="button"
+                onClick={() => onSelect(promo.promotionId)}
+                aria-pressed={active}
+                className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+                  active
+                    ? "border-green-500/50 bg-green-500/10"
+                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-white truncate">
+                    {promo.name}
+                  </span>
+                  <span className="text-xs font-bold text-green-400 tabular-nums shrink-0">
+                    −{formatPrice(promo.discountAmount)}
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  {promo.type.replace("_", " ")}
+                  {promo.code ? ` · ${promo.code}` : ""}
+                  {promo.isBest ? " · Best" : ""}
+                </p>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CartPanel({
   cartItems,
   cartCount,
@@ -1088,6 +1276,12 @@ function CartPanel({
   promoError,
   isValidatingPromo,
   onApplyPromo,
+  eligiblePromos,
+  visiblePromos,
+  selectedPromoId,
+  promoSearch,
+  setPromoSearch,
+  onSelectPromo,
   onRemove,
   onCheckout,
   isCheckingOut,
@@ -1102,6 +1296,12 @@ function CartPanel({
   promoError: string | null;
   isValidatingPromo: boolean;
   onApplyPromo: () => void;
+  eligiblePromos: EligiblePromotion[];
+  visiblePromos: EligiblePromotion[];
+  selectedPromoId: string | null;
+  promoSearch: string;
+  setPromoSearch: (v: string) => void;
+  onSelectPromo: (id: string | null) => void;
   onRemove: (id: string) => void;
   onCheckout: () => void;
   isCheckingOut: boolean;
@@ -1210,6 +1410,14 @@ function CartPanel({
               </span>
             </div>
           )}
+          <PromoPicker
+            eligiblePromos={eligiblePromos}
+            visiblePromos={visiblePromos}
+            selectedPromoId={selectedPromoId}
+            promoSearch={promoSearch}
+            setPromoSearch={setPromoSearch}
+            onSelect={onSelectPromo}
+          />
         </div>
       )}
 

@@ -30,6 +30,7 @@ export async function createPendingOrderByType(
       eventId: string
       sessionId: string
       promoCode?: string
+      promotionId?: string
       // Multi-type cart (preferred)
       items?: Array<{ticketTypeId: string; quantity: number}>
       // Legacy single-type (backward compatible)
@@ -39,7 +40,7 @@ export async function createPendingOrderByType(
   }>,
   reply: FastifyReply
 ) {
-  const {eventId, sessionId, promoCode, items, ticketTypeId, quantity} = request.body
+  const {eventId, sessionId, promoCode, promotionId, items, ticketTypeId, quantity} = request.body
 
   if (!eventId || !sessionId) {
     throw new BadRequestError('Missing required fields: eventId, sessionId')
@@ -63,6 +64,7 @@ export async function createPendingOrderByType(
     eventId,
     sessionId,
     promoCode,
+    promotionId,
     items: normalizedItems,
   })
 

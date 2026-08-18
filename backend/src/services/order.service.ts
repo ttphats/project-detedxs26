@@ -37,6 +37,8 @@ interface CreatePendingOrderByTypeParams {
   eventId: string
   sessionId: string
   promoCode?: string
+  /** Ticket-class picker: apply this exact promotion after re-validating. */
+  promotionId?: string
   /** Multi-type cart items (preferred). Legacy single-type is normalized by controller. */
   items: Array<{ticketTypeId: string; quantity: number}>
 }
@@ -787,7 +789,7 @@ function humanizeSeatType(seatType: string | null | undefined): string {
 export async function createPendingOrderByTicketType(
   params: CreatePendingOrderByTypeParams
 ): Promise<CreatePendingOrderResult & {seatIds: string[]}> {
-  const {eventId, sessionId, promoCode, items} = params
+  const {eventId, sessionId, promoCode, promotionId: requestedPromotionId, items} = params
 
   if (!items || items.length === 0) {
     throw new BadRequestError('Cart is empty')
@@ -1036,6 +1038,7 @@ export async function createPendingOrderByTicketType(
       eventId,
       tickets: promoTickets,
       promoCode,
+      promotionId: requestedPromotionId,
     })
 
     let totalAmount = rawTotalAmount

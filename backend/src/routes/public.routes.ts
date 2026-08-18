@@ -83,6 +83,7 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   const promotionsController = await import('../controllers/promotions.controller.js')
   fastify.post('/promotions/check', promotionsController.checkPromotions)
   fastify.post('/promotions/validate-code', promotionsController.validatePromoCode)
+  fastify.post('/promotions/eligible', promotionsController.listEligiblePromotions)
 
 
   // GET /orders/check-pending - Check if session has pending order (must be before /:orderNumber)
