@@ -28,12 +28,16 @@ yarn-error.log*
 .env
 .env.*
 env (*
+**/env (*
 backend/env*
 web-admin/env*
 web-client/env*
 backend/.env.*
 web-admin/.env.*
 web-client/.env.*
+**/.env.production
+project-detedxs26-main/**/env*
+project-detedxs26-main/**/.env*
 
 # Vercel
 .vercel
