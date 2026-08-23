@@ -1,7 +1,17 @@
 import {FastifyRequest, FastifyReply} from 'fastify'
 import * as orderService from '../services/order.service.js'
+import * as settingsService from '../services/settings.service.js'
 import {successResponse} from '../utils/helpers.js'
 import {BadRequestError} from '../utils/errors.js'
+
+async function assertTicketSalesOpen() {
+  // Local checkout stays usable even if an admin previewed the closed state.
+  if (process.env.NODE_ENV !== 'production') return
+  const {salesOpen} = await settingsService.getTicketSalesConfig()
+  if (!salesOpen) {
+    throw new BadRequestError('Ticket sales are not open yet.')
+  }
+}
 
 // POST /orders/create-pending
 export async function createPendingOrder(
@@ -15,6 +25,8 @@ export async function createPendingOrder(
   if (!eventId || !seatIds?.length || !sessionId) {
     throw new BadRequestError('Missing required fields')
   }
+
+  await assertTicketSalesOpen()
 
   const result = await orderService.createPendingOrder({eventId, seatIds, sessionId, promoCode})
 
@@ -60,6 +72,8 @@ export async function createPendingOrderByType(
     throw new BadRequestError('Cart is empty. Provide items[] or ticketTypeId + quantity.')
   }
 
+  await assertTicketSalesOpen()
+
   const result = await orderService.createPendingOrderByTicketType({
     eventId,
     sessionId,
@@ -85,7 +99,8 @@ export async function confirmPayment(
   }>,
   reply: FastifyReply
 ) {
-  const {orderNumber, accessToken, customerName, customerEmail, customerPhone, attendees} = request.body
+  const {orderNumber, accessToken, customerName, customerEmail, customerPhone, attendees} =
+    request.body
 
   if (!orderNumber || !accessToken || !customerName || !customerEmail || !customerPhone) {
     throw new BadRequestError('Missing required fields')

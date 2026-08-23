@@ -12,6 +12,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
   SaveOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons'
 
 const {Text, Title} = Typography
@@ -33,11 +34,85 @@ export default function SettingsPage() {
   const [emailsSaving, setEmailsSaving] = useState(false)
   const [emailsChanged, setEmailsChanged] = useState(false)
 
+  const [salesOverride, setSalesOverride] = useState<'auto' | 'open' | 'closed'>('auto')
+  const [opensAtLocal, setOpensAtLocal] = useState('')
+  const [salesLoading, setSalesLoading] = useState(true)
+  const [salesSaving, setSalesSaving] = useState(false)
+
   // Load notification emails on mount
   useEffect(() => {
     loadOnDutyEmail()
     loadNotificationEmails()
+    loadTicketSales()
   }, [])
+
+  const toDatetimeLocal = (iso: string) => {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const loadTicketSales = async () => {
+    setSalesLoading(true)
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
+      const res = await fetch(`${apiUrl}/admin/settings/ticket-sales`, {
+        headers: {Authorization: `Bearer ${token}`},
+      })
+      const data = await res.json()
+      if (data.success) {
+        const next = data.data.override
+        setSalesOverride(next === 'open' || next === 'closed' ? next : 'auto')
+        setOpensAtLocal(toDatetimeLocal(data.data.opensAt))
+      }
+    } catch (err) {
+      console.error('Failed to load ticket sales:', err)
+    } finally {
+      setSalesLoading(false)
+    }
+  }
+
+  const handleSaveTicketSales = async () => {
+    if (!opensAtLocal) {
+      message.error('Vui lòng chọn thời điểm mở bán / Please pick an open time')
+      return
+    }
+    const parsed = new Date(opensAtLocal)
+    if (Number.isNaN(parsed.getTime())) {
+      message.error('Thời gian không hợp lệ / Invalid date-time')
+      return
+    }
+    setSalesSaving(true)
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
+      const res = await fetch(`${apiUrl}/admin/settings/ticket-sales`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          override: salesOverride,
+          opensAt: parsed.toISOString(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save')
+      }
+      const next = data.data.override
+      setSalesOverride(next === 'open' || next === 'closed' ? next : 'auto')
+      setOpensAtLocal(toDatetimeLocal(data.data.opensAt))
+      message.success('Đã lưu cấu hình bán vé! / Ticket sales setup saved!')
+    } catch (err: any) {
+      message.error(err.message || 'Lỗi khi lưu / Error saving')
+    } finally {
+      setSalesSaving(false)
+    }
+  }
 
   const loadOnDutyEmail = async () => {
     setOnDutyEmailLoading(true)
@@ -86,7 +161,9 @@ export default function SettingsPage() {
       const saved = data.data.email || ''
       setOnDutyEmail(saved)
       setOnDutyEmailInput(saved)
-      message.success('\u0110\u00e3 c\u1eadp nh\u1eadt email tr\u1ef1c ca! / On-duty email updated!')
+      message.success(
+        '\u0110\u00e3 c\u1eadp nh\u1eadt email tr\u1ef1c ca! / On-duty email updated!'
+      )
     } catch (err: any) {
       message.error(err.message || 'L\u1ed7i khi l\u01b0u / Error saving')
     } finally {
@@ -205,6 +282,70 @@ export default function SettingsPage() {
       <div className='p-6'>
         <h1 className='text-2xl font-bold mb-6'>Cài đặt hệ thống</h1>
 
+        <Card
+          title={
+            <Space>
+              <ClockCircleOutlined style={{color: '#dc2626'}} />
+              <span>Mở bán vé / Ticket Sales Gate</span>
+            </Space>
+          }
+          className='mb-6'
+          style={{borderTop: '3px solid #dc2626'}}
+        >
+          <Alert
+            description='Auto: hết giờ tự mở trang mua vé. Force open / closed: bật tắt ngay để test. Local vẫn bypass.'
+            type='info'
+            showIcon
+            className='mb-4'
+          />
+          {salesLoading ? (
+            <Text type='secondary'>Đang tải... / Loading...</Text>
+          ) : (
+            <div className='flex flex-col gap-4'>
+              <div className='flex flex-wrap gap-2'>
+                {(
+                  [
+                    {value: 'auto', label: 'Auto (hết giờ tự mở)'},
+                    {value: 'open', label: 'Force open'},
+                    {value: 'closed', label: 'Force closed'},
+                  ] as const
+                ).map((opt) => (
+                  <Button
+                    key={opt.value}
+                    type={salesOverride === opt.value ? 'primary' : 'default'}
+                    danger={salesOverride === opt.value && opt.value !== 'auto'}
+                    onClick={() => setSalesOverride(opt.value)}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+              <div className='flex flex-wrap items-end gap-3'>
+                <div>
+                  <Text type='secondary' style={{fontSize: 12, display: 'block', marginBottom: 4}}>
+                    Thời điểm countdown / Countdown target
+                  </Text>
+                  <Input
+                    type='datetime-local'
+                    value={opensAtLocal}
+                    onChange={(e) => setOpensAtLocal(e.target.value)}
+                    style={{maxWidth: 280}}
+                  />
+                </div>
+                <Button
+                  type='primary'
+                  danger
+                  icon={<SaveOutlined />}
+                  loading={salesSaving}
+                  onClick={handleSaveTicketSales}
+                >
+                  Lưu setup / Save setup
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+
         {/* On-Duty Staff Email */}
         <Card
           title={
@@ -290,8 +431,8 @@ export default function SettingsPage() {
               <Text type='secondary'>Đang tải... / Loading...</Text>
             ) : notificationEmails.length === 0 ? (
               <Text type='secondary' italic>
-                Chưa có email nào. Thêm email để nhận thông báo đơn hàng mới. / No emails configured.
-                Add emails to receive new order notifications.
+                Chưa có email nào. Thêm email để nhận thông báo đơn hàng mới. / No emails
+                configured. Add emails to receive new order notifications.
               </Text>
             ) : (
               <div className='flex flex-wrap gap-2'>
