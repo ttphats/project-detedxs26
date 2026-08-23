@@ -47,6 +47,8 @@ interface TicketType {
   sold_quantity: number;
   /** Awaiting admin confirmation, or in an unexpired checkout. */
   pending_quantity: number;
+  /** Still sellable under the cap. Null when the type has no cap. */
+  remaining_quantity: number | null;
   is_active: boolean;
   sort_order: number;
 }
@@ -401,6 +403,7 @@ export default function TicketTypesPage() {
         const sold = record.sold_quantity ?? 0;
         const pending = record.pending_quantity ?? 0;
         const max = record.max_quantity;
+        const remaining = record.remaining_quantity;
         // Sold plus still-held can exceed a type's cap; say so rather than
         // showing a quietly impossible number.
         const over = max != null && sold + pending > max;
@@ -414,6 +417,7 @@ export default function TicketTypesPage() {
                 +{pending} đang giữ chỗ
               </div>
             )}
+            {remaining === 0 && <Tag color="red">Hết vé</Tag>}
           </div>
         );
       },
