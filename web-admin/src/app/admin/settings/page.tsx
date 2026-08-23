@@ -2,20 +2,10 @@
 
 import {useState, useEffect} from 'react'
 import {AdminLayout} from '@/components/admin'
-import {Card, Button, Modal, message, Alert, Space, Divider, Input, Tag, Typography} from 'antd'
-import {
-  ExclamationCircleOutlined,
-  ReloadOutlined,
-  DatabaseOutlined,
-  WarningOutlined,
-  MailOutlined,
-  PlusOutlined,
-  DeleteOutlined,
-  SaveOutlined,
-  ClockCircleOutlined,
-} from '@ant-design/icons'
+import {Card, Button, Modal, message, Input, Tag, Typography, Radio} from 'antd'
+import {ReloadOutlined, MailOutlined, PlusOutlined, SaveOutlined} from '@ant-design/icons'
 
-const {Text, Title} = Typography
+const {Text} = Typography
 
 export default function SettingsPage() {
   const [resetLoading, setResetLoading] = useState(false)
@@ -279,299 +269,163 @@ export default function SettingsPage() {
 
   return (
     <AdminLayout>
-      <div className='p-6'>
-        <h1 className='text-2xl font-bold mb-6'>Cài đặt hệ thống</h1>
+      <div className='space-y-6'>
+        <div>
+          <h1 className='text-2xl font-bold text-gray-900'>Settings</h1>
+          <p className='text-gray-600 mt-1'>Ticket sales, notifications, and system tools</p>
+        </div>
 
-        <Card
-          title={
-            <Space>
-              <ClockCircleOutlined style={{color: '#dc2626'}} />
-              <span>Mở bán vé / Ticket Sales Gate</span>
-            </Space>
-          }
-          className='mb-6'
-          style={{borderTop: '3px solid #dc2626'}}
-        >
-          <Alert
-            description='Auto: hết giờ tự mở trang mua vé. Force open / closed: bật tắt ngay để test. Local vẫn bypass.'
-            type='info'
-            showIcon
-            className='mb-4'
-          />
-          {salesLoading ? (
-            <Text type='secondary'>Đang tải... / Loading...</Text>
-          ) : (
-            <div className='flex flex-col gap-4'>
-              <div className='flex flex-wrap gap-2'>
-                {(
-                  [
-                    {value: 'auto', label: 'Auto (hết giờ tự mở)'},
-                    {value: 'open', label: 'Force open'},
-                    {value: 'closed', label: 'Force closed'},
-                  ] as const
-                ).map((opt) => (
-                  <Button
-                    key={opt.value}
-                    type={salesOverride === opt.value ? 'primary' : 'default'}
-                    danger={salesOverride === opt.value && opt.value !== 'auto'}
-                    onClick={() => setSalesOverride(opt.value)}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-              <div className='flex flex-wrap items-end gap-3'>
+        <div className='grid grid-cols-1 xl:grid-cols-2 gap-6'>
+          <Card title='Ticket sales'>
+            {salesLoading ? (
+              <Text type='secondary'>Loading...</Text>
+            ) : (
+              <div className='space-y-4'>
                 <div>
-                  <Text type='secondary' style={{fontSize: 12, display: 'block', marginBottom: 4}}>
-                    Thời điểm countdown / Countdown target
+                  <Text type='secondary' className='block mb-2'>
+                    Mode
                   </Text>
-                  <Input
-                    type='datetime-local'
-                    value={opensAtLocal}
-                    onChange={(e) => setOpensAtLocal(e.target.value)}
-                    style={{maxWidth: 280}}
+                  <Radio.Group
+                    value={salesOverride}
+                    onChange={(e) => setSalesOverride(e.target.value)}
+                    options={[
+                      {value: 'auto', label: 'Auto'},
+                      {value: 'open', label: 'Open now'},
+                      {value: 'closed', label: 'Keep closed'},
+                    ]}
                   />
                 </div>
-                <Button
-                  type='primary'
-                  danger
-                  icon={<SaveOutlined />}
-                  loading={salesSaving}
-                  onClick={handleSaveTicketSales}
-                >
-                  Lưu setup / Save setup
-                </Button>
+                <div>
+                  <Text type='secondary' className='block mb-2'>
+                    Open at
+                  </Text>
+                  <div className='flex flex-wrap gap-2'>
+                    <Input
+                      type='datetime-local'
+                      value={opensAtLocal}
+                      onChange={(e) => setOpensAtLocal(e.target.value)}
+                      style={{maxWidth: 240}}
+                    />
+                    <Button
+                      icon={<SaveOutlined />}
+                      loading={salesSaving}
+                      onClick={handleSaveTicketSales}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+                <Text type='secondary'>
+                  Auto opens when the time is reached. Use Open now or Keep closed to test.
+                </Text>
               </div>
-            </div>
-          )}
-        </Card>
+            )}
+          </Card>
 
-        {/* On-Duty Staff Email */}
-        <Card
-          title={
-            <Space>
-              <MailOutlined style={{color: '#dc2626'}} />
-              <span>Email Nhân viên Trực ca / Current On-Duty Staff Email</span>
-            </Space>
-          }
-          className='mb-6'
-          style={{borderTop: '3px solid #dc2626'}}
-        >
-          <Alert
-            description='Email này sẽ nhận thông báo ngay khi khách hàng đặt mua vé (chờ xác nhận thanh toán). Cập nhật mỗi ca trực. / This email receives an instant alert each time a customer proceeds to checkout. Update at the start of each shift.'
-            type='warning'
-            showIcon
-            className='mb-4'
-          />
-          {onDutyEmailLoading ? (
-            <Text type='secondary'>Đang tải... / Loading...</Text>
-          ) : (
-            <>
-              <div className='flex gap-2 mb-2'>
+          <Card title='On-duty email'>
+            <Text type='secondary' className='block mb-3'>
+              Gets an alert when a customer starts checkout.
+            </Text>
+            {onDutyEmailLoading ? (
+              <Text type='secondary'>Loading...</Text>
+            ) : (
+              <div className='flex flex-wrap gap-2'>
                 <Input
-                  id='on-duty-email-input'
                   type='email'
                   placeholder='staff@example.com'
                   value={onDutyEmailInput}
                   onChange={(e) => setOnDutyEmailInput(e.target.value)}
                   onPressEnter={handleSaveOnDutyEmail}
-                  prefix={<MailOutlined style={{color: '#dc2626'}} />}
-                  style={{maxWidth: 420}}
-                  status={onDutyEmailInput && onDutyEmailInput !== onDutyEmail ? 'warning' : ''}
+                  prefix={<MailOutlined />}
+                  style={{maxWidth: 320}}
                 />
                 <Button
-                  id='on-duty-email-save-btn'
-                  type='primary'
-                  danger
                   icon={<SaveOutlined />}
                   loading={onDutyEmailSaving}
                   onClick={handleSaveOnDutyEmail}
                   disabled={onDutyEmailInput === onDutyEmail}
                 >
-                  Cập nhật / Update
+                  Save
                 </Button>
               </div>
-              {onDutyEmail && (
-                <Text type='secondary' style={{fontSize: 12}}>
-                  Hiện tại / Current: <strong>{onDutyEmail}</strong>
-                </Text>
-              )}
-              {!onDutyEmail && (
-                <Text type='secondary' italic style={{fontSize: 12}}>
-                  Chưa có email trực ca. / No on-duty email set.
-                </Text>
-              )}
-            </>
-          )}
-        </Card>
-
-        {/* Notification Emails */}
-        <Card
-          title={
-            <Space>
-              <MailOutlined style={{color: '#1677ff'}} />
-              <span>Email nhận thông báo đơn hàng / Order Notification Emails</span>
-            </Space>
-          }
-          className='mb-6'
-        >
-          <Alert
-            description='Khi có đơn hàng mới (PENDING), hệ thống sẽ tự động gửi thông báo đến các email bên dưới. / When a new order is created, the system will automatically send notifications to the emails below.'
-            type='info'
-            showIcon
-            className='mb-4'
-          />
-
-          {/* Email list */}
-          <div className='mb-4'>
-            <Text strong className='block mb-2'>
-              Danh sách email / Email list:
-            </Text>
-            {emailsLoading ? (
-              <Text type='secondary'>Đang tải... / Loading...</Text>
-            ) : notificationEmails.length === 0 ? (
-              <Text type='secondary' italic>
-                Chưa có email nào. Thêm email để nhận thông báo đơn hàng mới. / No emails
-                configured. Add emails to receive new order notifications.
-              </Text>
-            ) : (
-              <div className='flex flex-wrap gap-2'>
-                {notificationEmails.map((email) => (
-                  <Tag
-                    key={email}
-                    closable
-                    onClose={() => handleRemoveEmail(email)}
-                    color='blue'
-                    style={{fontSize: 14, padding: '4px 12px'}}
-                  >
-                    <MailOutlined style={{marginRight: 4}} />
-                    {email}
-                  </Tag>
-                ))}
-              </div>
             )}
-          </div>
+          </Card>
+        </div>
 
-          {/* Add new email */}
-          <div className='flex gap-2 mb-4'>
-            <Input
-              placeholder='Nhập email... / Enter email...'
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              onPressEnter={handleAddEmail}
-              prefix={<MailOutlined style={{color: '#bfbfbf'}} />}
-              style={{maxWidth: 400}}
-            />
-            <Button type='dashed' icon={<PlusOutlined />} onClick={handleAddEmail}>
-              Thêm / Add
-            </Button>
-          </div>
-
-          {/* Save button */}
-          {emailsChanged && (
-            <Button
-              type='primary'
-              icon={<SaveOutlined />}
-              loading={emailsSaving}
-              onClick={handleSaveEmails}
-              size='large'
-            >
-              Lưu thay đổi / Save Changes
-            </Button>
+        <Card title='Order notification emails'>
+          <Text type='secondary' className='block mb-4'>
+            These addresses get a copy when a new order is created.
+          </Text>
+          {emailsLoading ? (
+            <Text type='secondary'>Loading...</Text>
+          ) : (
+            <div className='space-y-4'>
+              {notificationEmails.length === 0 ? (
+                <Text type='secondary'>No emails yet.</Text>
+              ) : (
+                <div className='flex flex-wrap gap-2'>
+                  {notificationEmails.map((email) => (
+                    <Tag key={email} closable onClose={() => handleRemoveEmail(email)}>
+                      {email}
+                    </Tag>
+                  ))}
+                </div>
+              )}
+              <div className='flex flex-wrap gap-2'>
+                <Input
+                  placeholder='name@example.com'
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  onPressEnter={handleAddEmail}
+                  prefix={<MailOutlined />}
+                  style={{maxWidth: 320}}
+                />
+                <Button icon={<PlusOutlined />} onClick={handleAddEmail}>
+                  Add
+                </Button>
+                {emailsChanged && (
+                  <Button
+                    type='primary'
+                    icon={<SaveOutlined />}
+                    loading={emailsSaving}
+                    onClick={handleSaveEmails}
+                  >
+                    Save changes
+                  </Button>
+                )}
+              </div>
+            </div>
           )}
         </Card>
 
-        {/* Database Management */}
-        <Card title='Quản lý Database' className='mb-6'>
-          <Alert
-            title='Cảnh báo'
-            description='Reset data sẽ xóa tất cả đơn hàng, seat locks và khôi phục về trạng thái mặc định. Thao tác này không thể hoàn tác!'
-            type='warning'
-            icon={<WarningOutlined />}
-            showIcon
-            className='mb-4'
-          />
-
-          <div className='mb-4'>
-            <h3 className='font-semibold mb-2'>Reset Data sẽ:</h3>
-            <ul className='list-disc list-inside space-y-1 text-gray-600'>
-              <li>✅ Giữ nguyên: Events, Ticket Types, Email Templates</li>
-              <li>✅ Giữ nguyên: Tài khoản admin và users</li>
-              <li>🗑️ Xóa tất cả: Orders (đơn hàng)</li>
-              <li>🗑️ Xóa tất cả: Seat Locks (ghế đang giữ)</li>
-              <li>🗑️ Xóa tất cả: Email Logs</li>
-              <li>🗑️ Xóa tất cả: Layout Versions (phiên bản layout)</li>
-              <li>
-                🔄 Reset: Tạo lại 100 ghế mới (10 rows x 10 seats với LEFT/RIGHT sections) - Tất cả
-                ghế có vé Level 1 (rẻ nhất)
-              </li>
-            </ul>
+        <Card title='Database'>
+          <div className='flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4'>
+            <div>
+              <p className='text-gray-900 font-medium'>Reset operational data</p>
+              <p className='text-gray-500 text-sm mt-1 max-w-xl'>
+                Deletes orders, seat locks, email logs, and layout versions. Events, tickets,
+                templates, and accounts stay. Cannot be undone.
+              </p>
+              <p className='text-gray-400 text-sm mt-3'>
+                {process.env.NODE_ENV || 'development'} · MySQL
+              </p>
+            </div>
+            <Button danger icon={<ReloadOutlined />} onClick={() => setConfirmModal(true)}>
+              Reset data
+            </Button>
           </div>
-
-          <Button
-            type='primary'
-            danger
-            size='large'
-            icon={<ReloadOutlined />}
-            onClick={() => setConfirmModal(true)}
-          >
-            Reset Data về V1
-          </Button>
         </Card>
 
-        {/* Database Info */}
-        <Card
-          title={
-            <>
-              <DatabaseOutlined /> Thông tin Database
-            </>
-          }
-        >
-          <Space orientation='vertical' size='small'>
-            <div>
-              <strong>Môi trường:</strong> {process.env.NODE_ENV || 'development'}
-            </div>
-            <div>
-              <strong>Database:</strong> MySQL
-            </div>
-          </Space>
-        </Card>
-
-        {/* Confirmation Modal */}
         <Modal
-          title={
-            <Space>
-              <ExclamationCircleOutlined style={{color: '#ff4d4f', fontSize: 24}} />
-              <span>Xác nhận Reset Data</span>
-            </Space>
-          }
+          title='Reset data?'
           open={confirmModal}
           onCancel={() => setConfirmModal(false)}
-          footer={[
-            <Button key='cancel' onClick={() => setConfirmModal(false)}>
-              Hủy
-            </Button>,
-            <Button
-              key='confirm'
-              type='primary'
-              danger
-              loading={resetLoading}
-              onClick={handleResetData}
-            >
-              Xác nhận Reset
-            </Button>,
-          ]}
+          okText='Reset'
+          okButtonProps={{danger: true, loading: resetLoading}}
+          onOk={handleResetData}
         >
-          <Alert
-            title='Cảnh báo nghiêm trọng'
-            description='Bạn có chắc chắn muốn reset tất cả data về trạng thái mặc định? Thao tác này sẽ XÓA TẤT CẢ đơn hàng và không thể hoàn tác!'
-            type='error'
-            showIcon
-            className='mb-4'
-          />
           <p className='text-gray-600'>
-            Vui lòng gõ <strong className='text-red-500'>RESET</strong> để xác nhận (tính năng này
-            sẽ được thêm vào sau)
+            This permanently deletes all orders and seat locks, then restores a default seat layout.
           </p>
         </Modal>
       </div>
