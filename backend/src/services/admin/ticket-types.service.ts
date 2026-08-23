@@ -64,10 +64,36 @@ export async function listTicketTypes(eventId?: string) {
   const pool = getPool();
   await ensureTicketTypeImageColumn();
 
+  // `ticket_types.sold_quantity` is a leftover counter that nothing in the
+  // application ever writes, so reading it reported every type as 0 sold.
+  // Count the real order items instead.
+  //
+  // A ticket reaches its type two ways: directly through
+  // `order_items.ticket_type_id` (ticket-class flow) or through the seat it
+  // was assigned (seat-map flow), so both are needed — roughly a quarter of
+  // existing items are only reachable through the seat.
   let sql = `
-    SELECT tt.*, e.name as event_name
+    SELECT tt.*, e.name as event_name,
+           COALESCE(cnt.paid, 0) AS sold_count,
+           COALESCE(cnt.held, 0) AS pending_count
     FROM ticket_types tt
     LEFT JOIN events e ON tt.event_id = e.id
+    LEFT JOIN (
+      SELECT COALESCE(oi.ticket_type_id, s.ticket_type_id) AS ticket_type_id,
+             SUM(o.status = 'PAID') AS paid,
+             -- Still occupying stock: a buyer waiting for an admin to confirm
+             -- their transfer, or one whose checkout window is still open.
+             -- An expired PENDING order holds nothing, so counting those would
+             -- report far more tickets held than the type even has.
+             SUM(
+               o.status = 'PENDING_CONFIRMATION'
+               OR (o.status = 'PENDING' AND o.expires_at > NOW())
+             ) AS held
+      FROM order_items oi
+      LEFT JOIN seats s ON s.id = oi.seat_id
+      JOIN orders o ON o.id = oi.order_id
+      GROUP BY COALESCE(oi.ticket_type_id, s.ticket_type_id)
+    ) cnt ON cnt.ticket_type_id = tt.id
     WHERE 1=1
   `;
   const params: any[] = [];
@@ -79,7 +105,19 @@ export async function listTicketTypes(eventId?: string) {
 
   sql += ' ORDER BY tt.sort_order, tt.name';
 
-  const [ticketTypes] = await pool.query<TicketType[]>(sql, params);
+  const [rows] = await pool.query<TicketType[]>(sql, params);
+
+  // Report the counted values under the name the admin UI already reads, and
+  // expose what is still only held so remaining stock can be judged.
+  const ticketTypes = rows.map((row: any) => {
+    const {sold_count, pending_count, ...rest} = row;
+    return {
+      ...rest,
+      sold_quantity: Number(sold_count) || 0,
+      pending_quantity: Number(pending_count) || 0,
+    };
+  });
+
   // Get events - PUBLISHED first
   const [events] = await pool.query<Event[]>('SELECT id, name, status FROM events ORDER BY status ASC, created_at DESC');
 
