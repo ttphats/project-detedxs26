@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { use, useState, useEffect, useMemo } from "react";
+import { use, useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { toast } from "sonner";
@@ -17,8 +17,14 @@ import {
   Zap,
   ChevronUp,
   X,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components";
+import {
+  saveCheckoutState,
+  type CheckoutState,
+  type PurchasedTicket,
+} from "@/lib/checkout-store";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -93,6 +99,95 @@ interface EligiblePromotion {
 
 const MAX_QTY_PER_TYPE = 10;
 const MAX_TOTAL = 20;
+
+/**
+ * Ticket sales are held closed until the team opens the sale session. While
+ * closed this page shows a notice instead of the purchase flow, so nobody can
+ * pick a ticket type or reach checkout.
+ *
+ * To open sales: set NEXT_PUBLIC_TICKET_SALES_OPEN=true in the web-client
+ * environment and redeploy. Absent or any other value keeps sales closed.
+ */
+const TICKET_SALES_OPEN = process.env.NEXT_PUBLIC_TICKET_SALES_OPEN === "true";
+
+/** ISO-8601 date-time when ticket sales open (ICT = UTC+7). */
+const SALE_OPENS_AT = new Date("2026-08-26T08:00:00+07:00");
+
+interface Countdown {
+  days: number;
+  hours: number;
+  minutes: number;
+  seconds: number;
+  expired: boolean;
+}
+
+function calcCountdown(target: Date): Countdown {
+  const diff = Math.max(0, target.getTime() - Date.now());
+  const expired = diff === 0;
+  const totalSec = Math.floor(diff / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  return { days, hours, minutes, seconds, expired };
+}
+
+/**
+ * Time left until `target`, or null before the first client tick.
+ *
+ * Null rather than a computed value on purpose: this page is server-rendered,
+ * and seeding the state from `Date.now()` makes the server's HTML disagree
+ * with the client's first render, which React reports as a hydration mismatch.
+ * The clock therefore only starts once mounted, and callers render a
+ * placeholder until it does.
+ */
+function useCountdown(target: Date): Countdown | null {
+  const [state, setState] = useState<Countdown | null>(null);
+
+  useEffect(() => {
+    const update = () => setState(calcCountdown(target));
+    update();
+    const id = window.setInterval(update, 1000);
+    return () => window.clearInterval(id);
+  }, [target]);
+
+  return state;
+}
+
+function CountdownUnit({
+  value,
+  label,
+}: {
+  value: number;
+  label: string;
+}) {
+  const display = String(value).padStart(2, "0");
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl flex items-center justify-center"
+        style={{
+          background: "linear-gradient(145deg, #1c0808 0%, #2e0d0d 60%, #3d1010 100%)",
+          boxShadow:
+            "0 4px 24px -4px rgba(230,43,30,0.35), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(0,0,0,0.4)",
+          border: "1px solid rgba(230,43,30,0.25)",
+        }}
+      >
+        {/* top/bottom split line */}
+        <div className="absolute inset-x-0 top-1/2 -translate-y-px h-px bg-black/50" />
+        <span
+          className="relative text-3xl sm:text-4xl md:text-5xl font-black text-white tabular-nums tracking-tight"
+          style={{ textShadow: "0 2px 12px rgba(230,43,30,0.6)" }}
+        >
+          {display}
+        </span>
+      </div>
+      <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+        {label}
+      </span>
+    </div>
+  );
+}
 
 function cardStyle(level: number, color: string): React.CSSProperties {
   const c = color || "#e62b1e";
@@ -277,14 +372,22 @@ export default function TicketClassPage({
         setError(null);
 
         const isLocalApi = !apiUrl.includes("tedxfptuniversityhcmc.com");
-        // When pointing at local backend with dead MySQL, each query waits ~10s.
-        // Prefer prod for UI first in that case; still try local tickets briefly.
+        // Only /tickets carries per-type availability; the full-event payload
+        // does not, and falling back to it makes every type look in stock (see
+        // unknownAvailability). So try the /tickets endpoints first, and reach
+        // for a full-event payload only when neither answers.
+        //
+        // The configured API comes first even in local dev: reading stock from
+        // production while ordering against a local backend showed sold-out
+        // types as available and only failed at checkout. A dead local backend
+        // now costs one 4s timeout before prod is tried, which is the right
+        // trade for not displaying another environment's inventory.
         const candidates: string[] = isLocalApi
           ? [
-              `${PROD_API}/events/${id}?sessionId=${sessionId}`,
-              `${PROD_API}/events/${id}/tickets`,
               `${apiUrl}/events/${id}/tickets`,
+              `${PROD_API}/events/${id}/tickets`,
               `${apiUrl}/events/${id}?sessionId=${sessionId}`,
+              `${PROD_API}/events/${id}?sessionId=${sessionId}`,
             ]
           : [
               `${apiUrl}/events/${id}/tickets`,
@@ -528,6 +631,68 @@ export default function TicketClassPage({
     }
   };
 
+  /**
+   * Re-read per-type stock and trim the cart to what is still buyable.
+   *
+   * Only the /tickets endpoint carries availability, so this deliberately does
+   * not fall back to the full-event payload — leaving the numbers alone beats
+   * replacing them with the "assume in stock" default.
+   */
+  const refreshAvailability = useCallback(async () => {
+    if (!id || !event) return;
+    try {
+      const res = await fetch(`${apiUrl}/events/${id}/tickets`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const list = json?.data?.ticketTypes as
+        | Array<{
+            id: string;
+            availability?: {
+              totalSeats?: number;
+              sold?: number;
+              reserved?: number;
+              locked?: number;
+              available?: number;
+            };
+          }>
+        | undefined;
+      if (!json?.success || !Array.isArray(list)) return;
+
+      const fresh = event.ticketTypes.map((tt) => {
+        const a = list.find((t) => t.id === tt.id)?.availability;
+        return {
+          ticketTypeId: tt.id,
+          name: tt.name,
+          level: tt.level,
+          color: tt.color,
+          price: Number(tt.price),
+          maxQuantity: null,
+          totalSeats: a?.totalSeats ?? 0,
+          sold: a?.sold ?? 0,
+          reserved: a?.reserved ?? 0,
+          locked: a?.locked ?? 0,
+          available:
+            typeof a?.available === "number" ? Math.max(0, a.available) : 0,
+        };
+      });
+      setAvailability(fresh);
+
+      setCart((prev) => {
+        const next: Record<string, number> = {};
+        let trimmed = false;
+        for (const [typeId, qty] of Object.entries(prev)) {
+          const left = fresh.find((f) => f.ticketTypeId === typeId)?.available ?? 0;
+          const capped = Math.min(qty, left);
+          if (capped !== qty) trimmed = true;
+          if (capped > 0) next[typeId] = capped;
+        }
+        return trimmed ? next : prev;
+      });
+    } catch (e) {
+      console.warn("[tickets] availability refresh failed:", e);
+    }
+  }, [id, event, apiUrl]);
+
   const handleCheckout = async () => {
     if (!id || !sessionId) return;
     if (cartItems.length === 0) {
@@ -591,10 +756,65 @@ export default function TicketClassPage({
       if (!data.data?.orderNumber || !data.data?.accessToken) {
         throw new Error("Invalid server response: missing order token");
       }
+      const { orderNumber, accessToken } = data.data;
+
+      // Fetch the order back for its individual ticket rows. Attendee-info
+      // needs one row per ticket (order_items.id) so each person can be
+      // attached to a specific ticket rather than the order as a whole.
+      const orderRes = await fetch(
+        `${apiUrl}/orders/${orderNumber}?token=${encodeURIComponent(accessToken)}`,
+      );
+      const orderData = await orderRes.json();
+      if (!orderRes.ok || !orderData.success) {
+        throw new Error("Order created but failed to load its details.");
+      }
+
+      const orderItems = (orderData.data.items || []) as Array<{
+        id: string;
+        ticketTypeId: string | null;
+        ticketTypeName: string | null;
+        seatType?: string | null;
+        price: number;
+      }>;
+
+      // Carry the admin-assigned colour of each ticket type through to the
+      // attendee step, so every form is tinted like the card it came from.
+      const colourByTypeId = new Map(
+        (event?.ticketTypes ?? []).map((tt) => [tt.id, tt.color]),
+      );
+      const colourByName = new Map(
+        (event?.ticketTypes ?? []).map((tt) => [tt.name, tt.color]),
+      );
+
+      const tickets: PurchasedTicket[] = orderItems.map((t) => {
+        const name = t.ticketTypeName || t.seatType || "Ticket";
+        return {
+          id: t.id,
+          ticketTypeId: t.ticketTypeId ?? "",
+          ticketTypeName: name,
+          price: Number(t.price),
+          color:
+            (t.ticketTypeId ? colourByTypeId.get(t.ticketTypeId) : undefined) ??
+            colourByName.get(name) ??
+            null,
+        };
+      });
+
+      const checkoutStateData: CheckoutState = {
+        eventId: id,
+        eventName: event?.name ?? "",
+        eventDate: event?.date ?? "",
+        orderNumber,
+        accessToken,
+        tickets,
+        attendees: [],
+      };
+      saveCheckoutState(checkoutStateData);
+
       sessionStorage.setItem("navigating_to_checkout", "true");
-      // Full navigation so checkout loads order params cleanly (mobile-safe)
+      // Full navigation so the next step loads order params cleanly (mobile-safe)
       window.location.replace(
-        `/checkout?event=${encodeURIComponent(id)}&order=${encodeURIComponent(data.data.orderNumber)}&token=${encodeURIComponent(data.data.accessToken)}`,
+        `/checkout/attendee-info?event=${encodeURIComponent(id)}&order=${encodeURIComponent(orderNumber)}&token=${encodeURIComponent(accessToken)}`,
       );
     } catch (err: unknown) {
       console.error("[CHECKOUT] error:", err);
@@ -603,9 +823,184 @@ export default function TicketClassPage({
           ? err.message
           : "Failed to proceed to checkout. Please try again.",
       );
+      // The order can be refused because stock ran out while this page sat
+      // open. Without re-reading it the cards keep offering the type and the
+      // same click keeps failing, with nothing on screen explaining why.
+      void refreshAvailability();
       setIsCheckingOut(false);
     }
   };
+
+  // Sales closed: render the notice before anything interactive exists, and
+  // before the loading state, so there is no flash of a purchasable page.
+  // Called unconditionally, above every early return, so the hook order is the
+  // same whether sales are open or closed.
+  const countdown = useCountdown(SALE_OPENS_AT);
+
+  if (!TICKET_SALES_OPEN) {
+    const openDateLabel = SALE_OPENS_AT.toLocaleString("en-GB", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+
+    return (
+      <div className="min-h-screen bg-[#06060a] flex flex-col items-center justify-center px-4 py-24 overflow-hidden">
+        {/* ── Ambient background glows ── */}
+        <div aria-hidden className="fixed inset-0 pointer-events-none overflow-hidden">
+          <div
+            className="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[500px] rounded-full opacity-30"
+            style={{
+              background:
+                "radial-gradient(ellipse at center, rgba(230,43,30,0.45) 0%, transparent 70%)",
+              filter: "blur(80px)",
+            }}
+          />
+          <div
+            className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full opacity-20"
+            style={{
+              background:
+                "radial-gradient(ellipse at center, rgba(230,43,30,0.35) 0%, transparent 70%)",
+              filter: "blur(100px)",
+            }}
+          />
+          {/* subtle grid */}
+          <div
+            className="absolute inset-0 opacity-[0.025]"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)",
+              backgroundSize: "60px 60px",
+            }}
+          />
+        </div>
+
+        <div className="relative w-full max-w-2xl flex flex-col items-center text-center gap-8">
+          {/* ── TEDx badge ── */}
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#e62b1e]/30 bg-[#e62b1e]/10">
+            <span className="w-2 h-2 rounded-full bg-[#e62b1e] animate-pulse" />
+            <span className="text-[#e62b1e] text-xs font-bold uppercase tracking-[0.25em]">
+              TEDx · Coming Soon
+            </span>
+          </div>
+
+          {/* ── Icon ── */}
+          <div className="relative">
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: "rgba(230,43,30,0.35)",
+                filter: "blur(28px)",
+                transform: "scale(1.4)",
+              }}
+            />
+            <div
+              className="relative w-24 h-24 rounded-full flex items-center justify-center"
+              style={{
+                background:
+                  "linear-gradient(135deg, #e62b1e 0%, #a3140c 100%)",
+                boxShadow:
+                  "0 8px 40px -8px rgba(230,43,30,0.6), inset 0 1px 0 rgba(255,255,255,0.15)",
+              }}
+            >
+              <CalendarClock className="w-12 h-12 text-white drop-shadow-lg" />
+            </div>
+          </div>
+
+          {/* ── Headline ── */}
+          <div className="space-y-3">
+            <h1
+              className="text-4xl sm:text-5xl md:text-6xl font-black text-white tracking-tight leading-[1.05]"
+              style={{ textShadow: "0 2px 20px rgba(230,43,30,0.3)" }}
+            >
+              Ticket Sales
+              <br />
+              <span
+                className="text-transparent bg-clip-text"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(90deg, #e62b1e 0%, #ff5a4d 50%, #e62b1e 100%)",
+                }}
+              >
+                Opening Soon
+              </span>
+            </h1>
+            <p className="text-gray-400 text-sm sm:text-base leading-relaxed max-w-md mx-auto">
+              Get ready — tickets for{" "}
+              <span className="text-white font-semibold">TEDx FPT University HCMC</span>{" "}
+              go on sale on{" "}
+              <span className="text-[#ff6b5e] font-semibold">{openDateLabel}</span>.
+            </p>
+          </div>
+
+          {/* ── Countdown ──
+              Zeros until the clock starts on the client, so the markup the
+              server sent and the first client render agree. */}
+          {countdown?.expired ? (
+            <div className="flex items-center gap-3 px-6 py-4 rounded-2xl border border-green-500/30 bg-green-500/10">
+              <Zap className="w-5 h-5 text-green-400 shrink-0" />
+              <p className="text-green-300 font-semibold text-sm">
+                Sales have opened! Please refresh the page.
+              </p>
+            </div>
+          ) : (
+            <div className="w-full">
+              {/* unit row */}
+              <div className="flex items-start justify-center gap-3 sm:gap-5 md:gap-6">
+                <CountdownUnit value={countdown?.days ?? 0} label="Days" />
+                <div className="text-[#e62b1e] text-3xl sm:text-4xl font-black mt-4 sm:mt-5 select-none" style={{ textShadow: "0 0 16px rgba(230,43,30,0.6)" }}>
+                  :
+                </div>
+                <CountdownUnit value={countdown?.hours ?? 0} label="Hours" />
+                <div className="text-[#e62b1e] text-3xl sm:text-4xl font-black mt-4 sm:mt-5 select-none" style={{ textShadow: "0 0 16px rgba(230,43,30,0.6)" }}>
+                  :
+                </div>
+                <CountdownUnit value={countdown?.minutes ?? 0} label="Minutes" />
+                <div className="text-[#e62b1e] text-3xl sm:text-4xl font-black mt-4 sm:mt-5 select-none" style={{ textShadow: "0 0 16px rgba(230,43,30,0.6)" }}>
+                  :
+                </div>
+                <CountdownUnit value={countdown?.seconds ?? 0} label="Seconds" />
+              </div>
+            </div>
+          )}
+
+          {/* ── Info card ── */}
+          <div
+            className="w-full p-5 rounded-2xl text-left"
+            style={{
+              background: "rgba(255,255,255,0.025)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="w-5 h-5 text-[#e62b1e] shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-white mb-1">
+                  Stay in the loop
+                </p>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  Follow our fanpage for the latest announcements. Once the sale
+                  opens, this page will automatically become available — no refresh
+                  needed.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── CTA ── */}
+          <Link href="/">
+            <Button>Return to Homepage</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -812,21 +1207,6 @@ export default function TicketClassPage({
                             </li>
                           ))}
                         </ul>
-                      )}
-                      {avail && !isSoldOut && (
-                        <p
-                          className={`text-[11px] font-medium mb-3 ${
-                            avail.available > 10
-                              ? "text-emerald-400/70"
-                              : avail.available > 3
-                                ? "text-amber-400/75"
-                                : "text-red-400/80"
-                          }`}
-                        >
-                          {avail.available <= 5
-                            ? `Only ${avail.available} left`
-                            : `${avail.available} available`}
-                        </p>
                       )}
                       <div className="mt-auto flex items-center justify-center">
                         <div className="inline-flex items-center rounded-xl border border-white/[0.1] bg-white/[0.03] overflow-hidden">
@@ -1349,12 +1729,12 @@ function CartPanel({
                     <span className="text-gray-400">
                       {formatPrice(Number(item.price))}
                     </span>
-                    <span className="mx-2 text-gray-700">·</span>
-                    <span>
-                      {item.available > 0
-                        ? `${item.available} available`
-                        : "Sold out"}
-                    </span>
+                    {item.available <= 0 && (
+                      <>
+                        <span className="mx-2 text-gray-700">·</span>
+                        <span>Sold out</span>
+                      </>
+                    )}
                   </p>
                 </div>
                 <div className="text-right shrink-0">

@@ -10,6 +10,7 @@ import { Order, Seat } from '../types/index.js'
 import { redis } from '../db/redis.js'
 import * as promotionsService from './promotions.service.js'
 import { sendOrderNotificationToDevs } from './email.service.js'
+import { getTicketTypeUsage, remainingUnderCap } from './ticket-quota.service.js'
 
 interface CreatePendingOrderParams {
   eventId: string
@@ -398,6 +399,8 @@ interface ConfirmPaymentParams {
   customerName: string
   customerEmail: string
   customerPhone: string
+  /** One attendee per ticket, in the order the tickets were created. */
+  attendees?: Array<{orderItemId?: string; name: string; email: string; phone: string}>
 }
 
 // Cancel pending order (user clicks "Chọn ghế khác")
@@ -498,7 +501,7 @@ export async function cancelPendingOrder(
 export async function confirmPayment(
   params: ConfirmPaymentParams
 ): Promise<{orderNumber: string; status: string}> {
-  const {orderNumber, accessToken, customerName, customerEmail, customerPhone} = params
+  const {orderNumber, accessToken, customerName, customerEmail, customerPhone, attendees} = params
 
   // Get order with expiration check
   const order = await queryOne<{
@@ -558,6 +561,27 @@ export async function confirmPayment(
      WHERE order_number = ?`,
     [customerName, customerEmail, customerPhone, orderNumber]
   )
+
+  // Attach each attendee to a specific ticket. Attendees are matched by
+  // order_item id when supplied, otherwise positionally against the order's
+  // items in creation order.
+  if (attendees && attendees.length > 0) {
+    const orderItems = await query<{id: string}>(
+      'SELECT id FROM order_items WHERE order_id = ? ORDER BY created_at ASC, id ASC',
+      [order.id]
+    )
+
+    for (const [index, attendee] of attendees.entries()) {
+      const targetId = attendee.orderItemId ?? orderItems[index]?.id
+      if (!targetId) continue
+      await execute(
+        `UPDATE order_items
+         SET attendee_name = ?, attendee_email = ?, attendee_phone = ?
+         WHERE id = ? AND order_id = ?`,
+        [attendee.name, attendee.email, attendee.phone, targetId, order.id]
+      )
+    }
+  }
 
   // Mark seats as RESERVED
   await execute(
@@ -849,6 +873,9 @@ export async function createPendingOrderByTicketType(
     let rawTotalAmount = 0
     const summaryParts: string[] = []
 
+    // One snapshot for the whole cart, taken inside the per-session lock.
+    const usageByType = await getTicketTypeUsage(eventId)
+
     for (const [ticketTypeId, quantity] of qtyByType) {
       const ticketType = await queryOne<{
         id: string
@@ -912,6 +939,20 @@ export async function createPendingOrderByTicketType(
         if (e instanceof BadRequestError) throw e
         // inventory probe failed — continue with physical seat pick
         console.warn('[CREATE PENDING BY TYPE] inventory probe skipped:', e)
+      }
+
+      // The seat probe above only limits by seat stock. A ticket-class order
+      // takes a ticket without necessarily taking a seat, so the type's own
+      // max_quantity has to be checked too — otherwise a type keeps selling
+      // past its cap while seats remain. Checked inside the per-session lock,
+      // so the ticket page's view cannot be raced far.
+      const capLeft = remainingUnderCap(ticketType.max_quantity, usageByType.get(ticketTypeId))
+      if (capLeft != null && quantity > capLeft) {
+        throw new BadRequestError(
+          capLeft === 0
+            ? `Vé loại "${ticketType.name}" đã bán hết.`
+            : `Không đủ vé loại "${ticketType.name}" còn trống (còn ${capLeft}).`
+        )
       }
 
       const seatTypeAliases = seatTypeAliasesForTicketType({

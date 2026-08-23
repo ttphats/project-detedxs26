@@ -196,6 +196,14 @@ export async function sendEmailByPurpose(options: SendEmailByPurposeOptions): Pr
         index: u.index || i + 1,
       })),
     )
+  } else if (data.qrCodeUrl) {
+    // A template that renders {{ticketUnitsHtml}} in place of its own QR would
+    // otherwise show nothing for an order with no per-ticket codes.
+    const {buildFallbackQrHtml} = await import('../utils/ticket-email-html.js')
+    ticketUnitsHtml = buildFallbackQrHtml(
+      String(data.qrCodeUrl),
+      String(data.orderNumber || ''),
+    )
   }
 
   const enriched = {

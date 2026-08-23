@@ -80,11 +80,12 @@ export async function confirmPayment(
       customerName: string
       customerEmail: string
       customerPhone: string
+      attendees?: Array<{orderItemId?: string; name: string; email: string; phone: string}>
     }
   }>,
   reply: FastifyReply
 ) {
-  const {orderNumber, accessToken, customerName, customerEmail, customerPhone} = request.body
+  const {orderNumber, accessToken, customerName, customerEmail, customerPhone, attendees} = request.body
 
   if (!orderNumber || !accessToken || !customerName || !customerEmail || !customerPhone) {
     throw new BadRequestError('Missing required fields')
@@ -96,6 +97,7 @@ export async function confirmPayment(
     customerName,
     customerEmail,
     customerPhone,
+    attendees,
   })
 
   return reply.send(

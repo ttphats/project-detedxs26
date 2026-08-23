@@ -1,7 +1,11 @@
 import {prisma} from '../../db/prisma.js'
 import {randomBytes, createHash} from 'crypto'
 import {generateTicketQRCode, generateTicketUrl} from '../qrcode.service.js'
-import {sendEmailByPurpose} from '../email.service.js'
+import {
+  loadTicketUnitsForOrder,
+  sendTicketConfirmationEmails,
+  type ConfirmationTicketUnit,
+} from '../ticket-confirmation-email.service.js'
 import {createAuditLog} from '../audit.service.js'
 import {execute, query as rawQuery} from '../../db/mysql.js'
 import {redis} from '../../db/redis.js'
@@ -55,12 +59,12 @@ export async function listOrders(input: ListOrdersInput) {
   ])
 
   // Resolve ticket type names via seats.ticket_type_id (no Prisma relation on Seat)
-  const typeNameByOrderItemId = await loadTicketTypeNamesForOrders(
+  const metaByOrderItemId = await loadTicketMetaForOrders(
     orders.map((o: any) => o.id),
   )
 
   const mappedOrders = orders.map((order: any) =>
-    mapOrderForAdmin(order, typeNameByOrderItemId),
+    mapOrderForAdmin(order, metaByOrderItemId),
   )
 
   return {
@@ -78,29 +82,52 @@ export async function listOrders(input: ListOrdersInput) {
   }
 }
 
-async function loadTicketTypeNamesForOrders(
+export interface TicketMeta {
+  typeName: string | null
+  attendeeName: string | null
+  attendeeEmail: string | null
+  attendeePhone: string | null
+}
+
+/**
+ * Per-ticket metadata that Prisma cannot supply: the attendee columns are not
+ * in the Prisma model, and the ticket type is reached through the seat. Both
+ * come from one raw query keyed by order_item id.
+ */
+async function loadTicketMetaForOrders(
   orderIds: string[],
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
+): Promise<Map<string, TicketMeta>> {
+  const map = new Map<string, TicketMeta>()
   if (!orderIds.length) return map
   try {
     const placeholders = orderIds.map(() => '?').join(',')
     const rows = await rawQuery<{
       order_item_id: string
       type_name: string | null
+      attendee_name: string | null
+      attendee_email: string | null
+      attendee_phone: string | null
     }>(
-      `SELECT oi.id AS order_item_id, tt.name AS type_name
+      `SELECT oi.id AS order_item_id,
+              COALESCE(tt.name, tt2.name) AS type_name,
+              oi.attendee_name, oi.attendee_email, oi.attendee_phone
        FROM order_items oi
        LEFT JOIN seats s ON s.id = oi.seat_id
        LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+       LEFT JOIN ticket_types tt2 ON tt2.id = oi.ticket_type_id
        WHERE oi.order_id IN (${placeholders})`,
       orderIds,
     )
     for (const r of rows) {
-      if (r.type_name) map.set(r.order_item_id, r.type_name)
+      map.set(r.order_item_id, {
+        typeName: r.type_name,
+        attendeeName: r.attendee_name,
+        attendeeEmail: r.attendee_email,
+        attendeePhone: r.attendee_phone,
+      })
     }
   } catch (e) {
-    console.warn('[ADMIN ORDERS] loadTicketTypeNames failed:', e)
+    console.warn('[ADMIN ORDERS] loadTicketMeta failed:', e)
   }
   return map
 }
@@ -110,12 +137,13 @@ async function loadTicketTypeNamesForOrders(
  */
 function mapOrderForAdmin(
   order: any,
-  typeNameByOrderItemId: Map<string, string> = new Map(),
+  metaByOrderItemId: Map<string, TicketMeta> = new Map(),
 ) {
   const items = order.orderItems || []
   const tickets = items.map((item: any, index: number) => {
+    const meta = metaByOrderItemId.get(item.id)
     const typeName =
-      typeNameByOrderItemId.get(item.id) ||
+      meta?.typeName ||
       humanizeTypeName(item.seatType || item.seat?.seatType)
     return {
       id: item.id,
@@ -127,6 +155,9 @@ function mapOrderForAdmin(
       price: Number(item.price),
       checkedInAt: item.checkedInAt || null,
       checkedIn: !!item.checkedInAt,
+      attendeeName: meta?.attendeeName || null,
+      attendeeEmail: meta?.attendeeEmail || null,
+      attendeePhone: meta?.attendeePhone || null,
     }
   })
 
@@ -191,7 +222,7 @@ export async function getOrderById(id: string) {
   })
 
   if (!order) return null
-  const typeNames = await loadTicketTypeNamesForOrders([id])
+  const typeNames = await loadTicketMetaForOrders([id])
   return mapOrderForAdmin(order, typeNames)
 }
 
@@ -487,66 +518,16 @@ export async function resendTicketEmail(
   const ticketUrl = generateTicketUrl(order.orderNumber, accessToken)
 
   // Ensure per-ticket units exist before email
-  let ticketUnits: Array<{
-    ticketCode: string
-    qrCodeUrl: string
-    typeName: string
-    seatNumber?: string
-    price: number
-    index: number
-  }> = []
-  const {buildTicketLines, formatTicketLinesSummary, humanizeSeatType} = await import(
+  let ticketUnits: ConfirmationTicketUnit[] = []
+  const {buildTicketLines, formatTicketLinesSummary} = await import(
     '../../utils/ticket-lines.js'
   )
   try {
-    const {ensureTicketUnitsForOrder} = await import('../../utils/ticket-unit.js')
-    const {query} = await import('../../db/mysql.js')
-    await ensureTicketUnitsForOrder(orderId)
-    const rows = await query<{
-      ticket_code: string
-      qr_code_url: string
-      seat_number: string
-      seat_type: string
-      price: number
-      ticket_type_name: string | null
-    }>(
-      `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
-              tt.name AS ticket_type_name
-       FROM order_items oi
-       LEFT JOIN seats s ON s.id = oi.seat_id
-       LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
-       WHERE oi.order_id = ?
-       ORDER BY oi.created_at ASC`,
-      [orderId],
-    )
-    ticketUnits = rows
-      .filter((r) => r.ticket_code && r.qr_code_url)
-      .map((r, i) => ({
-        ticketCode: r.ticket_code,
-        qrCodeUrl: r.qr_code_url,
-        typeName:
-          (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
-          humanizeSeatType(r.seat_type),
-        seatNumber: r.seat_number,
-        price: Number(r.price),
-        index: i + 1,
-      }))
+    ticketUnits = await loadTicketUnitsForOrder(orderId)
   } catch (e) {
     console.error('[RESEND EMAIL] ticket units:', e)
   }
 
-  // Format date
-  const eventDate = new Date(order.event.eventDate)
-  const formattedDate = eventDate.toLocaleDateString('vi-VN', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-  const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
   const ticketLines = buildTicketLines(
     order.orderItems.map((item: any) => ({
       seatNumber: item.seat?.seatNumber || item.seatNumber,
@@ -566,50 +547,44 @@ export async function resendTicketEmail(
           )
           .join(', ')
 
-  const totalFormatted = new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(Number(order.totalAmount) || 0)
-  const pdfUrl = ticketUrl
-    .replace('/ticket/', '/api/ticket/')
-    .replace('?token=', '/pdf?token=')
-
-  // Send email with allowDuplicate — MUST use admin template
-  const emailResult = await sendEmailByPurpose({
-    purpose: 'TICKET_CONFIRMED',
-    to: order.customerEmail,
-    orderId: order.id,
-    triggeredBy: adminUser.userId,
-    allowDuplicate: true,
-    templateId: options?.templateId,
-    data: {
-      customerName: order.customerName,
-      eventName: order.event.name,
-      eventDate: formattedDate,
-      eventTime: formattedTime,
-      eventVenue: order.event.venue,
-      eventAddress: order.event.venue,
+  // Resend goes to every ticket holder, not just the buyer — a resend is
+  // usually triggered precisely because one holder did not get their ticket.
+  // MUST use the admin-selected template.
+  const sendResult = await sendTicketConfirmationEmails({
+    order: {
+      id: order.id,
       orderNumber: order.orderNumber,
-      seats: seatsList,
-      ticketLines,
-      ticketUnits,
-      ticketCount: ticketUnits.length || order.orderItems.length,
-      totalAmount: totalFormatted,
-      qrCodeUrl,
-      ticketUrl,
-      pdfUrl,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      totalAmount: Number(order.totalAmount) || 0,
     },
+    event: order.event,
+    accessToken,
+    ticketUnits,
+    seatsSummary: seatsList,
+    ticketLines,
+    orderItemCount: order.orderItems.length,
+    qrCodeUrl,
+    templateId: options?.templateId,
+    triggeredBy: adminUser.userId,
   })
 
   // Update email_sent_at
-  if (emailResult.success) {
+  if (sendResult.sent > 0) {
     await prisma.order.update({
       where: {id: orderId},
       data: {emailSentAt: new Date()},
     })
   }
 
-  return {order, emailResult}
+  // Keep the single-result shape the controller expects: the resend counts as
+  // successful when at least one holder was reached.
+  const emailResult = {
+    success: sendResult.sent > 0,
+    error: sendResult.error || undefined,
+  }
+
+  return {order, emailResult, sendResult, ticketUrl}
 }
 
 /**

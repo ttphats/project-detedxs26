@@ -2,6 +2,7 @@ import {query, queryOne} from '../db/mysql.js'
 import {NotFoundError} from '../utils/errors.js'
 import {Event} from '../types/index.js'
 import {allocateTicketInventory} from '../utils/ticket-seat-match.js'
+import {getTicketTypeUsage, remainingUnderCap} from './ticket-quota.service.js'
 
 function formatTime(date: Date): string {
   if (!date) return ''
@@ -389,6 +390,7 @@ export async function getTicketAvailability(eventId: string) {
     lockedByType,
   )
   const byId = new Map(allocated.map((a) => [a.ticketTypeId, a]))
+  const usageById = await getTicketTypeUsage(realEventId)
 
   return ticketTypes.map((tt) => {
     const a = byId.get(tt.id) || {
@@ -398,6 +400,11 @@ export async function getTicketAvailability(eventId: string) {
       locked: 0,
       available: 0,
     }
+    const usage = usageById.get(tt.id)
+    // Sold out once the type's cap is reached, even if seats remain — see
+    // getEventTickets for why the two limits are both needed.
+    const capLeft = remainingUnderCap(tt.max_quantity, usage)
+    const available = capLeft == null ? a.available : Math.min(a.available, capLeft)
     return {
       ticketTypeId: tt.id,
       name: tt.name,
@@ -409,7 +416,10 @@ export async function getTicketAvailability(eventId: string) {
       sold: a.sold,
       reserved: a.reserved,
       locked: a.locked,
-      available: a.available,
+      available,
+      purchased: usage?.paid ?? 0,
+      held: usage?.held ?? 0,
+      soldOut: available <= 0,
     }
   })
 }
@@ -518,6 +528,7 @@ export async function getEventTickets(eventIdOrSlug: string) {
     lockedByType,
   )
   const availById = new Map(allocated.map((a) => [a.ticketTypeId, a]))
+  const usageById = await getTicketTypeUsage(realEventId)
 
   const ticketTypes = ticketTypeRows.map((tt) => {
     const a = availById.get(tt.id) || {
@@ -528,6 +539,13 @@ export async function getEventTickets(eventIdOrSlug: string) {
       available: 0,
     }
     const maxQ = tt.max_quantity != null ? Number(tt.max_quantity) : null
+    const usage = usageById.get(tt.id)
+    // Seat stock and the type's own cap are separate limits, and a ticket-class
+    // order takes a ticket without always taking a seat. Whichever runs out
+    // first is what is actually left, so the type reads as sold out once its
+    // cap is reached even while seats remain.
+    const capLeft = remainingUnderCap(maxQ, usage)
+    const available = capLeft == null ? a.available : Math.min(a.available, capLeft)
 
     const imageUrl =
       typeof tt.image_url === 'string' && tt.image_url.trim() ? tt.image_url.trim() : null
@@ -561,7 +579,12 @@ export async function getEventTickets(eventIdOrSlug: string) {
         sold: a.sold,
         reserved: a.reserved,
         locked: a.locked,
-        available: a.available,
+        available,
+        /** Tickets on PAID orders for this type. */
+        purchased: usage?.paid ?? 0,
+        /** Awaiting admin confirmation or in an open checkout. */
+        held: usage?.held ?? 0,
+        soldOut: available <= 0,
       },
     }
   })

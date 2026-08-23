@@ -3,6 +3,11 @@ import * as ordersService from '../../services/admin/orders.service.js'
 import {generateTicketQRCode, generateTicketUrl} from '../../services/qrcode.service.js'
 import {sendEmailByPurpose} from '../../services/email.service.js'
 import {
+  loadTicketUnitsForOrder,
+  sendTicketConfirmationEmails,
+  type ConfirmationTicketUnit,
+} from '../../services/ticket-confirmation-email.service.js'
+import {
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
@@ -76,30 +81,12 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
 
     // Generate QR code
     const qrCodeUrl = await generateTicketQRCode(result.order.orderNumber, result.order.eventId)
+    // Buyer-facing link, returned to the admin UI. Holders get their own
+    // scoped links inside their emails.
     const ticketUrl = generateTicketUrl(result.order.orderNumber, result.accessToken)
 
-    // Format date
-    const eventDate = new Date(result.order.event.eventDate)
-    const formattedDate = eventDate.toLocaleDateString('vi-VN', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-    const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
     // Per-ticket units for multi-QR email
-    let ticketUnits: Array<{
-      ticketCode: string
-      qrCodeUrl: string
-      typeName: string
-      seatNumber?: string
-      price: number
-      index: number
-    }> = []
+    let ticketUnits: ConfirmationTicketUnit[] = []
     let seatsList = result.order.orderItems
       .map(
         (item: any) =>
@@ -107,41 +94,10 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       )
       .join(', ')
     try {
-      const {ensureTicketUnitsForOrder} = await import('../../utils/ticket-unit.js')
-      const {query} = await import('../../db/mysql.js')
-      const {humanizeSeatType, buildTicketLines, formatTicketLinesSummary} = await import(
+      const {buildTicketLines, formatTicketLinesSummary} = await import(
         '../../utils/ticket-lines.js'
       )
-      await ensureTicketUnitsForOrder(result.order.id)
-      const rows = await query<{
-        ticket_code: string
-        qr_code_url: string
-        seat_number: string
-        seat_type: string
-        price: number
-        ticket_type_name: string | null
-      }>(
-        `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
-                tt.name AS ticket_type_name
-         FROM order_items oi
-         LEFT JOIN seats s ON s.id = oi.seat_id
-         LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
-         WHERE oi.order_id = ?
-         ORDER BY oi.created_at ASC`,
-        [result.order.id],
-      )
-      ticketUnits = rows
-        .filter((r) => r.ticket_code && r.qr_code_url)
-        .map((r, i) => ({
-          ticketCode: r.ticket_code,
-          qrCodeUrl: r.qr_code_url,
-          typeName:
-            (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
-            humanizeSeatType(r.seat_type),
-          seatNumber: r.seat_number,
-          price: Number(r.price),
-          index: i + 1,
-        }))
+      ticketUnits = await loadTicketUnitsForOrder(result.order.id)
       seatsList = formatTicketLinesSummary(
         buildTicketLines(
           result.order.orderItems.map((item: any) => ({
@@ -157,51 +113,41 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       console.warn('[CONFIRM] ticket units for email:', e)
     }
 
-    // ALWAYS send confirmation email (with existing or new token)
+    // One confirmation email per ticket holder — see the shared service for
+    // how tickets are grouped by recipient and how each holder's link is
+    // scoped to their own tickets.
     let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
     let emailError: string | null = null
+    let emailsSent = 0
+    let emailsFailed = 0
+    let emailedAddresses: string[] = []
 
     try {
-      const totalFormatted = new Intl.NumberFormat('vi-VN', {
-        style: 'currency',
-        currency: 'VND',
-      }).format(Number(result.order.totalAmount) || 0)
-      const pdfUrl = ticketUrl
-        .replace('/ticket/', '/api/ticket/')
-        .replace('?token=', '/pdf?token=')
-
-      const emailResult = await sendEmailByPurpose({
-        purpose: 'TICKET_CONFIRMED',
-        to: result.order.customerEmail,
-        orderId: result.order.id,
-        triggeredBy: user.userId,
-        templateId, // admin-selected template from Email Templates
-        data: {
-          customerName: result.order.customerName,
-          eventName: result.order.event.name,
-          eventDate: formattedDate,
-          eventTime: formattedTime,
-          eventVenue: result.order.event.venue,
-          eventAddress: result.order.event.venue,
+      const sendResult = await sendTicketConfirmationEmails({
+        order: {
+          id: result.order.id,
           orderNumber: result.order.orderNumber,
-          seats: seatsList,
-          ticketUnits,
-          ticketCount: ticketUnits.length || result.order.orderItems.length,
-          totalAmount: totalFormatted,
-          qrCodeUrl,
-          ticketUrl,
-          pdfUrl,
+          customerName: result.order.customerName,
+          customerEmail: result.order.customerEmail,
+          totalAmount: Number(result.order.totalAmount) || 0,
         },
+        event: result.order.event,
+        accessToken: result.accessToken,
+        ticketUnits,
+        seatsSummary: seatsList,
+        orderItemCount: result.order.orderItems.length,
+        qrCodeUrl,
+        templateId, // admin-selected template from Email Templates
+        triggeredBy: user.userId,
       })
-      if (emailResult.success) {
-        emailStatus = 'SENT'
-        console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`)
-      } else {
-        emailError = emailResult.error || 'Unknown error'
-        console.error(
-          `❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`
-        )
-      }
+
+      emailsSent = sendResult.sent
+      emailsFailed = sendResult.failed
+      emailedAddresses = sendResult.recipients.filter((r) => r.success).map((r) => r.email)
+      emailError = sendResult.error
+      // Treat the send as successful when at least one holder was reached;
+      // any individual failure is still surfaced through emailError.
+      emailStatus = emailsSent > 0 ? 'SENT' : 'FAILED'
     } catch (err: any) {
       emailError = err?.message || 'Unknown error'
       console.error('Failed to send confirmation email:', err)
@@ -224,9 +170,12 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       console.error('[TELEGRAM] Failed to send order confirmed notification:', telegramErr)
     }
 
+    // One email goes to each ticket holder, so report how many landed.
     const message =
       emailStatus === 'SENT'
-        ? 'Xác nhận thanh toán thành công. Email đã gửi.'
+        ? emailsFailed > 0
+          ? `Xác nhận thanh toán thành công. Đã gửi ${emailsSent} email, ${emailsFailed} email thất bại.`
+          : `Xác nhận thanh toán thành công. Đã gửi ${emailsSent} email cho người tham dự.`
         : 'Xác nhận thanh toán thành công nhưng gửi email thất bại.'
 
     return reply.send({
@@ -238,7 +187,10 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         ticketUrl,
         emailStatus,
         emailError,
-        emailSentTo: result.order.customerEmail,
+        emailsSent,
+        emailsFailed,
+        // Every address reached, not just the buyer's — one email per holder.
+        emailSentTo: emailedAddresses,
       },
       message,
     })
@@ -347,15 +299,23 @@ export async function resendEmail(request: FastifyRequest, reply: FastifyReply) 
       throw new BadRequestError(`Failed to send email: ${result.emailResult.error}`)
     }
 
+    const {sent, failed, recipients} = result.sendResult
+
     return reply.send({
       success: true,
       data: {
         orderId: result.order.id,
         orderNumber: result.order.orderNumber,
-        emailSentTo: result.order.customerEmail,
-        emailId: result.emailResult.emailId,
+        // One email per ticket holder, so report every address reached rather
+        // than just the buyer's.
+        emailSentTo: recipients.filter((r) => r.success).map((r) => r.email),
+        emailsSent: sent,
+        emailsFailed: failed,
       },
-      message: 'Email đã gửi lại thành công. Link vé cũ sẽ không còn hiệu lực.',
+      message:
+        failed > 0
+          ? `Đã gửi lại ${sent} email, ${failed} email thất bại.`
+          : `Đã gửi lại ${sent} email cho người tham dự.`,
     })
   } catch (error: any) {
     if (error instanceof BadRequestError) throw error

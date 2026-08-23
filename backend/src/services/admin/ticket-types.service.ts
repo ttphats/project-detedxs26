@@ -1,6 +1,11 @@
 import { getPool } from '../../db/mysql.js';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { randomUUID } from 'crypto';
+import {
+  EMPTY_USAGE,
+  getTicketTypeUsage,
+  remainingUnderCap,
+} from '../ticket-quota.service.js';
 
 interface TicketType extends RowDataPacket {
   id: string;
@@ -79,7 +84,26 @@ export async function listTicketTypes(eventId?: string) {
 
   sql += ' ORDER BY tt.sort_order, tt.name';
 
-  const [ticketTypes] = await pool.query<TicketType[]>(sql, params);
+  const [rows] = await pool.query<TicketType[]>(sql, params);
+
+  // `ticket_types.sold_quantity` is a leftover counter that nothing in the
+  // application ever writes, so reading it reported every type as 0 sold.
+  // Count the real order items instead, through the same helper the ticket
+  // page and the order-creation check use — if these disagreed, a type could
+  // look available to a buyer while the admin saw it as full.
+  const usage = await getTicketTypeUsage(eventId);
+
+  const ticketTypes = rows.map((row: any) => {
+    const used = usage.get(row.id) ?? EMPTY_USAGE;
+    return {
+      ...row,
+      sold_quantity: used.paid,
+      pending_quantity: used.held,
+      /** Null when the type has no cap. */
+      remaining_quantity: remainingUnderCap(row.max_quantity, used),
+    };
+  });
+
   // Get events - PUBLISHED first
   const [events] = await pool.query<Event[]>('SELECT id, name, status FROM events ORDER BY status ASC, created_at DESC');
 
