@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AdminLayout } from "@/components/admin";
 
 // Helper function to format date from database (stored as Vietnam time but parsed as UTC)
@@ -100,6 +101,9 @@ interface Order {
     price: number;
     checkedIn: boolean;
     checkedInAt: string | null;
+    attendeeName: string | null;
+    attendeeEmail: string | null;
+    attendeePhone: string | null;
   }>;
   ticketLines?: Array<{
     name: string;
@@ -156,7 +160,10 @@ const statusLabels: Record<string, string> = {
   FAILED: "Thất bại",
 };
 
+type OrderTicket = NonNullable<Order["tickets"]>[number];
+
 export default function OrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(
@@ -211,10 +218,24 @@ export default function OrdersPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (data.success) {
-        setOrders(data.data.orders);
-        setSummary(data.data.summary);
+
+      // A failed request used to fall through silently, leaving an empty table
+      // that looked exactly like "there are no orders". Say what went wrong.
+      if (!res.ok || !data.success) {
+        if (res.status === 401) {
+          message.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+          localStorage.removeItem("token");
+          router.push("/admin/login");
+          return;
+        }
+        message.error(
+          data?.error || "Không thể tải danh sách đơn hàng",
+        );
+        return;
       }
+
+      setOrders(data.data.orders);
+      setSummary(data.data.summary);
     } catch (error) {
       message.error("Không thể tải danh sách đơn hàng");
     } finally {
@@ -1198,6 +1219,21 @@ export default function OrdersPage() {
                       dataIndex: "typeName",
                       key: "typeName",
                       render: (name: string) => <Tag>{name}</Tag>,
+                    },
+                    {
+                      title: "Người tham dự",
+                      key: "attendee",
+                      render: (_: unknown, t: OrderTicket) =>
+                        t.attendeeName ? (
+                          <div className="leading-tight">
+                            <div className="text-sm font-medium">{t.attendeeName}</div>
+                            <div className="text-xs text-gray-500">
+                              {[t.attendeeEmail, t.attendeePhone].filter(Boolean).join(" · ")}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">(chưa có)</span>
+                        ),
                     },
                     {
                       title: "Mã TKT",

@@ -3,8 +3,13 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { StepIndicator, ConfirmDialog } from "@/components";
 import { toast } from "sonner";
 import { formatVNDate } from "@/lib/date-utils";
+import {
+  loadCheckoutState,
+  type AttendeeInfo,
+} from "@/lib/checkout-store";
 import {
   ArrowLeft,
   Copy,
@@ -66,6 +71,8 @@ function CheckoutContent() {
   const accessToken = searchParams.get("token"); // Access token from create-pending
 
   const [formData, setFormData] = useState({ name: "", email: "", phone: "" });
+  const [attendees, setAttendees] = useState<AttendeeInfo[]>([]);
+  const [showPayConfirm, setShowPayConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(COUNTDOWN_DURATION);
@@ -165,6 +172,20 @@ function CheckoutContent() {
 
         setOrderData(data.data);
         setOrderCode(data.data.orderNumber);
+
+        // Attendee details were collected on the previous step. Pull them in
+        // so they can be confirmed here and sent with the payment, and use
+        // the first attendee as the default billing contact.
+        const checkoutState = loadCheckoutState();
+        if (checkoutState?.attendees?.length) {
+          setAttendees(checkoutState.attendees);
+          const first = checkoutState.attendees[0];
+          setFormData((prev) =>
+            prev.name || prev.email || prev.phone
+              ? prev
+              : { name: first.name, email: first.email, phone: first.phone },
+          );
+        }
         setTimeLeft(
           typeof data.data.timeRemaining === "number"
             ? data.data.timeRemaining
@@ -370,7 +391,12 @@ function CheckoutContent() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleConfirmPayment = async () => {
+  /**
+   * Button handler: validate first, then ask for confirmation. Submitting a
+   * payment claim is not reversible from the buyer's side, so they get a
+   * chance to re-check their details before it goes to the organisers.
+   */
+  const handleConfirmPayment = () => {
     if (!formData.name || !formData.email || !formData.phone) {
       toast.error("Please fill in all required fields");
       return;
@@ -382,6 +408,12 @@ function CheckoutContent() {
       );
       return;
     }
+
+    setShowPayConfirm(true);
+  };
+
+  const submitPayment = async () => {
+    if (!orderNumber || !accessToken) return;
 
     setIsProcessing(true);
     setOrderError(null);
@@ -401,6 +433,14 @@ function CheckoutContent() {
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
+          attendees: attendees.length
+            ? attendees.map((a) => ({
+                orderItemId: a.orderItemId,
+                name: a.name,
+                email: a.email,
+                phone: a.phone,
+              }))
+            : undefined,
         }),
       });
 
@@ -427,6 +467,8 @@ function CheckoutContent() {
           : "An error occurred while confirming the payment",
       );
       setIsProcessing(false);
+      // Drop back to the page so the error is visible and they can retry.
+      setShowPayConfirm(false);
     }
   };
 
@@ -572,20 +614,72 @@ function CheckoutContent() {
         {/* Header */}
         <div className="mb-6 sm:mb-8 animate-fade-in-down">
           <Link
-            href={`/events/${eventId}/tickets`}
+            href={`/checkout/attendee-info?event=${encodeURIComponent(eventId || "")}&order=${encodeURIComponent(orderNumber || "")}&token=${encodeURIComponent(accessToken || "")}`}
             className="inline-flex items-center gap-2 text-gray-400 hover:text-red-500 transition-colors group"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Back to ticket selection
+            Back to ticket details
           </Link>
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white mt-4">
             Payment
           </h1>
         </div>
 
+        <StepIndicator currentStep={3} />
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left: Customer Info & Bank Transfer */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Ticket holders, captured on the previous step. Shown read-only
+                here so the buyer can check each ticket before paying. */}
+            {attendees.length > 0 && (
+              <div className="glass-panel rounded-2xl p-6 animate-fade-in relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 rounded-full blur-2xl" />
+                <div className="flex items-center justify-between gap-4 mb-5">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                    <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
+                      <Ticket className="w-5 h-5 text-red-500" />
+                    </div>
+                    Ticket Holders
+                  </h2>
+                  <Link
+                    href={`/checkout/attendee-info?event=${encodeURIComponent(eventId || "")}&order=${encodeURIComponent(orderNumber || "")}&token=${encodeURIComponent(accessToken || "")}`}
+                    className="text-xs font-semibold text-red-400 hover:text-red-300 transition-colors shrink-0"
+                  >
+                    Edit
+                  </Link>
+                </div>
+
+                <div className="space-y-3">
+                  {attendees.map((attendee, idx) => (
+                    <div
+                      key={attendee.orderItemId || idx}
+                      className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                          Ticket {idx + 1}
+                        </span>
+                        {attendee.ticketTypeName && (
+                          <span className="text-[11px] font-semibold text-red-400">
+                            {attendee.ticketTypeName}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-white">
+                        {attendee.name}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5 break-all">
+                        {attendee.email}
+                        <span className="mx-2 text-gray-700">·</span>
+                        {attendee.phone}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Customer Info */}
             <div className="glass-panel rounded-2xl p-6 animate-fade-in relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 rounded-full blur-2xl" />
@@ -594,7 +688,7 @@ function CheckoutContent() {
                 <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
                   <CreditCard className="w-5 h-5 text-red-500" />
                 </div>
-                Customer Information
+                Representative Customer
               </h2>
 
               <div className="space-y-4 relative">
@@ -935,6 +1029,74 @@ function CheckoutContent() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showPayConfirm}
+        busy={isProcessing}
+        title="Confirm your details"
+        message={
+          <>
+            <p className="mb-4">
+              Please check these details are correct. Each ticket is emailed to
+              its own holder, so a wrong address means that person won&apos;t
+              receive their ticket.
+            </p>
+
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">
+              Representative customer
+            </p>
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-sm font-semibold text-white">
+                {formData.name}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5 break-all">
+                {formData.email}
+                <span className="mx-2 text-gray-700">·</span>
+                {formData.phone}
+              </p>
+            </div>
+
+            {attendees.length > 0 && (
+              <>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mt-4 mb-2">
+                  Ticket holders ({attendees.length})
+                </p>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
+                  {attendees.map((a, idx) => (
+                    <div
+                      key={a.orderItemId || idx}
+                      className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                          Ticket {idx + 1}
+                        </span>
+                        {a.ticketTypeName && (
+                          <span className="text-[11px] font-semibold text-[#ff6b5e]">
+                            {a.ticketTypeName}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-white">
+                        {a.name}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5 break-all">
+                        {a.email}
+                        <span className="mx-2 text-gray-700">·</span>
+                        {a.phone}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        }
+        confirmLabel="Yes, I have paid"
+        cancelLabel="Let me check again"
+        onConfirm={submitPayment}
+        onCancel={() => setShowPayConfirm(false)}
+      />
     </div>
   );
 }

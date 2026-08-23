@@ -99,6 +99,8 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       seatNumber?: string
       price: number
       index: number
+      attendeeName: string | null
+      attendeeEmail: string | null
     }> = []
     let seatsList = result.order.orderItems
       .map(
@@ -120,12 +122,16 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         seat_type: string
         price: number
         ticket_type_name: string | null
+        attendee_name: string | null
+        attendee_email: string | null
       }>(
         `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
-                tt.name AS ticket_type_name
+                COALESCE(tt.name, tt2.name) AS ticket_type_name,
+                oi.attendee_name, oi.attendee_email
          FROM order_items oi
          LEFT JOIN seats s ON s.id = oi.seat_id
          LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+         LEFT JOIN ticket_types tt2 ON tt2.id = oi.ticket_type_id
          WHERE oi.order_id = ?
          ORDER BY oi.created_at ASC`,
         [result.order.id],
@@ -141,6 +147,8 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
           seatNumber: r.seat_number,
           price: Number(r.price),
           index: i + 1,
+          attendeeName: r.attendee_name,
+          attendeeEmail: r.attendee_email,
         }))
       seatsList = formatTicketLinesSummary(
         buildTicketLines(
@@ -157,9 +165,18 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       console.warn('[CONFIRM] ticket units for email:', e)
     }
 
-    // ALWAYS send confirmation email (with existing or new token)
+    // Send one confirmation email per ticket holder.
+    //
+    // Each ticket carries its own attendee, so the holder — not the person who
+    // paid — is who needs the QR. Tickets are grouped by recipient address, so
+    // someone holding several tickets gets one email containing all of theirs.
+    // Tickets with no attendee email (older orders, or a holder left blank)
+    // fall back to the buyer, which also preserves the previous behaviour for
+    // orders placed before attendee details were collected.
     let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
     let emailError: string | null = null
+    let emailsSent = 0
+    let emailsFailed = 0
 
     try {
       const totalFormatted = new Intl.NumberFormat('vi-VN', {
@@ -170,38 +187,89 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         .replace('/ticket/', '/api/ticket/')
         .replace('?token=', '/pdf?token=')
 
-      const emailResult = await sendEmailByPurpose({
-        purpose: 'TICKET_CONFIRMED',
-        to: result.order.customerEmail,
-        orderId: result.order.id,
-        triggeredBy: user.userId,
-        templateId, // admin-selected template from Email Templates
-        data: {
-          customerName: result.order.customerName,
-          eventName: result.order.event.name,
-          eventDate: formattedDate,
-          eventTime: formattedTime,
-          eventVenue: result.order.event.venue,
-          eventAddress: result.order.event.venue,
-          orderNumber: result.order.orderNumber,
-          seats: seatsList,
-          ticketUnits,
-          ticketCount: ticketUnits.length || result.order.orderItems.length,
-          totalAmount: totalFormatted,
-          qrCodeUrl,
-          ticketUrl,
-          pdfUrl,
-        },
-      })
-      if (emailResult.success) {
-        emailStatus = 'SENT'
-        console.log(`📧 Confirmation email sent to ${result.order.customerEmail}`)
-      } else {
-        emailError = emailResult.error || 'Unknown error'
-        console.error(
-          `❌ Confirmation email failed for ${result.order.customerEmail}: ${emailError}`
-        )
+      const buyerEmail = result.order.customerEmail
+      const buyerName = result.order.customerName
+
+      type Recipient = {
+        email: string
+        name: string
+        units: typeof ticketUnits
       }
+      const byRecipient = new Map<string, Recipient>()
+
+      for (const unit of ticketUnits) {
+        const email = (unit.attendeeEmail || '').trim() || buyerEmail
+        const key = email.toLowerCase()
+        const existing = byRecipient.get(key)
+        if (existing) {
+          existing.units.push(unit)
+        } else {
+          byRecipient.set(key, {
+            email,
+            name: (unit.attendeeName || '').trim() || buyerName,
+            units: [unit],
+          })
+        }
+      }
+
+      // No per-ticket units resolved (e.g. legacy order): fall back to a single
+      // email to the buyer carrying the whole order, exactly as before.
+      const recipients: Recipient[] =
+        byRecipient.size > 0
+          ? Array.from(byRecipient.values())
+          : [{email: buyerEmail, name: buyerName, units: []}]
+
+      for (const recipient of recipients) {
+        // Re-number the units so each holder's email reads "Ticket 1..n".
+        const units = recipient.units.map((u, i) => ({...u, index: i + 1}))
+        const isWholeOrder = units.length === 0 || units.length === ticketUnits.length
+
+        const emailResult = await sendEmailByPurpose({
+          purpose: 'TICKET_CONFIRMED',
+          to: recipient.email,
+          orderId: result.order.id,
+          triggeredBy: user.userId,
+          templateId, // admin-selected template from Email Templates
+          // Several recipients share this order and purpose; the 5-minute
+          // anti-spam guard would drop everyone after the first without this.
+          allowDuplicate: true,
+          data: {
+            customerName: recipient.name,
+            eventName: result.order.event.name,
+            eventDate: formattedDate,
+            eventTime: formattedTime,
+            eventVenue: result.order.event.venue,
+            eventAddress: result.order.event.venue,
+            orderNumber: result.order.orderNumber,
+            seats: isWholeOrder
+              ? seatsList
+              : units.map((u) => u.typeName).join(', '),
+            ticketUnits: units,
+            ticketCount: units.length || result.order.orderItems.length,
+            totalAmount: totalFormatted,
+            qrCodeUrl,
+            ticketUrl,
+            pdfUrl,
+          },
+        })
+
+        if (emailResult.success) {
+          emailsSent++
+          console.log(
+            `📧 Confirmation email sent to ${recipient.email} (${units.length || 'all'} ticket(s))`
+          )
+        } else {
+          emailsFailed++
+          emailError = emailResult.error || 'Unknown error'
+          console.error(
+            `❌ Confirmation email failed for ${recipient.email}: ${emailError}`
+          )
+        }
+      }
+
+      // Treat the send as successful when at least one holder was reached;
+      // any individual failure is still surfaced through emailError.
+      emailStatus = emailsSent > 0 ? 'SENT' : 'FAILED'
     } catch (err: any) {
       emailError = err?.message || 'Unknown error'
       console.error('Failed to send confirmation email:', err)
@@ -224,9 +292,12 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       console.error('[TELEGRAM] Failed to send order confirmed notification:', telegramErr)
     }
 
+    // One email goes to each ticket holder, so report how many landed.
     const message =
       emailStatus === 'SENT'
-        ? 'Xác nhận thanh toán thành công. Email đã gửi.'
+        ? emailsFailed > 0
+          ? `Xác nhận thanh toán thành công. Đã gửi ${emailsSent} email, ${emailsFailed} email thất bại.`
+          : `Xác nhận thanh toán thành công. Đã gửi ${emailsSent} email cho người tham dự.`
         : 'Xác nhận thanh toán thành công nhưng gửi email thất bại.'
 
     return reply.send({
@@ -238,6 +309,8 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         ticketUrl,
         emailStatus,
         emailError,
+        emailsSent,
+        emailsFailed,
         emailSentTo: result.order.customerEmail,
       },
       message,

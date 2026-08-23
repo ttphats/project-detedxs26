@@ -38,7 +38,11 @@ interface OrderItem extends RowDataPacket {
 
 // Rate limiting map (in production, use Redis)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const MAX_REQUESTS = 10;
+// The order-waiting screen polls this endpoint while a buyer waits for an
+// admin to confirm payment, so a legitimate single visitor makes roughly
+// 12 requests a minute. The old limit of 10 was below that and guaranteed
+// a 429 after about fifty seconds of waiting.
+const MAX_REQUESTS = 60;
 const WINDOW_MS = 60000; // 1 minute
 
 /**
@@ -164,11 +168,13 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
               oi.ticket_code AS ticket_code,
               oi.qr_code_url AS item_qr_code_url,
               oi.checked_in_at AS item_checked_in_at,
-              s.ticket_type_id AS ticket_type_id,
-              tt.name AS ticket_type_name
+              oi.attendee_name, oi.attendee_email, oi.attendee_phone,
+              COALESCE(s.ticket_type_id, oi.ticket_type_id) AS ticket_type_id,
+              COALESCE(tt.name, tt2.name) AS ticket_type_name
        FROM order_items oi
        LEFT JOIN seats s ON oi.seat_id = s.id
        LEFT JOIN ticket_types tt ON s.ticket_type_id = tt.id
+       LEFT JOIN ticket_types tt2 ON tt2.id = oi.ticket_type_id
        WHERE oi.order_id = ?
        ORDER BY oi.created_at ASC`,
       [order.id],
@@ -250,6 +256,9 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
       price: Number(seat.price),
       checkedIn: !!seat.item_checked_in_at,
       checkedInAt: seat.item_checked_in_at || null,
+      attendeeName: seat.attendee_name || null,
+      attendeeEmail: seat.attendee_email || null,
+      attendeePhone: seat.attendee_phone || null,
     };
   });
 

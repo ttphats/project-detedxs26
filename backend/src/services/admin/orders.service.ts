@@ -55,12 +55,12 @@ export async function listOrders(input: ListOrdersInput) {
   ])
 
   // Resolve ticket type names via seats.ticket_type_id (no Prisma relation on Seat)
-  const typeNameByOrderItemId = await loadTicketTypeNamesForOrders(
+  const metaByOrderItemId = await loadTicketMetaForOrders(
     orders.map((o: any) => o.id),
   )
 
   const mappedOrders = orders.map((order: any) =>
-    mapOrderForAdmin(order, typeNameByOrderItemId),
+    mapOrderForAdmin(order, metaByOrderItemId),
   )
 
   return {
@@ -78,29 +78,52 @@ export async function listOrders(input: ListOrdersInput) {
   }
 }
 
-async function loadTicketTypeNamesForOrders(
+export interface TicketMeta {
+  typeName: string | null
+  attendeeName: string | null
+  attendeeEmail: string | null
+  attendeePhone: string | null
+}
+
+/**
+ * Per-ticket metadata that Prisma cannot supply: the attendee columns are not
+ * in the Prisma model, and the ticket type is reached through the seat. Both
+ * come from one raw query keyed by order_item id.
+ */
+async function loadTicketMetaForOrders(
   orderIds: string[],
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
+): Promise<Map<string, TicketMeta>> {
+  const map = new Map<string, TicketMeta>()
   if (!orderIds.length) return map
   try {
     const placeholders = orderIds.map(() => '?').join(',')
     const rows = await rawQuery<{
       order_item_id: string
       type_name: string | null
+      attendee_name: string | null
+      attendee_email: string | null
+      attendee_phone: string | null
     }>(
-      `SELECT oi.id AS order_item_id, tt.name AS type_name
+      `SELECT oi.id AS order_item_id,
+              COALESCE(tt.name, tt2.name) AS type_name,
+              oi.attendee_name, oi.attendee_email, oi.attendee_phone
        FROM order_items oi
        LEFT JOIN seats s ON s.id = oi.seat_id
        LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+       LEFT JOIN ticket_types tt2 ON tt2.id = oi.ticket_type_id
        WHERE oi.order_id IN (${placeholders})`,
       orderIds,
     )
     for (const r of rows) {
-      if (r.type_name) map.set(r.order_item_id, r.type_name)
+      map.set(r.order_item_id, {
+        typeName: r.type_name,
+        attendeeName: r.attendee_name,
+        attendeeEmail: r.attendee_email,
+        attendeePhone: r.attendee_phone,
+      })
     }
   } catch (e) {
-    console.warn('[ADMIN ORDERS] loadTicketTypeNames failed:', e)
+    console.warn('[ADMIN ORDERS] loadTicketMeta failed:', e)
   }
   return map
 }
@@ -110,12 +133,13 @@ async function loadTicketTypeNamesForOrders(
  */
 function mapOrderForAdmin(
   order: any,
-  typeNameByOrderItemId: Map<string, string> = new Map(),
+  metaByOrderItemId: Map<string, TicketMeta> = new Map(),
 ) {
   const items = order.orderItems || []
   const tickets = items.map((item: any, index: number) => {
+    const meta = metaByOrderItemId.get(item.id)
     const typeName =
-      typeNameByOrderItemId.get(item.id) ||
+      meta?.typeName ||
       humanizeTypeName(item.seatType || item.seat?.seatType)
     return {
       id: item.id,
@@ -127,6 +151,9 @@ function mapOrderForAdmin(
       price: Number(item.price),
       checkedInAt: item.checkedInAt || null,
       checkedIn: !!item.checkedInAt,
+      attendeeName: meta?.attendeeName || null,
+      attendeeEmail: meta?.attendeeEmail || null,
+      attendeePhone: meta?.attendeePhone || null,
     }
   })
 
@@ -191,7 +218,7 @@ export async function getOrderById(id: string) {
   })
 
   if (!order) return null
-  const typeNames = await loadTicketTypeNamesForOrders([id])
+  const typeNames = await loadTicketMetaForOrders([id])
   return mapOrderForAdmin(order, typeNames)
 }
 

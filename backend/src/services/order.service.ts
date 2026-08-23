@@ -398,6 +398,8 @@ interface ConfirmPaymentParams {
   customerName: string
   customerEmail: string
   customerPhone: string
+  /** One attendee per ticket, in the order the tickets were created. */
+  attendees?: Array<{orderItemId?: string; name: string; email: string; phone: string}>
 }
 
 // Cancel pending order (user clicks "Chọn ghế khác")
@@ -498,7 +500,7 @@ export async function cancelPendingOrder(
 export async function confirmPayment(
   params: ConfirmPaymentParams
 ): Promise<{orderNumber: string; status: string}> {
-  const {orderNumber, accessToken, customerName, customerEmail, customerPhone} = params
+  const {orderNumber, accessToken, customerName, customerEmail, customerPhone, attendees} = params
 
   // Get order with expiration check
   const order = await queryOne<{
@@ -558,6 +560,27 @@ export async function confirmPayment(
      WHERE order_number = ?`,
     [customerName, customerEmail, customerPhone, orderNumber]
   )
+
+  // Attach each attendee to a specific ticket. Attendees are matched by
+  // order_item id when supplied, otherwise positionally against the order's
+  // items in creation order.
+  if (attendees && attendees.length > 0) {
+    const orderItems = await query<{id: string}>(
+      'SELECT id FROM order_items WHERE order_id = ? ORDER BY created_at ASC, id ASC',
+      [order.id]
+    )
+
+    for (const [index, attendee] of attendees.entries()) {
+      const targetId = attendee.orderItemId ?? orderItems[index]?.id
+      if (!targetId) continue
+      await execute(
+        `UPDATE order_items
+         SET attendee_name = ?, attendee_email = ?, attendee_phone = ?
+         WHERE id = ? AND order_id = ?`,
+        [attendee.name, attendee.email, attendee.phone, targetId, order.id]
+      )
+    }
+  }
 
   // Mark seats as RESERVED
   await execute(

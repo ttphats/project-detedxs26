@@ -1,29 +1,27 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { formatVNDate, formatVNTime } from "@/lib/date-utils";
 import {
-  Clock,
   CheckCircle,
   Loader2,
-  Download,
   Ticket,
-  Sparkles,
   QrCode,
   Users,
   Calendar,
   MapPin,
   AlertTriangle,
   Shield,
-  Copy,
   Link2,
   ExternalLink,
 } from "lucide-react";
 
 // Polling interval in milliseconds
 const POLL_INTERVAL = 5000;
+// Ceiling for the backoff applied when the server rate-limits our polling.
+const MAX_POLL_INTERVAL = 30000;
 
 interface TicketLine {
   ticketTypeId: string | null;
@@ -39,10 +37,13 @@ interface TicketUnit {
   ticketCode: string | null;
   qrCodeUrl: string | null;
   typeName: string;
-  seatNumber: string;
+  seatNumber: string | null;
   price: number;
   checkedIn: boolean;
   checkedInAt: string | null;
+  attendeeName: string | null;
+  attendeeEmail: string | null;
+  attendeePhone: string | null;
 }
 
 interface TicketData {
@@ -88,11 +89,11 @@ function OrderWaitingContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   // Fetch ticket status from backend
+  const pollDelayRef = useRef(POLL_INTERVAL);
+  const isFirstLoadRef = useRef(true);
+
   const fetchTicketStatus = useCallback(async () => {
     if (!orderNumber || !token) return;
 
@@ -100,28 +101,37 @@ function OrderWaitingContent() {
       const apiUrl =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const res = await fetch(`${apiUrl}/ticket/${orderNumber}?token=${token}`);
+
+      // A 429 only means we asked too often. The order is fine, so slow the
+      // polling down and try again instead of showing the buyer an error.
+      if (res.status === 429) {
+        pollDelayRef.current = Math.min(
+          pollDelayRef.current * 2,
+          MAX_POLL_INTERVAL,
+        );
+        return;
+      }
+
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
       }
       const data = await res.json();
 
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Failed to fetch ticket information.");
       }
 
+      pollDelayRef.current = POLL_INTERVAL;
       setTicket(data.data);
 
       // Check if payment has been confirmed
       if (data.data.status === "PAID") {
         setIsConfirmed(true);
-        setShowConfetti(true);
-        // Hide confetti after animation
-        setTimeout(() => setShowConfetti(false), 4000);
       }
     } catch (err) {
       console.error("[ORDER-WAITING] Fetch error:", err);
-      // Only set error on first load, not during polling
-      if (loading) {
+      // Only surface an error on the very first load, never mid-poll.
+      if (isFirstLoadRef.current) {
         setError(
           err instanceof Error
             ? err.message
@@ -129,9 +139,10 @@ function OrderWaitingContent() {
         );
       }
     } finally {
+      isFirstLoadRef.current = false;
       setLoading(false);
     }
-  }, [orderNumber, token, loading]);
+  }, [orderNumber, token]);
 
   // Initial fetch
   useEffect(() => {
@@ -142,11 +153,20 @@ function OrderWaitingContent() {
   useEffect(() => {
     if (isConfirmed || !orderNumber || !token) return;
 
-    const interval = setInterval(() => {
-      fetchTicketStatus();
-    }, POLL_INTERVAL);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
 
-    return () => clearInterval(interval);
+    const tick = async () => {
+      await fetchTicketStatus();
+      if (cancelled) return;
+      timer = setTimeout(tick, pollDelayRef.current);
+    };
+    timer = setTimeout(tick, pollDelayRef.current);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [isConfirmed, orderNumber, token, fetchTicketStatus]);
 
   // Format helpers
@@ -168,58 +188,6 @@ function OrderWaitingContent() {
       style: "currency",
       currency: "VND",
     }).format(amount);
-  };
-
-  const ticketUrl =
-    typeof window !== "undefined" && orderNumber && token
-      ? `${window.location.origin}/ticket/${orderNumber}?token=${token}`
-      : "";
-
-  // Permanent ticket link — access token is hash-verified and does NOT expire by time
-  const handleCopyLink = async () => {
-    if (!ticketUrl) return;
-    try {
-      await navigator.clipboard.writeText(ticketUrl);
-      setCopied(true);
-      toast.success("Ticket link copied — save it to reopen anytime");
-      setTimeout(() => setCopied(false), 2500);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-      toast.error("Could not copy link");
-    }
-  };
-
-  // Download ticket as PDF
-  const handleDownload = async () => {
-    if (!ticket) return;
-
-    setDownloading(true);
-    try {
-      const response = await fetch(
-        `/api/ticket/${orderNumber}/pdf?token=${token}`,
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to generate PDF");
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `ticket-${orderNumber}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast.success("Ticket downloaded successfully!");
-    } catch (err) {
-      console.error("Failed to download:", err);
-      toast.error("Failed to download ticket. Please try again.");
-    } finally {
-      setDownloading(false);
-    }
   };
 
   const isTicketClass =
@@ -310,432 +278,6 @@ function OrderWaitingContent() {
   }
 
   // ─── STATE 2: CONFIRMED (PAID) ─── E-Ticket View ───
-  if (isConfirmed) {
-    return (
-      <div className="min-h-screen bg-black">
-        {/* Confetti Effect */}
-        {showConfetti && (
-          <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-            {Array.from({ length: 40 }).map((_, i) => (
-              <div
-                key={i}
-                className="absolute animate-confetti"
-                style={{
-                  left: `${Math.random() * 100}%`,
-                  animationDelay: `${Math.random() * 2}s`,
-                  animationDuration: `${2 + Math.random() * 3}s`,
-                }}
-              >
-                <div
-                  className="w-2 h-3 rounded-sm"
-                  style={{
-                    backgroundColor: [
-                      "#ef4444",
-                      "#f59e0b",
-                      "#10b981",
-                      "#3b82f6",
-                      "#8b5cf6",
-                      "#ec4899",
-                    ][i % 6],
-                    transform: `rotate(${Math.random() * 360}deg)`,
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Animated Background */}
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-600/20 rounded-full blur-[120px] animate-pulse" />
-          <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-red-500/10 rounded-full blur-[100px]" />
-        </div>
-
-        <div className="relative max-w-lg mx-auto px-4 py-8 md:py-12">
-          {/* Success Header */}
-          <div className="text-center mb-8 animate-fade-in">
-            <div className="relative w-20 h-20 mx-auto mb-4">
-              <div className="absolute inset-0 bg-emerald-500/30 rounded-full blur-xl animate-pulse" />
-              <div className="relative w-20 h-20 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full flex items-center justify-center shadow-2xl shadow-emerald-500/40">
-                <CheckCircle className="w-10 h-10 text-white" />
-              </div>
-              <Sparkles className="absolute -top-2 -right-2 w-6 h-6 text-yellow-400 animate-pulse" />
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white mb-2">
-              Payment Confirmed!
-            </h1>
-            <p className="text-gray-400">
-              Your ticket is ready. Please download it below.
-            </p>
-          </div>
-
-          {/* Save ticket link — token does NOT expire by time */}
-          <div className="mb-6 p-4 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/15 to-orange-500/10 backdrop-blur-sm">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-                <Link2 className="w-5 h-5 text-amber-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-amber-300 mb-1">
-                  Save your ticket link
-                </h3>
-                <p className="text-sm text-amber-100/85 leading-relaxed mb-3">
-                  Copy and bookmark this URL to open your e-ticket anytime. The
-                  access token <strong>does not expire</strong> — only keep it
-                  private. A copy was also sent to your email.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <div className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-black/40 border border-white/10 font-mono text-[11px] text-gray-400 truncate">
-                    {ticketUrl}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#e62b1e] hover:bg-[#c41e12] text-white text-sm font-bold shrink-0 transition-colors"
-                  >
-                    {copied ? (
-                      <CheckCircle className="w-4 h-4" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                    {copied ? "Copied" : "Copy URL"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Ticket Card */}
-          <div className="relative">
-            {/* Ticket Glow Effect */}
-            <div className="absolute -inset-1 bg-gradient-to-r from-emerald-600/30 via-emerald-500/20 to-emerald-600/30 rounded-3xl blur-xl opacity-75" />
-
-            {/* Ticket Container */}
-            <div className="relative bg-gradient-to-b from-zinc-900 to-black rounded-3xl overflow-hidden border border-white/10">
-              {/* Top Section - Event Info */}
-              <div className="relative p-6 pb-8">
-                {ticket.event?.bannerImageUrl && (
-                  <div
-                    className="absolute inset-0 opacity-30"
-                    style={{
-                      backgroundImage: `url(${ticket.event.bannerImageUrl})`,
-                      backgroundSize: "cover",
-                      backgroundPosition: "center",
-                    }}
-                  />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/50 via-black/80 to-black" />
-
-                <div className="relative">
-                  {/* Status Badge */}
-                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/20 border-emerald-500/30 border mb-4">
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
-                    <span className="text-sm font-medium text-emerald-400">
-                      Paid
-                    </span>
-                  </div>
-
-                  {/* Event Name */}
-                  <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">
-                    {ticket.event?.name || "TEDx Event"}
-                  </h2>
-
-                  {/* Event Details Grid */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Calendar className="w-5 h-5 text-red-500" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide">
-                          Date
-                        </p>
-                        <p className="text-sm text-white font-medium">
-                          {ticket.event
-                            ? formatDate(ticket.event.eventDate)
-                            : "-"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Clock className="w-5 h-5 text-red-500" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide">
-                          Time
-                        </p>
-                        <p className="text-sm text-white font-medium">
-                          {ticket.event
-                            ? formatTimeLocal(ticket.event.startTime)
-                            : "-"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="col-span-2 flex items-start gap-3">
-                      <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <MapPin className="w-5 h-5 text-red-500" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide">
-                          Venue
-                        </p>
-                        <p className="text-sm text-white font-medium">
-                          {ticket.event?.venue || "-"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Perforated Line */}
-              <div className="relative h-8 flex items-center">
-                <div className="absolute left-0 w-4 h-8 bg-black rounded-r-full -ml-1" />
-                <div className="absolute right-0 w-4 h-8 bg-black rounded-l-full -mr-1" />
-                <div className="flex-1 mx-4 border-t-2 border-dashed border-white/20" />
-              </div>
-
-              {/* Bottom Section */}
-              <div className="p-6 pt-2">
-                {/* Attendee Info */}
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Users className="w-4 h-4 text-gray-500" />
-                    <span className="text-xs text-gray-500 uppercase tracking-wide">
-                      Attendee Information
-                    </span>
-                  </div>
-                  <p className="text-xl font-bold text-white mb-1">
-                    {ticket.customerName}
-                  </p>
-                  <div className="flex items-center gap-4 text-sm text-gray-400">
-                    <span className="font-mono bg-white/5 px-2 py-1 rounded">
-                      #{ticket.orderNumber}
-                    </span>
-                    <span>
-                      {isTicketClass
-                        ? `${ticketLines.reduce((s, l) => s + l.quantity, 0)} tickets`
-                        : `${ticket.seats.length} tickets`}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Inventory lines (ticket-class) or seats (seat-map) */}
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Ticket className="w-4 h-4 text-gray-500" />
-                    <span className="text-xs text-gray-500 uppercase tracking-wide">
-                      {isTicketClass ? "Tickets" : "Seats"}
-                    </span>
-                  </div>
-                  {isTicketClass ? (
-                    <div className="space-y-2">
-                      {ticketLines.map((line, index) => (
-                        <div
-                          key={`${line.name}-${index}`}
-                          className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.04]"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-base font-bold text-white truncate">
-                              {line.name}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {Number(line.unitPrice).toLocaleString("en-US")}{" "}
-                              VND each
-                            </p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-sm font-semibold text-white tabular-nums">
-                              × {line.quantity}
-                            </p>
-                            <p className="text-xs text-gray-400 tabular-nums">
-                              {Number(line.lineTotal).toLocaleString("en-US")}{" "}
-                              VND
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {ticket.seats.map((seat, index) => (
-                        <div
-                          key={index}
-                          className={`relative px-4 py-3 rounded-xl border transition-all ${
-                            seat.seatType === "VIP"
-                              ? "bg-gradient-to-br from-amber-500/20 to-orange-600/20 border-amber-500/30"
-                              : "bg-white/5 border-white/10"
-                          }`}
-                        >
-                          {seat.seatType === "VIP" && (
-                            <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400" />
-                          )}
-                          <p className="text-lg font-bold text-white">
-                            {seat.seatNumber}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            {seat.seatType}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Per-ticket QR units (model B) */}
-                {ticket.ticketUnits && ticket.ticketUnits.length > 0 ? (
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2">
-                        <QrCode className="w-4 h-4 text-gray-500" />
-                        <span className="text-xs text-gray-500 uppercase tracking-wide">
-                          Check-in QR ({ticket.ticketUnits.length})
-                        </span>
-                      </div>
-                      {ticket.checkInProgress && (
-                        <span className="text-[11px] text-gray-500 tabular-nums">
-                          {ticket.checkInProgress.checkedIn}/
-                          {ticket.checkInProgress.total} in
-                        </span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {ticket.ticketUnits.map((unit) => (
-                        <div
-                          key={unit.id || unit.index}
-                          className={`rounded-xl border p-3 ${
-                            unit.checkedIn
-                              ? "border-emerald-500/30 bg-emerald-500/5"
-                              : "border-white/10 bg-white/[0.03]"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold text-white truncate">
-                                {unit.typeName}
-                              </p>
-                              <p className="text-[11px] text-gray-500 font-mono">
-                                {unit.ticketCode || `Ticket #${unit.index}`}
-                              </p>
-                            </div>
-                            <span
-                              className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full shrink-0 ${
-                                unit.checkedIn
-                                  ? "bg-emerald-500/20 text-emerald-300"
-                                  : "bg-white/10 text-gray-400"
-                              }`}
-                            >
-                              {unit.checkedIn ? "In" : "Ready"}
-                            </span>
-                          </div>
-                          {unit.qrCodeUrl && (
-                            <div className="bg-white rounded-lg p-2 flex items-center justify-center">
-                              <img
-                                src={unit.qrCodeUrl}
-                                alt={unit.ticketCode || "QR"}
-                                className="w-36 h-36 object-contain"
-                                style={{ imageRendering: "crisp-edges" }}
-                              />
-                            </div>
-                          )}
-                          <p className="text-[11px] text-gray-500 mt-2 text-center tabular-nums">
-                            {Number(unit.price).toLocaleString("en-US")} VND
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-gray-600 mt-3 text-center">
-                      Each QR is unique — staff scan once per person
-                    </p>
-                  </div>
-                ) : (
-                  ticket.qrCodeUrl && (
-                    <div className="mb-6 flex flex-col items-center">
-                      <div className="flex items-center gap-2 mb-3">
-                        <QrCode className="w-4 h-4 text-gray-500" />
-                        <span className="text-xs text-gray-500 uppercase tracking-wide">
-                          Check-in Code
-                        </span>
-                      </div>
-                      <div className="bg-white rounded-xl p-3 flex items-center justify-center">
-                        <img
-                          src={ticket.qrCodeUrl}
-                          alt="QR Code"
-                          className="w-56 h-56 sm:w-64 sm:h-64 object-contain"
-                          style={{ imageRendering: "crisp-edges" }}
-                        />
-                      </div>
-                    </div>
-                  )
-                )}
-
-                {/* Total */}
-                <div className="flex items-center justify-between py-4 border-t border-white/10">
-                  <span className="text-gray-400">Total Amount</span>
-                  <span className="text-2xl font-bold text-white">
-                    {formatCurrency(ticket.totalAmount)}
-                  </span>
-                </div>
-
-                {/* Actions: Download + Copy + Open ticket page */}
-                <div className="mt-4 space-y-2">
-                  <button
-                    type="button"
-                    onClick={handleDownload}
-                    disabled={downloading}
-                    className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-[#e62b1e] to-red-600 text-white rounded-xl font-bold shadow-xl shadow-[#e62b1e]/25 hover:shadow-[#e62b1e]/40 transition-all disabled:opacity-50 relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                    {downloading ? (
-                      <Loader2 className="w-5 h-5 animate-spin relative" />
-                    ) : (
-                      <Download className="w-5 h-5 relative" />
-                    )}
-                    <span className="relative">
-                      {downloading ? "Downloading..." : "Download Ticket (PDF)"}
-                    </span>
-                  </button>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={handleCopyLink}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold border border-white/10 transition-colors"
-                    >
-                      {copied ? (
-                        <CheckCircle className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                      {copied ? "Copied" : "Copy link"}
-                    </button>
-                    <a
-                      href={ticketUrl}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold border border-white/10 transition-colors"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Open ticket
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer Note */}
-          <div className="text-center mt-8 text-xs text-gray-600">
-            <p>
-              TEDxFPTUniversityHCMC 2026. For inquiries, please contact our
-              fanpage.
-            </p>
-            <p className="mt-1">© 2026 TEDxFPTUniversityHCMC</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // ─── STATE 1: WAITING (PENDING_CONFIRMATION) ───
   return (
@@ -759,43 +301,23 @@ function OrderWaitingContent() {
           <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl" />
           <div className="absolute bottom-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl" />
 
-          {/* Waiting Animation */}
+          {/* Success mark */}
           <div className="relative mb-8">
             <div className="relative w-24 h-24 mx-auto">
-              {/* Spinning ring */}
-              <div className="absolute inset-0 rounded-full border-4 border-blue-500/20" />
-              <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 animate-spin" />
-              {/* Inner icon */}
-              <div className="absolute inset-2 bg-gradient-to-br from-blue-600/30 to-blue-800/30 rounded-full flex items-center justify-center backdrop-blur-sm">
-                <Clock className="w-10 h-10 text-blue-400" />
+              <div className="absolute inset-0 bg-emerald-500/25 rounded-full blur-xl" />
+              <div className="relative w-24 h-24 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full flex items-center justify-center shadow-2xl shadow-emerald-500/40">
+                <CheckCircle className="w-12 h-12 text-white" />
               </div>
             </div>
           </div>
 
           {/* Title */}
           <h1 className="text-2xl md:text-3xl font-black text-white mb-3">
-            Verifying Your Payment
+            Payment successful
           </h1>
           <p className="text-gray-400 mb-8 leading-relaxed max-w-sm mx-auto">
-            Please wait while we verify your bank transfer. This usually takes a
-            few minutes.
+            Your ticket will be sent via email soon.
           </p>
-
-          {/* Pulsing dots indicator */}
-          <div className="flex items-center justify-center gap-2 mb-8">
-            <div
-              className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce"
-              style={{ animationDelay: "0s" }}
-            />
-            <div
-              className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce"
-              style={{ animationDelay: "0.2s" }}
-            />
-            <div
-              className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce"
-              style={{ animationDelay: "0.4s" }}
-            />
-          </div>
 
           {/* Order Info */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 text-left mb-6">
@@ -861,19 +383,46 @@ function OrderWaitingContent() {
               </span>
             </div>
 
-            {/* Save link while waiting */}
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm text-gray-300 font-medium transition-colors"
-            >
-              {copied ? (
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-              {copied ? "Ticket link copied" : "Copy ticket link for later"}
-            </button>
+            {/* Who each ticket belongs to, captured during checkout. */}
+            {(ticket.ticketUnits?.length ?? 0) > 0 && (
+              <div className="pt-4 border-t border-white/10">
+                <p className="text-sm text-gray-400 mb-3">Ticket holders</p>
+                <div className="space-y-2.5">
+                  {ticket.ticketUnits!.map((unit) => (
+                    <div
+                      key={unit.id}
+                      className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                          Ticket {unit.index}
+                        </span>
+                        <span className="text-[11px] font-semibold text-[#ff6b5e]">
+                          {unit.typeName}
+                        </span>
+                      </div>
+                      {unit.attendeeName ? (
+                        <>
+                          <p className="text-sm font-semibold text-white">
+                            {unit.attendeeName}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5 break-all">
+                            {[unit.attendeeEmail, unit.attendeePhone]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-gray-500">
+                          No attendee details provided
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
 
           {/* Status Info */}
@@ -884,12 +433,12 @@ function OrderWaitingContent() {
               </div>
               <div>
                 <p className="text-sm font-medium text-blue-300 mb-1">
-                  Keep this page open (optional)
+                  What happens next
                 </p>
                 <p className="text-xs text-blue-400/80 leading-relaxed">
-                  We update automatically when payment is verified. You can also
-                  copy the ticket link above — the token does not expire — and
-                  reopen it later from email or bookmarks.
+                  Once our team verifies your transfer, each ticket is emailed to
+                  the address given for that ticket holder. You can close this
+                  page safely.
                 </p>
               </div>
             </div>
