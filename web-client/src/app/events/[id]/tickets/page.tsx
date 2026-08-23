@@ -110,12 +110,20 @@ gsap.registerPlugin(useGSAP);
 /**
  * Aspect ratio of the visible ticket artwork.
  *
- * The artwork files are ~2.78:1 and carry a barcode panel down their right
- * edge. Cropping to 2:1 and anchoring the image left shows the leftmost
- * 2 / 2.78 ≈ 72% of it, which is exactly the design without the barcode.
- * Widen this ratio to reveal more of the artwork, narrow it to cut deeper.
+ * The artwork is 2.778:1 and its barcode panel begins at 84.8% of the width
+ * (measured off the uploaded files by sampling their white top/bottom
+ * margins). The image is anchored left inside this frame, so the fraction
+ * shown is (this ratio) / 2.778.
+ *
+ * 2.33 shows the leftmost ~84% — the whole design including the PASS name up
+ * the right edge, stopping just short of the barcode. The largest value that
+ * still excludes the panel is 2.35; the rest is left as margin so a rounding
+ * difference cannot leak a white line down the edge.
+ *
+ * Widen to reveal more, narrow to cut deeper. Widening also shortens the card,
+ * since height = width / ratio.
  */
-const TICKET_ART_RATIO = "2 / 1";
+const TICKET_ART_RATIO = "2.33 / 1";
 
 /**
  * Ticket sales are held closed until the team opens the sale session. While
