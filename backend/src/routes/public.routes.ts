@@ -1,26 +1,32 @@
-import { FastifyInstance } from 'fastify';
-import * as eventController from '../controllers/event.controller.js';
-import * as seatController from '../controllers/seat.controller.js';
-import * as orderController from '../controllers/order.controller.js';
-import * as cronController from '../controllers/cron.controller.js';
-import * as seatLockController from '../controllers/seat-lock.controller.js';
-import * as ticketController from '../controllers/ticket.controller.js';
-import * as paymentController from '../controllers/payment.controller.js';
-import * as partnersController from '../controllers/admin/partners.controller.js';
-import * as speakerRegisterController from '../controllers/admin/speaker-register.controller.js';
+import {FastifyInstance} from 'fastify'
+import * as eventController from '../controllers/event.controller.js'
+import * as seatController from '../controllers/seat.controller.js'
+import * as orderController from '../controllers/order.controller.js'
+import * as cronController from '../controllers/cron.controller.js'
+import * as seatLockController from '../controllers/seat-lock.controller.js'
+import * as ticketController from '../controllers/ticket.controller.js'
+import * as paymentController from '../controllers/payment.controller.js'
+import * as partnersController from '../controllers/admin/partners.controller.js'
+import * as speakerRegisterController from '../controllers/admin/speaker-register.controller.js'
+import * as settingsController from '../controllers/admin/settings.controller.js'
 
 export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // =====================================
   // PARTNER ROUTES
   // =====================================
-  fastify.get('/partners', partnersController.listPublic);
+  fastify.get('/partners', partnersController.listPublic)
 
   // =====================================
   // SPEAKER REGISTRATION ROUTES (PUBLIC)
   // =====================================
-  fastify.get('/speakers/register/config', speakerRegisterController.getPublicConfig);
-  fastify.get('/speakers/register/fields', speakerRegisterController.getPublicFields);
-  fastify.post('/speakers/register', speakerRegisterController.submitRegistration);
+  fastify.get('/speakers/register/config', speakerRegisterController.getPublicConfig)
+  fastify.get('/speakers/register/fields', speakerRegisterController.getPublicFields)
+  fastify.post('/speakers/register', speakerRegisterController.submitRegistration)
+
+  // =====================================
+  // TICKET SALES GATE (PUBLIC)
+  // =====================================
+  fastify.get('/ticket-sales', settingsController.getTicketSales)
 
   // =====================================
   // EVENT ROUTES
@@ -44,7 +50,7 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /events/:eventId/speakers - Get speakers for an event
   fastify.get('/events/:eventId/speakers', eventController.getEventSpeakers)
 
-// GET /events/:eventId/timeline
+  // GET /events/:eventId/timeline
   fastify.get('/events/:eventId/timeline', eventController.getEventTimeline)
 
   // GET /events/:eventId/ticket-availability - Available seats per ticket type (ticket-class flow)
@@ -84,7 +90,6 @@ export async function publicRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post('/promotions/check', promotionsController.checkPromotions)
   fastify.post('/promotions/validate-code', promotionsController.validatePromoCode)
   fastify.post('/promotions/eligible', promotionsController.listEligiblePromotions)
-
 
   // GET /orders/check-pending - Check if session has pending order (must be before /:orderNumber)
   fastify.get('/orders/check-pending', orderController.checkPendingOrder)

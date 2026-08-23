@@ -44,13 +44,37 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
 
   // Speaker Registration (Config, Fields, Submissions)
   fastify.get('/admin/speakers/register/config', {preHandler}, speakerRegisterController.getConfig)
-  fastify.put('/admin/speakers/register/config', {preHandler}, speakerRegisterController.updateConfig)
+  fastify.put(
+    '/admin/speakers/register/config',
+    {preHandler},
+    speakerRegisterController.updateConfig
+  )
   fastify.get('/admin/speakers/register/fields', {preHandler}, speakerRegisterController.listFields)
-  fastify.post('/admin/speakers/register/fields', {preHandler}, speakerRegisterController.createField)
-  fastify.put('/admin/speakers/register/fields/:id', {preHandler}, speakerRegisterController.updateField)
-  fastify.delete('/admin/speakers/register/fields/:id', {preHandler}, speakerRegisterController.removeField)
-  fastify.get('/admin/speakers/submissions', {preHandler}, speakerRegisterController.listSubmissions)
-  fastify.put('/admin/speakers/submissions/:id/status', {preHandler}, speakerRegisterController.updateSubmissionStatus)
+  fastify.post(
+    '/admin/speakers/register/fields',
+    {preHandler},
+    speakerRegisterController.createField
+  )
+  fastify.put(
+    '/admin/speakers/register/fields/:id',
+    {preHandler},
+    speakerRegisterController.updateField
+  )
+  fastify.delete(
+    '/admin/speakers/register/fields/:id',
+    {preHandler},
+    speakerRegisterController.removeField
+  )
+  fastify.get(
+    '/admin/speakers/submissions',
+    {preHandler},
+    speakerRegisterController.listSubmissions
+  )
+  fastify.put(
+    '/admin/speakers/submissions/:id/status',
+    {preHandler},
+    speakerRegisterController.updateSubmissionStatus
+  )
 
   // Dashboard
   fastify.get('/admin/dashboard/stats', {preHandler}, dashboardController.getStats)
@@ -172,8 +196,18 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
   // System Settings
   fastify.get('/admin/settings', {preHandler}, settingsController.getSettings)
   fastify.put('/admin/settings', {preHandler}, settingsController.updateSettings)
-  fastify.get('/admin/settings/notification-emails', {preHandler}, settingsController.getNotificationEmails)
-  fastify.put('/admin/settings/notification-emails', {preHandler}, settingsController.updateNotificationEmails)
+  fastify.get(
+    '/admin/settings/notification-emails',
+    {preHandler},
+    settingsController.getNotificationEmails
+  )
+  fastify.put(
+    '/admin/settings/notification-emails',
+    {preHandler},
+    settingsController.updateNotificationEmails
+  )
   fastify.get('/admin/settings/on-duty-email', {preHandler}, settingsController.getOnDutyEmail)
   fastify.put('/admin/settings/on-duty-email', {preHandler}, settingsController.updateOnDutyEmail)
+  fastify.get('/admin/settings/ticket-sales', {preHandler}, settingsController.getTicketSales)
+  fastify.put('/admin/settings/ticket-sales', {preHandler}, settingsController.updateTicketSales)
 }

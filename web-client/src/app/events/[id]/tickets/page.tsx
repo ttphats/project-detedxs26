@@ -101,17 +101,15 @@ const MAX_QTY_PER_TYPE = 10;
 const MAX_TOTAL = 20;
 
 /**
- * Ticket sales are held closed until the team opens the sale session. While
- * closed this page shows a notice instead of the purchase flow, so nobody can
- * pick a ticket type or reach checkout.
+ * Countdown / sales gate only runs in production. Local `next dev` always
+ * shows the purchase flow so checkout can be tested without flipping admin.
  *
- * To open sales: set NEXT_PUBLIC_TICKET_SALES_OPEN=true in the web-client
- * environment and redeploy. Absent or any other value keeps sales closed.
+ * Production reads GET /ticket-sales (admin-controlled). Until that
+ * response arrives the page stays on the countdown so there is no flash
+ * of a purchasable UI.
  */
-const TICKET_SALES_OPEN = process.env.NEXT_PUBLIC_TICKET_SALES_OPEN === "true";
-
-/** ISO-8601 date-time when ticket sales open (ICT = UTC+7). */
-const SALE_OPENS_AT = new Date("2026-08-26T08:00:00+07:00");
+const IS_PROD = process.env.NODE_ENV === "production";
+const FALLBACK_OPENS_AT = "2026-08-26T08:00:00+07:00";
 
 interface Countdown {
   days: number;
@@ -238,10 +236,44 @@ export default function TicketClassPage({
   const [sessionId, setSessionId] = useState("");
   /** Mobile cart bottom-sheet open state */
   const [cartOpen, setCartOpen] = useState(false);
+  const [salesOpen, setSalesOpen] = useState(!IS_PROD);
+  const [salesOverride, setSalesOverride] = useState<"auto" | "open" | "closed">(
+    IS_PROD ? "auto" : "open",
+  );
+  const [saleOpensAt, setSaleOpensAt] = useState(() => new Date(FALLBACK_OPENS_AT));
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
   useEffect(() => {
     setSessionId(getSessionId());
   }, []);
+
+  useEffect(() => {
+    if (!IS_PROD) return;
+    let cancelled = false;
+    const loadSales = async () => {
+      try {
+        const res = await fetch(`${apiUrl}/ticket-sales`);
+        const data = await res.json();
+        if (cancelled || !data?.success || !data.data) return;
+        setSalesOpen(data.data.salesOpen === true);
+        const nextOverride = data.data.override;
+        setSalesOverride(
+          nextOverride === "open" || nextOverride === "closed" ? nextOverride : "auto",
+        );
+        if (typeof data.data.opensAt === "string") {
+          const parsed = new Date(data.data.opensAt);
+          if (!Number.isNaN(parsed.getTime())) setSaleOpensAt(parsed);
+        }
+      } catch (err) {
+        console.error("[tickets] failed to load sales config:", err);
+      }
+    };
+    void loadSales();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl]);
 
   // Close mobile sheet when cart becomes empty
   useEffect(() => {
@@ -257,8 +289,6 @@ export default function TicketClassPage({
       document.body.style.overflow = prev;
     };
   }, [cartOpen]);
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
   /**
    * Ticket-class page data:
@@ -835,10 +865,13 @@ export default function TicketClassPage({
   // before the loading state, so there is no flash of a purchasable page.
   // Called unconditionally, above every early return, so the hook order is the
   // same whether sales are open or closed.
-  const countdown = useCountdown(SALE_OPENS_AT);
+  const countdown = useCountdown(saleOpensAt);
+  const gateClosed =
+    salesOverride === "closed" ||
+    (salesOverride !== "open" && !salesOpen && !countdown?.expired);
 
-  if (!TICKET_SALES_OPEN) {
-    const openDateLabel = SALE_OPENS_AT.toLocaleString("en-GB", {
+  if (gateClosed) {
+    const openDateLabel = saleOpensAt.toLocaleString("en-GB", {
       timeZone: "Asia/Ho_Chi_Minh",
       weekday: "long",
       day: "2-digit",
@@ -941,11 +974,11 @@ export default function TicketClassPage({
           {/* ── Countdown ──
               Zeros until the clock starts on the client, so the markup the
               server sent and the first client render agree. */}
-          {countdown?.expired ? (
-            <div className="flex items-center gap-3 px-6 py-4 rounded-2xl border border-green-500/30 bg-green-500/10">
-              <Zap className="w-5 h-5 text-green-400 shrink-0" />
-              <p className="text-green-300 font-semibold text-sm">
-                Sales have opened! Please refresh the page.
+          {countdown?.expired && salesOverride === "closed" ? (
+            <div className="flex items-center gap-3 px-6 py-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+              <Zap className="w-5 h-5 text-amber-400 shrink-0" />
+              <p className="text-amber-200 font-semibold text-sm">
+                Sales are held closed by admin. Flip to Auto or Force open to release.
               </p>
             </div>
           ) : (
