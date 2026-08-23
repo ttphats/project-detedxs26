@@ -111,6 +111,19 @@ describe('ticket confirmation emails', () => {
     )
   })
 
+  it('gives a scoped holder a QR that checks them in', async () => {
+    // Templates have one {{qrCodeUrl}} slot; a holder must not get the
+    // order-level QR there, and must not get an empty one either.
+    await send([
+      unit(1, {name: 'Ann', email: 'ann@example.com'}),
+      unit(2, {name: 'Buyer', email: 'buyer@example.com'}),
+    ])
+
+    expect(callFor('ann@example.com')!.data.qrCodeUrl).toBe(
+      'https://cdn.example/qr1.png',
+    )
+  })
+
   it('gives the buyer the order token, which opens everything they paid for', async () => {
     await send([
       unit(1, {name: 'Ann', email: 'ann@example.com'}),

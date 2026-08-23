@@ -236,9 +236,12 @@ export async function sendTicketConfirmationEmails(
         ticketUnits: units,
         ticketCount: units.length || params.orderItemCount,
         totalAmount: totalFormatted,
-        // The order-level QR covers the whole order, so it only belongs on a
-        // whole-order email. Scoped holders have their own per-ticket QRs.
-        qrCodeUrl: isWholeOrder ? params.qrCodeUrl : undefined,
+        // Templates have a single {{qrCodeUrl}} slot. The order-level QR
+        // belongs there only on a whole-order email; a scoped holder gets
+        // their own first ticket's QR, so the code in their email is one that
+        // actually checks them in. Templates that also render
+        // {{ticketUnitsHtml}} show every one of their tickets.
+        qrCodeUrl: isWholeOrder ? params.qrCodeUrl : units[0]?.qrCodeUrl || params.qrCodeUrl,
         ticketUrl: recipientTicketUrl,
         pdfUrl: recipientPdfUrl,
       },
