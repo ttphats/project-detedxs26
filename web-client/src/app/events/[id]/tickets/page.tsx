@@ -369,14 +369,22 @@ export default function TicketClassPage({
         setError(null);
 
         const isLocalApi = !apiUrl.includes("tedxfptuniversityhcmc.com");
-        // When pointing at local backend with dead MySQL, each query waits ~10s.
-        // Prefer prod for UI first in that case; still try local tickets briefly.
+        // Only /tickets carries per-type availability; the full-event payload
+        // does not, and falling back to it makes every type look in stock (see
+        // unknownAvailability). So try the /tickets endpoints first, and reach
+        // for a full-event payload only when neither answers.
+        //
+        // The configured API comes first even in local dev: reading stock from
+        // production while ordering against a local backend showed sold-out
+        // types as available and only failed at checkout. A dead local backend
+        // now costs one 4s timeout before prod is tried, which is the right
+        // trade for not displaying another environment's inventory.
         const candidates: string[] = isLocalApi
           ? [
-              `${PROD_API}/events/${id}?sessionId=${sessionId}`,
-              `${PROD_API}/events/${id}/tickets`,
               `${apiUrl}/events/${id}/tickets`,
+              `${PROD_API}/events/${id}/tickets`,
               `${apiUrl}/events/${id}?sessionId=${sessionId}`,
+              `${PROD_API}/events/${id}?sessionId=${sessionId}`,
             ]
           : [
               `${apiUrl}/events/${id}/tickets`,
@@ -620,6 +628,68 @@ export default function TicketClassPage({
     }
   };
 
+  /**
+   * Re-read per-type stock and trim the cart to what is still buyable.
+   *
+   * Only the /tickets endpoint carries availability, so this deliberately does
+   * not fall back to the full-event payload — leaving the numbers alone beats
+   * replacing them with the "assume in stock" default.
+   */
+  const refreshAvailability = useCallback(async () => {
+    if (!id || !event) return;
+    try {
+      const res = await fetch(`${apiUrl}/events/${id}/tickets`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const list = json?.data?.ticketTypes as
+        | Array<{
+            id: string;
+            availability?: {
+              totalSeats?: number;
+              sold?: number;
+              reserved?: number;
+              locked?: number;
+              available?: number;
+            };
+          }>
+        | undefined;
+      if (!json?.success || !Array.isArray(list)) return;
+
+      const fresh = event.ticketTypes.map((tt) => {
+        const a = list.find((t) => t.id === tt.id)?.availability;
+        return {
+          ticketTypeId: tt.id,
+          name: tt.name,
+          level: tt.level,
+          color: tt.color,
+          price: Number(tt.price),
+          maxQuantity: null,
+          totalSeats: a?.totalSeats ?? 0,
+          sold: a?.sold ?? 0,
+          reserved: a?.reserved ?? 0,
+          locked: a?.locked ?? 0,
+          available:
+            typeof a?.available === "number" ? Math.max(0, a.available) : 0,
+        };
+      });
+      setAvailability(fresh);
+
+      setCart((prev) => {
+        const next: Record<string, number> = {};
+        let trimmed = false;
+        for (const [typeId, qty] of Object.entries(prev)) {
+          const left = fresh.find((f) => f.ticketTypeId === typeId)?.available ?? 0;
+          const capped = Math.min(qty, left);
+          if (capped !== qty) trimmed = true;
+          if (capped > 0) next[typeId] = capped;
+        }
+        return trimmed ? next : prev;
+      });
+    } catch (e) {
+      console.warn("[tickets] availability refresh failed:", e);
+    }
+  }, [id, event, apiUrl]);
+
   const handleCheckout = async () => {
     if (!id || !sessionId) return;
     if (cartItems.length === 0) {
@@ -750,6 +820,10 @@ export default function TicketClassPage({
           ? err.message
           : "Failed to proceed to checkout. Please try again.",
       );
+      // The order can be refused because stock ran out while this page sat
+      // open. Without re-reading it the cards keep offering the type and the
+      // same click keeps failing, with nothing on screen explaining why.
+      void refreshAvailability();
       setIsCheckingOut(false);
     }
   };
