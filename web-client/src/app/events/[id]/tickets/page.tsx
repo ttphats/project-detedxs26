@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { use, useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { toast } from "sonner";
@@ -132,21 +132,24 @@ function calcCountdown(target: Date): Countdown {
   return { days, hours, minutes, seconds, expired };
 }
 
-function useCountdown(target: Date): Countdown {
-  const [state, setState] = useState<Countdown>(() => calcCountdown(target));
-  const rafRef = useRef<number | null>(null);
-
-  const tick = useCallback(() => {
-    setState(calcCountdown(target));
-    rafRef.current = window.setTimeout(tick, 1000);
-  }, [target]);
+/**
+ * Time left until `target`, or null before the first client tick.
+ *
+ * Null rather than a computed value on purpose: this page is server-rendered,
+ * and seeding the state from `Date.now()` makes the server's HTML disagree
+ * with the client's first render, which React reports as a hydration mismatch.
+ * The clock therefore only starts once mounted, and callers render a
+ * placeholder until it does.
+ */
+function useCountdown(target: Date): Countdown | null {
+  const [state, setState] = useState<Countdown | null>(null);
 
   useEffect(() => {
-    rafRef.current = window.setTimeout(tick, 1000);
-    return () => {
-      if (rafRef.current !== null) clearTimeout(rafRef.current);
-    };
-  }, [tick]);
+    const update = () => setState(calcCountdown(target));
+    update();
+    const id = window.setInterval(update, 1000);
+    return () => window.clearInterval(id);
+  }, [target]);
 
   return state;
 }
@@ -830,7 +833,8 @@ export default function TicketClassPage({
 
   // Sales closed: render the notice before anything interactive exists, and
   // before the loading state, so there is no flash of a purchasable page.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+  // Called unconditionally, above every early return, so the hook order is the
+  // same whether sales are open or closed.
   const countdown = useCountdown(SALE_OPENS_AT);
 
   if (!TICKET_SALES_OPEN) {
@@ -934,8 +938,10 @@ export default function TicketClassPage({
             </p>
           </div>
 
-          {/* ── Countdown ── */}
-          {countdown.expired ? (
+          {/* ── Countdown ──
+              Zeros until the clock starts on the client, so the markup the
+              server sent and the first client render agree. */}
+          {countdown?.expired ? (
             <div className="flex items-center gap-3 px-6 py-4 rounded-2xl border border-green-500/30 bg-green-500/10">
               <Zap className="w-5 h-5 text-green-400 shrink-0" />
               <p className="text-green-300 font-semibold text-sm">
@@ -946,19 +952,19 @@ export default function TicketClassPage({
             <div className="w-full">
               {/* unit row */}
               <div className="flex items-start justify-center gap-3 sm:gap-5 md:gap-6">
-                <CountdownUnit value={countdown.days} label="Days" />
+                <CountdownUnit value={countdown?.days ?? 0} label="Days" />
                 <div className="text-[#e62b1e] text-3xl sm:text-4xl font-black mt-4 sm:mt-5 select-none" style={{ textShadow: "0 0 16px rgba(230,43,30,0.6)" }}>
                   :
                 </div>
-                <CountdownUnit value={countdown.hours} label="Hours" />
+                <CountdownUnit value={countdown?.hours ?? 0} label="Hours" />
                 <div className="text-[#e62b1e] text-3xl sm:text-4xl font-black mt-4 sm:mt-5 select-none" style={{ textShadow: "0 0 16px rgba(230,43,30,0.6)" }}>
                   :
                 </div>
-                <CountdownUnit value={countdown.minutes} label="Minutes" />
+                <CountdownUnit value={countdown?.minutes ?? 0} label="Minutes" />
                 <div className="text-[#e62b1e] text-3xl sm:text-4xl font-black mt-4 sm:mt-5 select-none" style={{ textShadow: "0 0 16px rgba(230,43,30,0.6)" }}>
                   :
                 </div>
-                <CountdownUnit value={countdown.seconds} label="Seconds" />
+                <CountdownUnit value={countdown?.seconds ?? 0} label="Seconds" />
               </div>
             </div>
           )}
