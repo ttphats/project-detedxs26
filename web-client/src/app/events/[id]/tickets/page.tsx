@@ -1,8 +1,10 @@
 "use client";
 
-import { use, useState, useEffect, useMemo, useCallback } from "react";
+import { use, useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useGSAP } from "@gsap/react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -99,6 +101,29 @@ interface EligiblePromotion {
 
 const MAX_QTY_PER_TYPE = 10;
 const MAX_TOTAL = 20;
+
+// Registered at module scope: this only wires the hook into GSAP and touches
+// no DOM, so it is safe during server rendering. ScrollTrigger is registered
+// inside useGSAP, which runs on the client only.
+gsap.registerPlugin(useGSAP);
+
+/**
+ * Aspect ratio of the visible ticket artwork.
+ *
+ * The artwork is 2.778:1 and its barcode panel begins at 84.8% of the width
+ * (measured off the uploaded files by sampling their white top/bottom
+ * margins). The image is anchored left inside this frame, so the fraction
+ * shown is (this ratio) / 2.778.
+ *
+ * 2.33 shows the leftmost ~84% — the whole design including the PASS name up
+ * the right edge, stopping just short of the barcode. The largest value that
+ * still excludes the panel is 2.35; the rest is left as margin so a rounding
+ * difference cannot leak a white line down the edge.
+ *
+ * Widen to reveal more, narrow to cut deeper. Widening also shortens the card,
+ * since height = width / ratio.
+ */
+const TICKET_ART_RATIO = "2.33 / 1";
 
 /**
  * Countdown / sales gate only runs in production. Local `next dev` always
@@ -222,6 +247,8 @@ export default function TicketClassPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cart, setCart] = useState<Record<string, number>>({});
+  /** Scope for the ticket-card animations. */
+  const gridRef = useRef<HTMLDivElement>(null);
   const [promoCode, setPromoCode] = useState("");
   const [discountInfo, setDiscountInfo] = useState<{
     name: string;
@@ -604,6 +631,80 @@ export default function TicketClassPage({
   const bumpQty = (typeId: string, delta: number) => {
     setQty(typeId, (cart[typeId] || 0) + delta);
   };
+
+  /**
+   * Ticket card motion.
+   *
+   * Scoped to the grid so the selectors cannot reach anything else on the
+   * page, and driven by useGSAP so every tween and ScrollTrigger is reverted
+   * when this route unmounts. Cards are laid out visible in CSS and only
+   * hidden once GSAP has actually run, so a failure to load the library
+   * leaves a readable page rather than an empty grid.
+   */
+  const { contextSafe } = useGSAP(
+    () => {
+      gsap.registerPlugin(ScrollTrigger);
+      const cards = gsap.utils.toArray<HTMLElement>("[data-ticket-card]");
+      if (cards.length === 0) return;
+
+      const mm = gsap.matchMedia();
+      mm.add(
+        {
+          reduced: "(prefers-reduced-motion: reduce)",
+          full: "(prefers-reduced-motion: no-preference)",
+        },
+        (ctx) => {
+          const {reduced} = ctx.conditions as {reduced: boolean};
+          if (reduced) {
+            gsap.set(cards, {autoAlpha: 1, y: 0});
+            return;
+          }
+          gsap.set(cards, {autoAlpha: 0, y: 28});
+          ScrollTrigger.batch(cards, {
+            start: "top 88%",
+            once: true,
+            onEnter: (batch) =>
+              gsap.to(batch, {
+                autoAlpha: 1,
+                y: 0,
+                duration: 0.55,
+                ease: "power2.out",
+                stagger: 0.08,
+                overwrite: true,
+              }),
+          });
+        },
+        gridRef,
+      );
+    },
+    {scope: gridRef, dependencies: [event?.id, event?.ticketTypes.length]},
+  );
+
+  /**
+   * Quantity change with a nudge on the matching artwork. The cart update is
+   * the existing bumpQty call, untouched — the tween is purely feedback.
+   */
+  const bumpQtyAnimated = contextSafe(
+    (e: React.MouseEvent<HTMLButtonElement>, typeId: string, delta: number) => {
+      bumpQty(typeId, delta);
+      const art = e.currentTarget
+        .closest("[data-ticket-card]")
+        ?.querySelector("[data-ticket-art]");
+      if (!art) return;
+      gsap.fromTo(
+        art,
+        {scale: 1},
+        {
+          scale: delta > 0 ? 1.025 : 0.985,
+          duration: 0.13,
+          ease: "power2.out",
+          yoyo: true,
+          repeat: 1,
+          overwrite: "auto",
+        },
+      );
+    },
+  );
 
   const removeFromCart = (typeId: string) => {
     setCart((prev) => {
@@ -1116,8 +1217,11 @@ export default function TicketClassPage({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
           {/* Ticket cards */}
           <div className="lg:col-span-8">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
-              {event.ticketTypes.map((tt, idx) => {
+            <div
+              ref={gridRef}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-7"
+            >
+              {event.ticketTypes.map((tt) => {
                 const qty = cart[tt.id] || 0;
                 const avail = availability.find(
                   (a) => a.ticketTypeId === tt.id,
@@ -1127,147 +1231,123 @@ export default function TicketClassPage({
                 const accent = tt.color || "#e62b1e";
 
                 return (
-                  <motion.div
+                  <article
                     key={tt.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.06, duration: 0.4 }}
-                    className={`flex flex-col ${isSoldOut ? "opacity-50" : ""}`}
+                    data-ticket-card
+                    className="flex flex-col"
                   >
-                    {/* Physical ticket card — custom image OR CSS gradient default */}
-                    <div
-                      className="relative overflow-hidden rounded-xl p-5 sm:p-6 min-h-[148px] sm:min-h-[168px] select-none"
-                      style={
-                        tt.imageUrl
-                          ? {
-                              backgroundColor: "#0a0a0c",
-                              boxShadow:
-                                "0 8px 28px -10px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.08)",
-                            }
-                          : cardStyle(tt.level, accent)
-                      }
-                    >
-                      {tt.imageUrl ? (
-                        <>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={tt.imageUrl}
-                            alt=""
-                            aria-hidden
-                            className="absolute inset-0 z-0 w-full h-full object-cover"
-                            onError={(e) => {
-                              // If remote image fails, hide broken layer (card keeps dark base)
-                              e.currentTarget.style.display = "none";
-                            }}
-                          />
-                          <div
-                            aria-hidden
-                            className="absolute inset-0 z-[1] bg-gradient-to-br from-black/60 via-black/35 to-black/20 pointer-events-none"
-                          />
-                        </>
-                      ) : (
-                        <div
-                          aria-hidden
-                          className="absolute right-6 top-1/2 -translate-y-1/2 text-[72px] sm:text-[88px] font-black leading-none opacity-[0.07] pointer-events-none z-0"
-                          style={{ color: accent }}
-                        >
-                          x
-                        </div>
-                      )}
-                      <div
-                        aria-hidden
-                        className="absolute right-3 top-1/2 -translate-y-1/2 z-[2] flex flex-col gap-[2px] opacity-50"
+                    {/* Name left, price right — the card's caption row */}
+                    <div className="flex items-baseline justify-between gap-3 mb-2.5 px-0.5">
+                      <h2
+                        className={`text-base sm:text-lg font-black uppercase tracking-wide leading-none truncate ${
+                          isSoldOut ? "text-white/40" : "text-white"
+                        }`}
+                        title={tt.name}
                       >
-                        {Array.from({ length: 18 }).map((_, i) => (
-                          <div
-                            key={i}
-                            className="bg-white/80"
-                            style={{
-                              width: i % 3 === 0 ? 22 : i % 2 === 0 ? 16 : 20,
-                              height: 1.5,
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <div className="relative z-[2] mb-4">
-                        <Image
-                          src="/logo.png"
-                          alt="TEDx"
-                          width={72}
-                          height={24}
-                          className="h-5 w-auto object-contain opacity-90 drop-shadow"
-                        />
-                      </div>
-                      <h2 className="relative z-[2] text-2xl sm:text-[28px] font-black text-white leading-none tracking-tight mb-1.5 pr-10 drop-shadow">
                         {tt.name}
                       </h2>
                       <p
-                        className="relative z-[2] text-lg sm:text-xl font-bold mb-3 drop-shadow"
-                        style={{ color: tt.imageUrl ? "#fff" : accent }}
+                        className={`text-sm sm:text-base font-bold leading-none shrink-0 tabular-nums ${
+                          isSoldOut ? "text-white/30" : ""
+                        }`}
+                        style={isSoldOut ? undefined : {color: accent}}
                       >
-                        {formatPrice(Number(tt.price))}{" "}
-                        <span className="text-xs text-white/50 font-semibold">
+                        {formatPrice(Number(tt.price))}
+                        <span className="ml-1 text-[10px] text-white/45 font-semibold">
                           VND
                         </span>
                       </p>
-                      {(tt.subtitle || dateLabel) && (
-                        <p className="relative z-[2] text-[11px] sm:text-xs text-white/70 pr-8 drop-shadow">
-                          {tt.subtitle || dateLabel}
-                        </p>
-                      )}
+                    </div>
+
+                    {/* Ticket artwork. The image is anchored left inside a 2:1
+                        frame, which crops the barcode panel off its right edge
+                        (see TICKET_ART_RATIO). */}
+                    <div
+                      data-ticket-art
+                      className={`relative overflow-hidden rounded-2xl select-none border border-white/[0.08] ${
+                        isSoldOut ? "grayscale opacity-60" : ""
+                      }`}
+                      style={{
+                        aspectRatio: TICKET_ART_RATIO,
+                        backgroundColor: "#0a0a0c",
+                        boxShadow:
+                          "0 10px 30px -12px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.07)",
+                        willChange: "transform",
+                      }}
+                    >
+                      {/* Placeholder for a type whose artwork has not been
+                          uploaded yet, and the fallback if the image 404s.
+                          Painted first so the image simply covers it. */}
+                      <div
+                        aria-hidden
+                        className="absolute inset-0 z-0 flex items-center justify-center"
+                        style={cardStyle(tt.level, accent)}
+                      >
+                        <span
+                          className="text-[64px] font-black leading-none opacity-[0.09]"
+                          style={{color: accent}}
+                        >
+                          x
+                        </span>
+                      </div>
+
+                      {tt.imageUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={tt.imageUrl}
+                          alt={`${tt.name} ticket`}
+                          className="absolute inset-0 z-[1] w-full h-full object-cover object-left"
+                          onError={(e) => {
+                            // Remote image gone: drop the broken layer and let
+                            // the gradient placeholder underneath show.
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : null}
+
                       {isSoldOut && (
-                        <div className="absolute top-3 left-0 z-[2] bg-[#e62b1e] text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rotate-[-8deg] shadow-lg">
-                          Sold Out
+                        <div className="absolute inset-0 z-[2] flex items-center justify-center bg-black/45">
+                          <span className="bg-[#e62b1e] text-white text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] px-4 py-1.5 rotate-[-6deg] shadow-lg">
+                            Sold Out
+                          </span>
                         </div>
                       )}
                     </div>
 
-                    {/* Benefits + stepper */}
-                    <div className="pt-4 pb-1 flex-1 flex flex-col">
-                      {tt.benefits && tt.benefits.length > 0 && (
-                        <ul className="space-y-2 mb-5">
-                          {tt.benefits.slice(0, 4).map((b, i) => (
-                            <li
-                              key={i}
-                              className="flex items-start gap-2.5 text-xs sm:text-sm text-gray-400"
-                            >
-                              <Check
-                                className="w-3.5 h-3.5 mt-0.5 shrink-0"
-                                style={{ color: accent }}
-                                strokeWidth={3}
-                              />
-                              <span className="leading-snug">{b}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <div className="mt-auto flex items-center justify-center">
-                        <div className="inline-flex items-center rounded-xl border border-white/[0.1] bg-white/[0.03] overflow-hidden">
+                    {/* Stepper */}
+                    <div className="pt-3">
+                      <div className="flex items-center justify-center">
+                        {/* Plus sits left and minus right, matching the
+                            layout supplied by the team. */}
+                        <div className="inline-flex items-center rounded-xl border border-white/[0.12] bg-white/[0.04] overflow-hidden">
                           <button
                             type="button"
-                            onClick={() => bumpQty(tt.id, -1)}
-                            disabled={qty <= 0 || isSoldOut}
-                            aria-label={`Decrease ${tt.name}`}
-                            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center text-white/85 active:bg-white/[0.06] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                            onClick={(e) => bumpQtyAnimated(e, tt.id, 1)}
+                            disabled={isSoldOut || qty >= maxAllowed}
+                            aria-label={`Increase ${tt.name}`}
+                            className="w-11 h-10 sm:w-12 sm:h-11 flex items-center justify-center text-white/85 hover:bg-white/[0.07] active:bg-white/[0.1] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                           >
-                            <Minus className="w-4 h-4" strokeWidth={2.5} />
+                            <Plus className="w-4 h-4" strokeWidth={2.5} />
                           </button>
-                          <div className="w-12 sm:w-14 h-10 sm:h-11 flex items-center justify-center border-x border-white/[0.1] text-white text-base sm:text-lg font-semibold tabular-nums">
+                          <div
+                            aria-live="polite"
+                            className="w-12 sm:w-14 h-10 sm:h-11 flex items-center justify-center border-x border-white/[0.12] text-white text-base sm:text-lg font-semibold tabular-nums"
+                          >
                             {qty}
                           </div>
                           <button
                             type="button"
-                            onClick={() => bumpQty(tt.id, 1)}
-                            disabled={isSoldOut || qty >= maxAllowed}
-                            aria-label={`Increase ${tt.name}`}
-                            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center text-white/85 active:bg-white/[0.06] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                            onClick={(e) => bumpQtyAnimated(e, tt.id, -1)}
+                            disabled={qty <= 0 || isSoldOut}
+                            aria-label={`Decrease ${tt.name}`}
+                            className="w-11 h-10 sm:w-12 sm:h-11 flex items-center justify-center text-white/85 hover:bg-white/[0.07] active:bg-white/[0.1] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                           >
-                            <Plus className="w-4 h-4" strokeWidth={2.5} />
+                            <Minus className="w-4 h-4" strokeWidth={2.5} />
                           </button>
                         </div>
                       </div>
                     </div>
-                  </motion.div>
+                  </article>
                 );
               })}
             </div>
