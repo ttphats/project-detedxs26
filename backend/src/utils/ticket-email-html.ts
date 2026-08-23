@@ -83,6 +83,27 @@ export function buildTicketUnitsHtml(units: EmailTicketUnit[]): string {
     .join('')
 }
 
+/**
+ * Single-QR fallback for {{ticketUnitsHtml}}.
+ *
+ * Templates that render {{ticketUnitsHtml}} instead of their own {{qrCodeUrl}}
+ * would show no QR at all on an order whose items never got ticket codes
+ * (orders predating the per-ticket model). Fall back to the order-level QR so
+ * those emails still carry something scannable.
+ */
+export function buildFallbackQrHtml(qrCodeUrl: string, caption: string): string {
+  if (!qrCodeUrl) return ''
+  return `
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;background:#ffffff;border-radius:8px;">
+  <tr>
+    <td style="padding:12px;text-align:center;">
+      <img src="${esc(qrCodeUrl)}" alt="QR" width="160" height="160" style="display:block;width:160px;height:160px;border:0;" />
+      ${caption ? `<p style="margin:10px 0 0 0;font-size:12px;font-family:monospace;font-weight:700;color:#111;">${esc(caption)}</p>` : ''}
+    </td>
+  </tr>
+</table>`
+}
+
 export function buildTicketConfirmationEmailHtml(data: TicketConfirmEmailInput): string {
   const pdfUrl =
     data.pdfUrl ||

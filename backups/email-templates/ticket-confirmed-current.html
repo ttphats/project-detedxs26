@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vé điện tử TEDxFPTUniversityHCMC</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #050505;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    @media only screen and (max-width: 600px) {
+      .container {
+        width: 100% !important;
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+      }
+      .ticket-body {
+        padding: 20px !important;
+      }
+      .cta-btn {
+        display: block !important;
+        width: 100% !important;
+        margin-right: 0 !important;
+        margin-bottom: 10px !important;
+        padding: 15px 0 !important;
+        text-align: center !important;
+      }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #050505; font-family: 'Helvetica Neue', Arial, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #050505;">
+    <tr>
+      <td align="center" style="padding: 40px 10px;">
+        
+        <table class="container" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%;">
+          <!-- Top Accent -->
+          <tr>
+            <td height="6" style="background-color: #e62b1e; border-radius: 8px 8px 0 0;"></td>
+          </tr>
+          
+          <!-- Logo Header -->
+          <tr>
+            <td align="center" style="background-color: #111111; padding: 32px 24px; border-bottom: 1px solid #222222;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="font-size: 28px; font-weight: 900; color: #ffffff; letter-spacing: -1px; font-family: 'Helvetica Neue', Arial, sans-serif;">
+                    TED<span style="color: #e62b1e; font-weight: 300;">x</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size: 10px; font-weight: 600; color: #888888; letter-spacing: 2px; text-transform: uppercase; padding-top: 4px; text-align: center;">
+                    FPT University HCMC
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Hero Greeting -->
+          <tr>
+            <td style="background-color: #111111; padding: 32px 32px 16px 32px; text-align: left;">
+              <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #ffffff; line-height: 1.3;">
+                Xin chào / Hello, <span style="color: #e62b1e;">{{customerName}}</span>
+              </h1>
+              <p style="margin: 12px 0 0 0; font-size: 14px; color: #aaaaaa; line-height: 1.6;">
+                Cảm ơn bạn đã đồng hành cùng TEDxFPTUniversityHCMC 2026. Đơn hàng <strong style="color: #ffffff; font-family: monospace;">#{{orderNumber}}</strong> của bạn đã thanh toán thành công. Dưới đây là thông tin vé điện tử của bạn:
+              </p>
+            </td>
+          </tr>
+
+          <!-- The Ticket Card Container -->
+          <tr>
+            <td style="background-color: #111111; padding: 16px 32px 32px 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #1a1a1a; border-radius: 12px; border: 1px solid #2d2d2d; overflow: hidden;">
+                
+                <!-- Ticket Header Banner -->
+                <tr>
+                  <td style="background: linear-gradient(135deg, #e62b1e 0%, #b91c14 100%); background-color: #e62b1e; padding: 16px 24px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td>
+                          <span style="font-size: 11px; font-weight: 800; color: #ffffff; letter-spacing: 2px; text-transform: uppercase;">
+                            VÉ VÀO CỬA / ENTRY TICKET
+                          </span>
+                        </td>
+                        <td align="right">
+                          <span style="font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, 0.8); font-family: monospace;">
+                            #{{orderNumber}}
+                          </span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Ticket Content -->
+                <tr>
+                  <td class="ticket-body" style="padding: 24px 24px 16px 24px; text-align: left;">
+                    
+                    <!-- Event Title -->
+                    <h2 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 800; color: #ffffff; text-transform: uppercase; letter-spacing: 0px; line-height: 1.4;">
+                      {{eventName}}
+                    </h2>
+
+                    <!-- Details Grid -->
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="50%" style="padding-bottom: 16px; vertical-align: top;">
+                          <p style="margin: 0; font-size: 10px; color: #777777; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">Ngày / Date</p>
+                          <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: 700; color: #ffffff;">{{eventDate}}</p>
+                        </td>
+                        <td width="50%" style="padding-bottom: 16px; vertical-align: top;">
+                          <p style="margin: 0; font-size: 10px; color: #777777; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">Giờ / Time</p>
+                          <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: 700; color: #ffffff;">{{eventTime}}</p>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colspan="2" style="padding-bottom: 16px; vertical-align: top;">
+                          <p style="margin: 0; font-size: 10px; color: #777777; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">Địa điểm / Venue</p>
+                          <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: 700; color: #ffffff; line-height: 1.4;">{{eventVenue}}</p>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td width="50%" style="padding-bottom: 8px; vertical-align: top;">
+                          <p style="margin: 0; font-size: 10px; color: #777777; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">Vị trí ghế / Seat(s)</p>
+                          <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: 800; color: #e62b1e;">{{seats}}</p>
+                        </td>
+                        <td width="50%" style="padding-bottom: 8px; vertical-align: top;">
+                          <p style="margin: 0; font-size: 10px; color: #777777; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">Tổng tiền / Total Amount</p>
+                          <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: 800; color: #ffffff;">{{totalAmount}}</p>
+                        </td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+
+                <!-- Perforated Line -->
+                <tr>
+                  <td style="padding: 0 24px;">
+                    <div style="border-top: 1px dashed #3a3a3a; height: 1px; line-height: 1px; font-size: 1px;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                <!-- QR Section - one card per ticket: type, TKT- check-in
+                     code, price and its own QR. Each recipient receives only
+                     the tickets addressed to them. Falls back to the
+                     order-level QR for orders with no per-ticket codes.
+                     NOTE: variables are substituted by plain string replace,
+                     so never name one inside a comment - it expands here too. -->
+                <tr>
+                  <td style="padding: 24px; text-align: center; background-color: #1c1c1c;">
+                    <p style="margin: 0 0 16px 0; font-size: 11px; font-weight: 700; color: #aaaaaa; text-transform: uppercase; letter-spacing: 2px;">
+                      MÃ QR CHECK-IN / CHECK-IN QR CODE
+                    </p>
+
+                    {{ticketUnitsHtml}}
+
+                    <p style="margin: 16px 0 0 0; font-size: 12px; color: #888888; line-height: 1.4; max-width: 340px; margin-left: auto; margin-right: auto;">
+                      Mỗi vé có một mã QR riêng và chỉ check-in được <strong style="color: #ffffff;">1 lần</strong>. Vui lòng xuất trình mã QR tương ứng tại cổng sự kiện.<br/>Each QR admits one person, once. Do not share these codes with anyone.
+                    </p>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <!-- Action Buttons (CTA) -->
+          <tr>
+            <td align="center" style="background-color: #111111; padding: 0 32px 32px 32px;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width: 100%;">
+                <tr>
+                  <td align="center">
+                    <a class="cta-btn" href="{{ticketUrl}}" style="display: inline-block; background-color: #e62b1e; color: #ffffff; padding: 16px 36px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 2.5px; text-decoration: none; border-radius: 4px; border: 1px solid #e62b1e; box-shadow: 0 4px 10px rgba(230, 43, 30, 0.3);">
+                      🎫 Xem Vé Online / View Online
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Event Information / Notes -->
+          <tr>
+            <td style="background-color: #111111; padding: 0 32px 32px 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #161616; border-radius: 8px; border-left: 4px solid #e62b1e;">
+                <tr>
+                  <td style="padding: 20px 24px; text-align: left;">
+                    <h3 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 800; color: #ffffff; text-transform: uppercase; letter-spacing: 1px;">
+                      LƯU Ý QUAN TRỌNG / IMPORTANT NOTES
+                    </h3>
+                    <ul style="margin: 0; padding: 0 0 0 16px; font-size: 12px; color: #999999; line-height: 1.8;">
+                      <li>Có mặt trước giờ bắt đầu ít nhất 30 phút để ổn định vị trí. / Please arrive at least 30 minutes before the start time.</li>
+                      <li>Vé điện tử chỉ có giá trị check-in một lần tương ứng với số ghế đã mua. / Each QR code is valid for single check-in matching your seat count.</li>
+                      <li>Vui lòng mang theo CCCD/CMND để xác minh nếu cần. / Please bring your ID card for verification if requested.</li>
+                    </ul>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="background-color: #050505; padding: 40px 24px; border-top: 1px solid #111111;">
+              <p style="margin: 0; font-size: 11px; color: #555555; text-transform: uppercase; letter-spacing: 2px;">
+                Cần hỗ trợ? / Need help?
+              </p>
+              <p style="margin: 8px 0 0 0; font-size: 13px;">
+                <a href="mailto:support@tedxfptuhcm.com" style="color: #e62b1e; text-decoration: none; font-weight: bold;">
+                  support@tedxfptuhcm.com
+                </a>
+              </p>
+              <p style="margin: 24px 0 0 0; font-size: 11px; color: #444444; line-height: 1.5;">
+                Email này được gửi tự động từ hệ thống TEDxFPTUniversityHCMC.<br/>
+                © 2026 TEDxFPTUniversityHCMC. All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+        
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
