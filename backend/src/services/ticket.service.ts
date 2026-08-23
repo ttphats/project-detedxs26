@@ -1,6 +1,11 @@
 import { getPool } from '../db/mysql.js';
 import { RowDataPacket } from 'mysql2';
 import { createHash, timingSafeEqual } from 'crypto';
+import {
+  isHolderToken,
+  normalizeHolderEmail,
+  resolveHolderEmail,
+} from '../utils/holder-token.js';
 
 interface Order extends RowDataPacket {
   id: string;
@@ -125,9 +130,34 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
     return { error: 'Ticket access not configured', status: 403 };
   }
 
-  // Verify token
+  // Two kinds of token open this page. The order token belongs to the buyer
+  // and shows every ticket on the order. A holder token belongs to one
+  // attendee and shows only the tickets addressed to them, so a buyer who
+  // bought for strangers does not hand each of them everybody else's tickets.
+  let holderEmail: string | null = null;
   if (!verifyToken(token, order.access_token_hash)) {
-    return { error: 'Invalid access token', status: 403 };
+    if (isHolderToken(token)) {
+      try {
+        const [attendeeRows] = await pool.query<
+          (RowDataPacket & { attendee_email: string | null })[]
+        >(
+          `SELECT DISTINCT attendee_email FROM order_items
+           WHERE order_id = ? AND attendee_email IS NOT NULL AND attendee_email <> ''`,
+          [order.id]
+        );
+        holderEmail = resolveHolderEmail(
+          orderNumber,
+          token,
+          (attendeeRows || []).map((r) => r.attendee_email)
+        );
+      } catch (e) {
+        // Older database without the attendee columns — fail closed.
+        console.warn('[TICKET] holder token lookup:', e);
+      }
+    }
+    if (!holderEmail) {
+      return { error: 'Invalid access token', status: 403 };
+    }
   }
 
   // Get event details
@@ -159,6 +189,9 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
     ticket_code?: string | null;
     item_qr_code_url?: string | null;
     item_checked_in_at?: Date | null;
+    attendee_name?: string | null;
+    attendee_email?: string | null;
+    attendee_phone?: string | null;
   };
 
   let seats: SeatRow[] = [];
@@ -199,6 +232,20 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
       item_qr_code_url: null,
       item_checked_in_at: null,
     }));
+  }
+
+  // A holder token only unlocks that holder's own tickets. Everything below —
+  // ticket lines, units, check-in progress — is derived from `seats`, so
+  // narrowing here scopes the whole response.
+  if (holderEmail) {
+    seats = seats.filter(
+      (s) => normalizeHolderEmail(s.attendee_email || '') === holderEmail,
+    );
+    if (seats.length === 0) {
+      // The token resolved against an attendee email a moment ago, so an empty
+      // result means the holder's tickets were reassigned in between.
+      return { error: 'Ticket not found', status: 404 };
+    }
   }
 
   // Group into ticket lines for ticket-class UI / email
@@ -264,12 +311,23 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
 
   const unitsCheckedIn = ticketUnits.filter((u) => u.checkedIn).length;
 
+  // A scoped holder sees their own name and their own subtotal, not the
+  // buyer's name and the order total for tickets they cannot see.
+  const scopedName = holderEmail
+    ? ticketUnits.find((u) => u.attendeeName)?.attendeeName || order.customer_name
+    : order.customer_name;
+  const scopedTotal = holderEmail
+    ? seats.reduce((sum: number, s: any) => sum + Number(s.price), 0)
+    : Number(order.total_amount);
+
   return {
     data: {
       orderNumber: order.order_number,
       status: order.status,
-      customerName: order.customer_name,
-      totalAmount: Number(order.total_amount),
+      customerName: scopedName,
+      totalAmount: scopedTotal,
+      /** True when a holder token narrowed this to one attendee's tickets. */
+      scopedToHolder: !!holderEmail,
       createdAt: order.created_at,
       // Order-level: fully checked in when all units are in
       checkedIn:
@@ -282,7 +340,9 @@ export async function getTicketByOrderNumber(orderNumber: string, token: string)
         checkedIn: unitsCheckedIn,
         pending: ticketUnits.length - unitsCheckedIn,
       },
-      qrCodeUrl: order.status === 'PAID' ? order.qr_code_url : null,
+      // The order-level QR covers the whole order, so it is meaningless on a
+      // holder-scoped view — their per-unit QRs are the ones that check in.
+      qrCodeUrl: order.status === 'PAID' && !holderEmail ? order.qr_code_url : null,
       canDownload: order.status === 'PAID',
       // Permanent link auth: token is hash-only (does NOT expire by time)
       tokenNeverExpires: true,

@@ -3,6 +3,11 @@ import * as ordersService from '../../services/admin/orders.service.js'
 import {generateTicketQRCode, generateTicketUrl} from '../../services/qrcode.service.js'
 import {sendEmailByPurpose} from '../../services/email.service.js'
 import {
+  loadTicketUnitsForOrder,
+  sendTicketConfirmationEmails,
+  type ConfirmationTicketUnit,
+} from '../../services/ticket-confirmation-email.service.js'
+import {
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
@@ -76,32 +81,12 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
 
     // Generate QR code
     const qrCodeUrl = await generateTicketQRCode(result.order.orderNumber, result.order.eventId)
+    // Buyer-facing link, returned to the admin UI. Holders get their own
+    // scoped links inside their emails.
     const ticketUrl = generateTicketUrl(result.order.orderNumber, result.accessToken)
 
-    // Format date
-    const eventDate = new Date(result.order.event.eventDate)
-    const formattedDate = eventDate.toLocaleDateString('vi-VN', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-    const formattedTime = eventDate.toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
     // Per-ticket units for multi-QR email
-    let ticketUnits: Array<{
-      ticketCode: string
-      qrCodeUrl: string
-      typeName: string
-      seatNumber?: string
-      price: number
-      index: number
-      attendeeName: string | null
-      attendeeEmail: string | null
-    }> = []
+    let ticketUnits: ConfirmationTicketUnit[] = []
     let seatsList = result.order.orderItems
       .map(
         (item: any) =>
@@ -109,47 +94,10 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       )
       .join(', ')
     try {
-      const {ensureTicketUnitsForOrder} = await import('../../utils/ticket-unit.js')
-      const {query} = await import('../../db/mysql.js')
-      const {humanizeSeatType, buildTicketLines, formatTicketLinesSummary} = await import(
+      const {buildTicketLines, formatTicketLinesSummary} = await import(
         '../../utils/ticket-lines.js'
       )
-      await ensureTicketUnitsForOrder(result.order.id)
-      const rows = await query<{
-        ticket_code: string
-        qr_code_url: string
-        seat_number: string
-        seat_type: string
-        price: number
-        ticket_type_name: string | null
-        attendee_name: string | null
-        attendee_email: string | null
-      }>(
-        `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
-                COALESCE(tt.name, tt2.name) AS ticket_type_name,
-                oi.attendee_name, oi.attendee_email
-         FROM order_items oi
-         LEFT JOIN seats s ON s.id = oi.seat_id
-         LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
-         LEFT JOIN ticket_types tt2 ON tt2.id = oi.ticket_type_id
-         WHERE oi.order_id = ?
-         ORDER BY oi.created_at ASC`,
-        [result.order.id],
-      )
-      ticketUnits = rows
-        .filter((r) => r.ticket_code && r.qr_code_url)
-        .map((r, i) => ({
-          ticketCode: r.ticket_code,
-          qrCodeUrl: r.qr_code_url,
-          typeName:
-            (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
-            humanizeSeatType(r.seat_type),
-          seatNumber: r.seat_number,
-          price: Number(r.price),
-          index: i + 1,
-          attendeeName: r.attendee_name,
-          attendeeEmail: r.attendee_email,
-        }))
+      ticketUnits = await loadTicketUnitsForOrder(result.order.id)
       seatsList = formatTicketLinesSummary(
         buildTicketLines(
           result.order.orderItems.map((item: any) => ({
@@ -165,108 +113,38 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
       console.warn('[CONFIRM] ticket units for email:', e)
     }
 
-    // Send one confirmation email per ticket holder.
-    //
-    // Each ticket carries its own attendee, so the holder — not the person who
-    // paid — is who needs the QR. Tickets are grouped by recipient address, so
-    // someone holding several tickets gets one email containing all of theirs.
-    // Tickets with no attendee email (older orders, or a holder left blank)
-    // fall back to the buyer, which also preserves the previous behaviour for
-    // orders placed before attendee details were collected.
+    // One confirmation email per ticket holder — see the shared service for
+    // how tickets are grouped by recipient and how each holder's link is
+    // scoped to their own tickets.
     let emailStatus: 'SENT' | 'FAILED' = 'FAILED'
     let emailError: string | null = null
     let emailsSent = 0
     let emailsFailed = 0
+    let emailedAddresses: string[] = []
 
     try {
-      const totalFormatted = new Intl.NumberFormat('vi-VN', {
-        style: 'currency',
-        currency: 'VND',
-      }).format(Number(result.order.totalAmount) || 0)
-      const pdfUrl = ticketUrl
-        .replace('/ticket/', '/api/ticket/')
-        .replace('?token=', '/pdf?token=')
+      const sendResult = await sendTicketConfirmationEmails({
+        order: {
+          id: result.order.id,
+          orderNumber: result.order.orderNumber,
+          customerName: result.order.customerName,
+          customerEmail: result.order.customerEmail,
+          totalAmount: Number(result.order.totalAmount) || 0,
+        },
+        event: result.order.event,
+        accessToken: result.accessToken,
+        ticketUnits,
+        seatsSummary: seatsList,
+        orderItemCount: result.order.orderItems.length,
+        qrCodeUrl,
+        templateId, // admin-selected template from Email Templates
+        triggeredBy: user.userId,
+      })
 
-      const buyerEmail = result.order.customerEmail
-      const buyerName = result.order.customerName
-
-      type Recipient = {
-        email: string
-        name: string
-        units: typeof ticketUnits
-      }
-      const byRecipient = new Map<string, Recipient>()
-
-      for (const unit of ticketUnits) {
-        const email = (unit.attendeeEmail || '').trim() || buyerEmail
-        const key = email.toLowerCase()
-        const existing = byRecipient.get(key)
-        if (existing) {
-          existing.units.push(unit)
-        } else {
-          byRecipient.set(key, {
-            email,
-            name: (unit.attendeeName || '').trim() || buyerName,
-            units: [unit],
-          })
-        }
-      }
-
-      // No per-ticket units resolved (e.g. legacy order): fall back to a single
-      // email to the buyer carrying the whole order, exactly as before.
-      const recipients: Recipient[] =
-        byRecipient.size > 0
-          ? Array.from(byRecipient.values())
-          : [{email: buyerEmail, name: buyerName, units: []}]
-
-      for (const recipient of recipients) {
-        // Re-number the units so each holder's email reads "Ticket 1..n".
-        const units = recipient.units.map((u, i) => ({...u, index: i + 1}))
-        const isWholeOrder = units.length === 0 || units.length === ticketUnits.length
-
-        const emailResult = await sendEmailByPurpose({
-          purpose: 'TICKET_CONFIRMED',
-          to: recipient.email,
-          orderId: result.order.id,
-          triggeredBy: user.userId,
-          templateId, // admin-selected template from Email Templates
-          // Several recipients share this order and purpose; the 5-minute
-          // anti-spam guard would drop everyone after the first without this.
-          allowDuplicate: true,
-          data: {
-            customerName: recipient.name,
-            eventName: result.order.event.name,
-            eventDate: formattedDate,
-            eventTime: formattedTime,
-            eventVenue: result.order.event.venue,
-            eventAddress: result.order.event.venue,
-            orderNumber: result.order.orderNumber,
-            seats: isWholeOrder
-              ? seatsList
-              : units.map((u) => u.typeName).join(', '),
-            ticketUnits: units,
-            ticketCount: units.length || result.order.orderItems.length,
-            totalAmount: totalFormatted,
-            qrCodeUrl,
-            ticketUrl,
-            pdfUrl,
-          },
-        })
-
-        if (emailResult.success) {
-          emailsSent++
-          console.log(
-            `📧 Confirmation email sent to ${recipient.email} (${units.length || 'all'} ticket(s))`
-          )
-        } else {
-          emailsFailed++
-          emailError = emailResult.error || 'Unknown error'
-          console.error(
-            `❌ Confirmation email failed for ${recipient.email}: ${emailError}`
-          )
-        }
-      }
-
+      emailsSent = sendResult.sent
+      emailsFailed = sendResult.failed
+      emailedAddresses = sendResult.recipients.filter((r) => r.success).map((r) => r.email)
+      emailError = sendResult.error
       // Treat the send as successful when at least one holder was reached;
       // any individual failure is still surfaced through emailError.
       emailStatus = emailsSent > 0 ? 'SENT' : 'FAILED'
@@ -311,7 +189,8 @@ export async function confirmPayment(request: FastifyRequest, reply: FastifyRepl
         emailError,
         emailsSent,
         emailsFailed,
-        emailSentTo: result.order.customerEmail,
+        // Every address reached, not just the buyer's — one email per holder.
+        emailSentTo: emailedAddresses,
       },
       message,
     })
@@ -420,15 +299,23 @@ export async function resendEmail(request: FastifyRequest, reply: FastifyReply) 
       throw new BadRequestError(`Failed to send email: ${result.emailResult.error}`)
     }
 
+    const {sent, failed, recipients} = result.sendResult
+
     return reply.send({
       success: true,
       data: {
         orderId: result.order.id,
         orderNumber: result.order.orderNumber,
-        emailSentTo: result.order.customerEmail,
-        emailId: result.emailResult.emailId,
+        // One email per ticket holder, so report every address reached rather
+        // than just the buyer's.
+        emailSentTo: recipients.filter((r) => r.success).map((r) => r.email),
+        emailsSent: sent,
+        emailsFailed: failed,
       },
-      message: 'Email đã gửi lại thành công. Link vé cũ sẽ không còn hiệu lực.',
+      message:
+        failed > 0
+          ? `Đã gửi lại ${sent} email, ${failed} email thất bại.`
+          : `Đã gửi lại ${sent} email cho người tham dự.`,
     })
   } catch (error: any) {
     if (error instanceof BadRequestError) throw error

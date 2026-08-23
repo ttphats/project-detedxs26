@@ -1,6 +1,11 @@
 import {FastifyRequest, FastifyReply} from 'fastify'
 import {prisma} from '../db/prisma.js'
 import {verifyAccessToken} from '../utils/helpers.js'
+import {
+  isHolderToken,
+  normalizeHolderEmail,
+  resolveHolderEmail,
+} from '../utils/holder-token.js'
 import puppeteer from 'puppeteer'
 
 /**
@@ -39,12 +44,24 @@ export async function generateTicketPDF(
       })
     }
 
-    // Verify token
+    // Verify token. The order token downloads the whole order; a holder token
+    // downloads only that attendee's own tickets, so sharing an order with
+    // strangers does not hand each of them everybody else's PDF.
+    let holderEmail: string | null = null
     if (!order.accessTokenHash || !verifyAccessToken(token, order.accessTokenHash)) {
-      return reply.status(403).send({
-        success: false,
-        error: 'Invalid or expired token',
-      })
+      if (isHolderToken(token)) {
+        holderEmail = resolveHolderEmail(
+          orderNumber,
+          token,
+          order.orderItems.map((item: any) => item.attendeeEmail),
+        )
+      }
+      if (!holderEmail) {
+        return reply.status(403).send({
+          success: false,
+          error: 'Invalid or expired token',
+        })
+      }
     }
 
     // Format event date
@@ -71,23 +88,40 @@ export async function generateTicketPDF(
     // Reload items with ticket codes
     const {query} = await import('../db/mysql.js')
     const {humanizeSeatType} = await import('../utils/ticket-lines.js')
-    const unitRows = await query<{
+    const allUnitRows = await query<{
       ticket_code: string | null
       qr_code_url: string | null
       seat_number: string
       seat_type: string
       price: number
       ticket_type_name: string | null
+      attendee_name: string | null
+      attendee_email: string | null
     }>(
       `SELECT oi.ticket_code, oi.qr_code_url, oi.seat_number, oi.seat_type, oi.price,
-              tt.name AS ticket_type_name
+              COALESCE(tt.name, tt2.name) AS ticket_type_name,
+              oi.attendee_name, oi.attendee_email
        FROM order_items oi
        LEFT JOIN seats s ON s.id = oi.seat_id
        LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+       LEFT JOIN ticket_types tt2 ON tt2.id = oi.ticket_type_id
        WHERE oi.order_id = ?
        ORDER BY oi.created_at ASC`,
       [order.id],
     )
+
+    const unitRows = holderEmail
+      ? allUnitRows.filter(
+          (r) => normalizeHolderEmail(r.attendee_email || '') === holderEmail,
+        )
+      : allUnitRows
+
+    if (holderEmail && unitRows.length === 0) {
+      return reply.status(404).send({
+        success: false,
+        error: 'Ticket not found',
+      })
+    }
 
     const ticketUnits = unitRows.map((r, i) => ({
       index: i + 1,
@@ -103,18 +137,24 @@ export async function generateTicketPDF(
     // Generate HTML template for PDF
     const html = generateTicketHTML({
       orderNumber: order.orderNumber,
-      customerName: order.customerName,
+      // A scoped holder gets their own name and their own subtotal on the PDF,
+      // not the buyer's name and a total covering tickets they cannot see.
+      customerName: holderEmail
+        ? unitRows.find((r) => r.attendee_name)?.attendee_name || order.customerName
+        : order.customerName,
       eventName: order.event.name,
       eventDate: formattedDate,
       eventTime: formattedTime,
       eventVenue: order.event.venue,
-      seats: order.orderItems.map((item: any) => ({
-        number: item.seat?.seatNumber || item.seatNumber,
-        type: item.seat?.seatType || item.seatType,
+      seats: unitRows.map((r) => ({
+        number: r.seat_number,
+        type: r.seat_type,
       })),
       ticketUnits,
-      qrCodeUrl: order.qrCodeUrl,
-      totalAmount: Number(order.totalAmount),
+      qrCodeUrl: holderEmail ? null : order.qrCodeUrl,
+      totalAmount: holderEmail
+        ? unitRows.reduce((sum, r) => sum + Number(r.price), 0)
+        : Number(order.totalAmount),
     })
 
     // Generate PDF using Puppeteer

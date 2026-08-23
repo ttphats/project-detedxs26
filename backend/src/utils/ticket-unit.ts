@@ -30,6 +30,20 @@ export async function ensureOrderItemTicketColumns(): Promise<void> {
       name: 'checked_in_by',
       ddl: `ALTER TABLE order_items ADD COLUMN checked_in_by VARCHAR(36) NULL`,
     },
+    // Ticket holder captured at checkout — one per ticket, so a buyer can pay
+    // for several people and each gets their own ticket emailed to them.
+    {
+      name: 'attendee_name',
+      ddl: `ALTER TABLE order_items ADD COLUMN attendee_name VARCHAR(255) NULL`,
+    },
+    {
+      name: 'attendee_email',
+      ddl: `ALTER TABLE order_items ADD COLUMN attendee_email VARCHAR(255) NULL`,
+    },
+    {
+      name: 'attendee_phone',
+      ddl: `ALTER TABLE order_items ADD COLUMN attendee_phone VARCHAR(50) NULL`,
+    },
   ]
   for (const c of cols) {
     try {

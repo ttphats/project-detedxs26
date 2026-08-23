@@ -371,11 +371,19 @@ export default function OrdersPage() {
       if (data.success) {
         const emailStatus = data.data?.emailStatus;
         const emailError = data.data?.emailError;
-        const sentTo = data.data?.emailSentTo;
+        // One email per ticket holder, so this is a list of addresses.
+        const sentTo: string[] = Array.isArray(data.data?.emailSentTo)
+          ? data.data.emailSentTo
+          : [data.data?.emailSentTo].filter(Boolean);
+        const emailsFailed = data.data?.emailsFailed ?? 0;
         if (emailStatus === "SENT") {
-          message.success(
-            `Đã xác nhận thanh toán! Email vé đã gửi đến ${sentTo}.`,
-          );
+          message.success({
+            content:
+              emailsFailed > 0
+                ? `Đã xác nhận thanh toán! Đã gửi vé đến ${sentTo.join(", ")}, ${emailsFailed} email thất bại.`
+                : `Đã xác nhận thanh toán! Email vé đã gửi đến ${sentTo.join(", ")}.`,
+            duration: emailsFailed > 0 ? 8 : 5,
+          });
         } else {
           message.warning({
             content: `Đã xác nhận thanh toán nhưng gửi email thất bại: ${emailError || "Unknown error"}. Bạn có thể bấm "Gửi lại email" để thử lại.`,
