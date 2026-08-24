@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { AdminLayout } from '@/components/admin'
 import {
   Card,
+  Spin,
   Tabs,
   Form,
   Input,
@@ -340,13 +341,19 @@ export default function SpeakerConfigPage() {
             {
               key: '1',
               label: '1. Rules & Introduction Config',
+              // Spin rather than Card's `loading`: that swaps the card's
+              // children for a skeleton, so the Form below was unmounted while
+              // the config was fetching. fetchConfig then called
+              // configForm.setFieldsValue on an instance attached to no Form,
+              // which is what antd warns about. Spinning keeps it mounted.
               children: (
-                <Card loading={configLoading}>
-                  <Form
-                    form={configForm}
-                    layout="vertical"
-                    onFinish={handleConfigSubmit}
-                  >
+                <Card>
+                  <Spin spinning={configLoading}>
+                    <Form
+                      form={configForm}
+                      layout="vertical"
+                      onFinish={handleConfigSubmit}
+                    >
                     <Form.Item
                       name="title"
                       label="Page Title"
@@ -418,6 +425,7 @@ export default function SpeakerConfigPage() {
                       </Space>
                     </Form.Item>
                   </Form>
+                  </Spin>
                 </Card>
               )
             },

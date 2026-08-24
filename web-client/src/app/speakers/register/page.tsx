@@ -1,8 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, CheckCircle, HelpCircle } from "lucide-react";
+
+/**
+ * Render text so the x in "TEDx" survives an uppercased parent.
+ *
+ * The page title is set in the admin and rendered inside headings that carry
+ * `uppercase`, which would print the brand as "TEDX". text-transform applies
+ * per element, so each x is emitted in its own span that opts back out.
+ * Everything around it is left untouched and still uppercases normally.
+ */
+function withLowercaseX(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const pattern = /TED(x)/gi;
+  let cursor = 0;
+  let key = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > cursor) parts.push(text.slice(cursor, match.index));
+    // Keep the source's own characters rather than a hardcoded "TED"/"x".
+    parts.push(match[0].slice(0, -1));
+    parts.push(
+      <span key={`x-${key++}`} className="lowercase">
+        {match[0].slice(-1)}
+      </span>,
+    );
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
+}
 
 interface SpeakerField {
   id: string;
@@ -171,7 +201,7 @@ export default function RegisterSpeakerPage() {
           {/* Logo / Brand */}
           <Link href="/" className="flex items-center gap-2 group">
             <span className="text-white font-black text-xl sm:text-2xl uppercase tracking-tight">
-              TED<span className="text-red-600">x</span>
+              TED<span className="text-red-600 lowercase">x</span>
             </span>
             <span className="text-gray-400 text-xs sm:text-sm font-medium tracking-wide">FPTUniversityHCMC</span>
           </Link>
@@ -213,8 +243,10 @@ export default function RegisterSpeakerPage() {
             {/* Header Title */}
             <div className="text-center sm:text-left">
               <h1 className="text-3xl sm:text-5xl font-black uppercase tracking-tight leading-none text-white mb-4">
-                {title.split(" ").slice(0, -1).join(" ")}{" "}
-                <span className="text-red-600">{title.split(" ").slice(-1)[0]}</span>
+                {withLowercaseX(title.split(" ").slice(0, -1).join(" "))}{" "}
+                <span className="text-red-600">
+                  {withLowercaseX(title.split(" ").slice(-1)[0])}
+                </span>
               </h1>
               <p className="text-gray-400 text-sm sm:text-base md:text-lg max-w-2xl leading-relaxed">
                 {description}
