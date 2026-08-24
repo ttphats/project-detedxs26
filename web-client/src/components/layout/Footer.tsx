@@ -33,14 +33,14 @@ export default function Footer() {
           {/* Brand - takes 4 columns */}
           <div className="col-span-1 md:col-span-4 flex flex-col justify-between">
             <div>
-              <Link href="/" className="flex items-center gap-1 mb-4">
+              <Link href="/" className="flex items-center mb-4">
                 <span className="text-2xl font-black">TED</span>
-                <span className="text-2xl font-black text-red-600">x</span>
-                <span className="text-2xl font-light">FPTUniversityHCMC</span>
+                <span className="text-2xl font-black text-red-500">x</span>
+                <span className="text-2xl font-light ml-2">FPTUniversityHCMC</span>
               </Link>
               <p className="text-gray-500 text-xs sm:text-sm uppercase tracking-wide leading-relaxed">
-                This independently organized TEDx event is operated under license
-                from TED.
+                This independently organized TED<span className="lowercase">x</span>{" "}
+                event is operated under license from TED.
               </p>
             </div>
           </div>
