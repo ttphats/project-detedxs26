@@ -42,9 +42,9 @@ jobs:
             # Navigate to backend directory
             cd backend
 
-            # Install dependencies
+            # Install all deps so tsc (devDependency) is available to build
             echo "📦 Installing dependencies..."
-            npm ci --production
+            npm ci
 
             # Generate Prisma Client
             echo "🔧 Generating Prisma Client..."
@@ -54,9 +54,13 @@ jobs:
             echo "🔨 Building TypeScript..."
             npm run build
 
+            # Drop build-only packages after compile
+            echo "🧹 Pruning devDependencies..."
+            npm prune --omit=dev
+
             # Restart PM2
             echo "🔄 Restarting PM2..."
-            pm2 restart tedx-backend || pm2 start npm --name "tedx-backend" -- run start
+            pm2 restart tedx-backend || pm2 start ecosystem.config.js --env production
 
             # Save PM2 config
             pm2 save
