@@ -5,11 +5,10 @@
  * Variables:
  *  {{customerName}} {{eventName}} {{eventDate}} {{eventTime}} {{eventVenue}}
  *  {{eventAddress}} {{orderNumber}} {{seats}} {{ticketCount}} {{totalAmount}}
- *  {{qrCodeUrl}} {{ticketUrl}} {{pdfUrl}} {{ticketUnitsHtml}}
+ *  {{qrCodeUrl}} {{ticketUrl}} {{ticketUnitsHtml}}
  */
 
-export const TICKET_CONFIRMED_SUBJECT =
-  'Vé điện tử TEDx — {{orderNumber}} · {{ticketCount}} vé'
+export const TICKET_CONFIRMED_SUBJECT = 'Vé điện tử TEDx — {{orderNumber}} · {{ticketCount}} vé'
 
 export const TICKET_CONFIRMED_VARIABLES = [
   'customerName',
@@ -24,7 +23,6 @@ export const TICKET_CONFIRMED_VARIABLES = [
   'totalAmount',
   'qrCodeUrl',
   'ticketUrl',
-  'pdfUrl',
   'ticketUnitsHtml',
 ]
 
@@ -90,7 +88,6 @@ export const TICKET_CONFIRMED_HTML = `<!DOCTYPE html>
 
           <tr><td style="text-align:center;padding:28px 0 12px;">
             <a href="{{ticketUrl}}" style="display:inline-block;background:#ea251a;color:#fff;padding:16px 36px;font-size:13px;font-weight:900;text-decoration:none;letter-spacing:2px;border-radius:4px;margin:0 6px 8px;">🎫 XEM VÉ ONLINE</a>
-            <a href="{{pdfUrl}}" style="display:inline-block;background:#fff;color:#000;padding:14px 28px;font-size:13px;font-weight:900;text-decoration:none;letter-spacing:2px;border-radius:4px;border:2px solid #ea251a;margin:0 6px 8px;">📄 TẢI PDF</a>
           </td></tr>
 
           <tr><td style="padding:8px 12px 32px;font-size:11px;color:#444;line-height:1.5;text-align:center;">

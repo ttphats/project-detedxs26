@@ -12,47 +12,42 @@
  */
 
 export interface TicketEmailData {
-  customerName: string;
-  eventName: string;
-  eventDate: string;
-  eventTime: string;
-  eventVenue: string;
-  eventAddress?: string;
-  orderNumber: string;
+  customerName: string
+  eventName: string
+  eventDate: string
+  eventTime: string
+  eventVenue: string
+  eventAddress?: string
+  orderNumber: string
   seats: Array<{
-    seatNumber: string;
-    seatType: string;
-    section?: string;
-    row?: string;
-    price: number;
-  }>;
-  totalAmount: number;
-  qrCodeUrl: string;
-  ticketUrl: string;  // Link to view ticket online
-  pdfUrl?: string;    // Link to download ticket PDF (auto-generated from ticketUrl if not provided)
-  logoUrl?: string;
+    seatNumber: string
+    seatType: string
+    section?: string
+    row?: string
+    price: number
+  }>
+  totalAmount: number
+  qrCodeUrl: string
+  ticketUrl: string // Link to view ticket online
+  logoUrl?: string
 }
 
 export function formatVND(amount: number): string {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND',
-  }).format(amount);
+  }).format(amount)
 }
 
 export function generateTicketConfirmationEmail(data: TicketEmailData): string {
   // Get primary seat info for ticket display
-  const primarySeat = data.seats[0];
-  const seatDisplay = data.seats.length > 1
-    ? `${primarySeat.seatNumber} +${data.seats.length - 1}`
-    : primarySeat.seatNumber;
-  const seatTypeDisplay = primarySeat.seatType;
-  const isVIP = seatTypeDisplay === 'VIP';
-
-  // Generate PDF URL from ticketUrl if not provided
-  // ticketUrl format: /ticket/ORDER123?token=xxx
-  // pdfUrl format: /api/ticket/ORDER123/pdf?token=xxx
-  const pdfUrl = data.pdfUrl || data.ticketUrl.replace('/ticket/', '/api/ticket/').replace('?token=', '/pdf?token=');
+  const primarySeat = data.seats[0]
+  const seatDisplay =
+    data.seats.length > 1
+      ? `${primarySeat.seatNumber} +${data.seats.length - 1}`
+      : primarySeat.seatNumber
+  const seatTypeDisplay = primarySeat.seatType
+  const isVIP = seatTypeDisplay === 'VIP'
 
   return `
 <!DOCTYPE html>
@@ -239,12 +234,8 @@ export function generateTicketConfirmationEmail(data: TicketEmailData): string {
           <tr>
             <td style="text-align: center;">
               <!-- Primary: View Ticket Online -->
-              <a href="${data.ticketUrl}" style="display: inline-block; background: linear-gradient(135deg, #ea251a 0%, #b91c14 100%); background-color: #ea251a; color: #ffffff; padding: 18px 48px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 4px; margin-right: 12px;">
+              <a href="${data.ticketUrl}" style="display: inline-block; background: linear-gradient(135deg, #ea251a 0%, #b91c14 100%); background-color: #ea251a; color: #ffffff; padding: 18px 48px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 4px;">
                 🎫 XEM VÉ ĐIỆN TỬ
-              </a>
-              <!-- Secondary: Download PDF -->
-              <a href="${pdfUrl}" style="display: inline-block; background-color: #ffffff; color: #000000; padding: 18px 32px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 4px; border: 2px solid #ea251a;">
-                📄 TẢI PDF
               </a>
               <p style="margin: 20px 0 0 0; font-size: 12px; color: #000000;">
                 Xem vé online: <a href="${data.ticketUrl}" style="color: #ea251a; text-decoration: underline;">Nhấn vào đây</a>
@@ -258,12 +249,14 @@ export function generateTicketConfirmationEmail(data: TicketEmailData): string {
             </td>
           </tr>
         </table>
-`;
+`
 }
 
 export function generateTicketConfirmationEmailPart2(data: TicketEmailData): string {
   // Generate seats detail list with editorial style
-  const seatsDetailHtml = data.seats.map((seat, index) => `
+  const seatsDetailHtml = data.seats
+    .map(
+      (seat, index) => `
     <tr>
       <td style="padding: 14px 16px; border-bottom: 1px solid #ddd; color: #000000; font-size: 13px; font-weight: 700;">
         ${seat.section ? `${seat.section} - ` : ''}${seat.seatNumber}
@@ -277,11 +270,15 @@ export function generateTicketConfirmationEmailPart2(data: TicketEmailData): str
         ${formatVND(seat.price)}
       </td>
     </tr>
-  `).join('');
+  `
+    )
+    .join('')
 
   return `
         <!-- Seats Detail Table (if multiple seats) -->
-        ${data.seats.length > 1 ? `
+        ${
+          data.seats.length > 1
+            ? `
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; margin-top: 32px;">
           <tr>
             <td>
@@ -308,7 +305,9 @@ export function generateTicketConfirmationEmailPart2(data: TicketEmailData): str
             </td>
           </tr>
         </table>
-        ` : ''}
+        `
+            : ''
+        }
 
         <!-- Schedule/Timeline Section -->
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; width: 100%; margin-top: 40px;">
@@ -416,10 +415,9 @@ export function generateTicketConfirmationEmailPart2(data: TicketEmailData): str
   </table>
 </body>
 </html>
-  `;
+  `
 }
 
 export function generateFullTicketEmail(data: TicketEmailData): string {
-  return generateTicketConfirmationEmail(data) + generateTicketConfirmationEmailPart2(data);
+  return generateTicketConfirmationEmail(data) + generateTicketConfirmationEmailPart2(data)
 }
-

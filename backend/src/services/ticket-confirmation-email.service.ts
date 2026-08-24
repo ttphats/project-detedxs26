@@ -35,9 +35,7 @@ export interface ConfirmationTicketUnit {
  * `order_items.ticket_type_id` for ticket-class ones, so neither flow ends up
  * with unnamed tickets.
  */
-export async function loadTicketUnitsForOrder(
-  orderId: string,
-): Promise<ConfirmationTicketUnit[]> {
+export async function loadTicketUnitsForOrder(orderId: string): Promise<ConfirmationTicketUnit[]> {
   await ensureTicketUnitsForOrder(orderId)
 
   const rows = await query<{
@@ -59,7 +57,7 @@ export async function loadTicketUnitsForOrder(
      LEFT JOIN ticket_types tt2 ON tt2.id = oi.ticket_type_id
      WHERE oi.order_id = ?
      ORDER BY oi.created_at ASC`,
-    [orderId],
+    [orderId]
   )
 
   return rows
@@ -68,8 +66,7 @@ export async function loadTicketUnitsForOrder(
       ticketCode: r.ticket_code,
       qrCodeUrl: r.qr_code_url,
       typeName:
-        (r.ticket_type_name && String(r.ticket_type_name).trim()) ||
-        humanizeSeatType(r.seat_type),
+        (r.ticket_type_name && String(r.ticket_type_name).trim()) || humanizeSeatType(r.seat_type),
       seatNumber: r.seat_number ?? undefined,
       price: Number(r.price),
       index: i + 1,
@@ -124,7 +121,7 @@ interface Recipient {
 function groupByRecipient(
   ticketUnits: ConfirmationTicketUnit[],
   buyerEmail: string,
-  buyerName: string,
+  buyerName: string
 ): Recipient[] {
   const byRecipient = new Map<string, Recipient>()
 
@@ -165,10 +162,18 @@ function groupByRecipient(
 }
 
 export async function sendTicketConfirmationEmails(
-  params: SendConfirmationEmailsParams,
+  params: SendConfirmationEmailsParams
 ): Promise<SendConfirmationEmailsResult> {
-  const {order, event, accessToken, ticketUnits, seatsSummary, ticketLines, templateId, triggeredBy} =
-    params
+  const {
+    order,
+    event,
+    accessToken,
+    ticketUnits,
+    seatsSummary,
+    ticketLines,
+    templateId,
+    triggeredBy,
+  } = params
 
   const eventDate = new Date(event.eventDate)
   const formattedDate = eventDate.toLocaleDateString('vi-VN', {
@@ -210,9 +215,6 @@ export async function sendTicketConfirmationEmails(
       ? accessToken
       : generateHolderToken(order.orderNumber, recipient.email)
     const recipientTicketUrl = generateTicketUrl(order.orderNumber, recipientToken)
-    const recipientPdfUrl = recipientTicketUrl
-      .replace('/ticket/', '/api/ticket/')
-      .replace('?token=', '/pdf?token=')
 
     const emailResult = await sendEmailByPurpose({
       purpose: 'TICKET_CONFIRMED',
@@ -243,14 +245,13 @@ export async function sendTicketConfirmationEmails(
         // {{ticketUnitsHtml}} show every one of their tickets.
         qrCodeUrl: isWholeOrder ? params.qrCodeUrl : units[0]?.qrCodeUrl || params.qrCodeUrl,
         ticketUrl: recipientTicketUrl,
-        pdfUrl: recipientPdfUrl,
       },
     })
 
     if (emailResult.success) {
       result.sent++
       console.log(
-        `📧 Confirmation email sent to ${recipient.email} (${units.length || 'all'} ticket(s))`,
+        `📧 Confirmation email sent to ${recipient.email} (${units.length || 'all'} ticket(s))`
       )
     } else {
       result.failed++

@@ -75,11 +75,7 @@ describe('ticket confirmation emails', () => {
     ])
 
     expect(result.sent).toBe(3)
-    expect(sentTo().sort()).toEqual([
-      'ann@example.com',
-      'bo@example.com',
-      'buyer@example.com',
-    ])
+    expect(sentTo().sort()).toEqual(['ann@example.com', 'bo@example.com', 'buyer@example.com'])
   })
 
   it('bundles a holder with several tickets into one email', async () => {
@@ -106,9 +102,7 @@ describe('ticket confirmation emails', () => {
     const ann = callFor('ann@example.com')!
     expect(ann.data.ticketUrl).toContain(`token=${annToken}`)
     expect(ann.data.ticketUrl).not.toContain('order-token')
-    expect(ann.data.pdfUrl).toBe(
-      `https://tedx.example/api/ticket/${ORDER_NUMBER}/pdf?token=${annToken}`,
-    )
+    expect(ann.data.pdfUrl).toBeUndefined()
   })
 
   it('gives a scoped holder a QR that checks them in', async () => {
@@ -119,9 +113,7 @@ describe('ticket confirmation emails', () => {
       unit(2, {name: 'Buyer', email: 'buyer@example.com'}),
     ])
 
-    expect(callFor('ann@example.com')!.data.qrCodeUrl).toBe(
-      'https://cdn.example/qr1.png',
-    )
+    expect(callFor('ann@example.com')!.data.qrCodeUrl).toBe('https://cdn.example/qr1.png')
   })
 
   it('gives the buyer the order token, which opens everything they paid for', async () => {
@@ -186,9 +178,7 @@ describe('ticket confirmation emails', () => {
 
   it('reports partial failure without losing the other recipients', async () => {
     sendEmailByPurpose.mockImplementation(async (o: any) =>
-      o.to === 'bo@example.com'
-        ? {success: false, error: 'mailbox full'}
-        : {success: true},
+      o.to === 'bo@example.com' ? {success: false, error: 'mailbox full'} : {success: true}
     )
 
     const result = await send([
@@ -200,8 +190,6 @@ describe('ticket confirmation emails', () => {
     expect(result.sent).toBe(2)
     expect(result.failed).toBe(1)
     expect(result.error).toBe('mailbox full')
-    expect(result.recipients.find((r) => r.email === 'bo@example.com')!.success).toBe(
-      false,
-    )
+    expect(result.recipients.find((r) => r.email === 'bo@example.com')!.success).toBe(false)
   })
 })

@@ -6,8 +6,19 @@ const prisma = new PrismaClient()
 
 const SUBJECT = 'Vé điện tử TEDx — {{orderNumber}} · {{ticketCount}} vé'
 const VARIABLES = JSON.stringify([
-  'customerName','eventName','eventDate','eventTime','eventVenue','eventAddress',
-  'orderNumber','seats','ticketCount','totalAmount','qrCodeUrl','ticketUrl','pdfUrl','ticketUnitsHtml',
+  'customerName',
+  'eventName',
+  'eventDate',
+  'eventTime',
+  'eventVenue',
+  'eventAddress',
+  'orderNumber',
+  'seats',
+  'ticketCount',
+  'totalAmount',
+  'qrCodeUrl',
+  'ticketUrl',
+  'ticketUnitsHtml',
 ])
 
 const HTML = `<!DOCTYPE html>
@@ -46,7 +57,6 @@ const HTML = `<!DOCTYPE html>
 </td></tr>
 <tr><td style="text-align:center;padding:28px 0 12px;">
 <a href="{{ticketUrl}}" style="display:inline-block;background:#ea251a;color:#fff;padding:16px 36px;font-size:13px;font-weight:900;text-decoration:none;letter-spacing:2px;border-radius:4px;margin:0 6px 8px;">XEM VÉ ONLINE</a>
-<a href="{{pdfUrl}}" style="display:inline-block;background:#fff;color:#000;padding:14px 28px;font-size:13px;font-weight:900;text-decoration:none;letter-spacing:2px;border-radius:4px;border:2px solid #ea251a;margin:0 6px 8px;">TẢI PDF</a>
 </td></tr>
 <tr><td style="padding:8px 12px 32px;font-size:11px;color:#444;line-height:1.5;text-align:center;">
 Link vé: <a href="{{ticketUrl}}" style="color:#ea251a;word-break:break-all;">{{ticketUrl}}</a><br/><br/>
@@ -56,7 +66,7 @@ Mỗi mã TKT / QR chỉ check-in 1 lần. Không chia sẻ QR.
 </body></html>`
 
 const purpose = 'TICKET_CONFIRMED'
-const existing = await prisma.emailTemplate.findFirst({ where: { purpose, isDefault: true } })
+const existing = await prisma.emailTemplate.findFirst({where: {purpose, isDefault: true}})
 const payload = {
   name: existing?.name || 'TEDx Ticket Confirmed (Multi-QR)',
   purpose,
@@ -70,13 +80,27 @@ const payload = {
   isDefault: true,
 }
 if (existing) {
-  await prisma.emailTemplate.update({ where: { id: existing.id }, data: { ...payload, version: (existing.version || 1) + 1 } })
+  await prisma.emailTemplate.update({
+    where: {id: existing.id},
+    data: {...payload, version: (existing.version || 1) + 1},
+  })
   console.log('Updated', existing.id)
 } else {
-  await prisma.emailTemplate.updateMany({ where: { purpose, isDefault: true }, data: { isDefault: false } })
-  const c = await prisma.emailTemplate.create({ data: payload })
+  await prisma.emailTemplate.updateMany({
+    where: {purpose, isDefault: true},
+    data: {isDefault: false},
+  })
+  const c = await prisma.emailTemplate.create({data: payload})
   console.log('Created', c.id)
 }
-const all = await prisma.emailTemplate.findMany({ where: { purpose } })
-console.log(all.map(t => ({ id: t.id, name: t.name, def: t.isDefault, active: t.isActive, hasUnits: t.htmlContent.includes('{{ticketUnitsHtml}}') })))
+const all = await prisma.emailTemplate.findMany({where: {purpose}})
+console.log(
+  all.map((t) => ({
+    id: t.id,
+    name: t.name,
+    def: t.isDefault,
+    active: t.isActive,
+    hasUnits: t.htmlContent.includes('{{ticketUnitsHtml}}'),
+  }))
+)
 await prisma.$disconnect()
