@@ -1,15 +1,51 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { message, Card, Button, Spin } from "antd";
+import { message, Card, Button, Spin, Table, Tag, Empty, Select } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import {
   ScanOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   CameraOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { AdminLayout } from "@/components/admin";
+
+/** One admitted ticket, as returned by GET /admin/check-in/list/:eventId. */
+interface CheckInRecord {
+  id: string;
+  ticketCode: string | null;
+  checkedInAt: string;
+  typeName: string;
+  seatNumber: string | null;
+  orderNumber: string;
+  customerName: string;
+  attendeeName: string | null;
+  attendeeEmail: string | null;
+  checkedInBy: string | null;
+}
+
+interface AdminEvent {
+  id: string;
+  name: string;
+  status: string;
+}
+
+/** Dates are stored as Vietnam local time; render them as given. */
+function formatScanTime(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
 
 interface CheckInResult {
   orderNumber: string;
@@ -36,6 +72,10 @@ export default function CheckInPage() {
   const [lastResult, setLastResult] = useState<CheckInResult | null>(null);
   const [stats, setStats] = useState({ total: 0, checkedIn: 0, pending: 0 });
   const [processing, setProcessing] = useState(false);
+  const [events, setEvents] = useState<AdminEvent[]>([]);
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [records, setRecords] = useState<CheckInRecord[]>([]);
+  const [loadingLog, setLoadingLog] = useState(false);
   const lastScanTime = useRef<number>(0);
   const lastScannedQR = useRef<string>(""); // Track last scanned QR to prevent duplicates
   const scannerRef = useRef<Html5Qrcode | null>(null); // Track scanner for cleanup
@@ -63,6 +103,79 @@ export default function CheckInPage() {
       console.error("Force stop error:", err);
     }
   };
+
+  const authHeaders = () => ({
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+  });
+
+  /**
+   * Pick the event to scan for. The page had no event at all, which is why the
+   * counters sat at zero: the stats endpoint is per-event and was never called.
+   * Default to the published event, since that is the one being run.
+   */
+  useEffect(() => {
+    const loadEvents = async () => {
+      try {
+        const res = await fetch("/api/admin/events", { headers: authHeaders() });
+        const json = await res.json();
+        const list: AdminEvent[] = json?.data?.events || json?.data || [];
+        if (!Array.isArray(list) || list.length === 0) return;
+        setEvents(list);
+        setEventId(
+          (prev) =>
+            prev || list.find((e) => e.status === "PUBLISHED")?.id || list[0].id,
+        );
+      } catch (err) {
+        console.error("[CHECK-IN] failed to load events:", err);
+      }
+    };
+    void loadEvents();
+  }, []);
+
+  /** Counters and the admitted-ticket log, both read from the server. */
+  const refreshCheckInData = useCallback(async () => {
+    if (!eventId) return;
+    setLoadingLog(true);
+    try {
+      const [statsRes, listRes] = await Promise.all([
+        fetch(`/api/admin/check-in/stats/${eventId}`, { headers: authHeaders() }),
+        fetch(`/api/admin/check-in/list/${eventId}`, { headers: authHeaders() }),
+      ]);
+      const statsJson = await statsRes.json();
+      const listJson = await listRes.json();
+
+      if (statsJson?.success && statsJson.data) {
+        // Count people, not orders: the door admits tickets one QR at a time,
+        // so an order of three that is half scanned is not "checked in".
+        const pax = statsJson.data.pax;
+        setStats(
+          pax
+            ? {
+                total: pax.total ?? 0,
+                checkedIn: pax.checkedIn ?? 0,
+                pending: pax.pending ?? 0,
+              }
+            : {
+                total: statsJson.data.total ?? 0,
+                checkedIn: statsJson.data.checkedIn ?? 0,
+                pending: statsJson.data.pending ?? 0,
+              },
+        );
+      }
+      if (listJson?.success && Array.isArray(listJson.data)) {
+        setRecords(listJson.data);
+      }
+    } catch (err) {
+      console.error("[CHECK-IN] failed to load stats/log:", err);
+      message.error("Không tải được số liệu check-in");
+    } finally {
+      setLoadingLog(false);
+    }
+  }, [eventId]);
+
+  useEffect(() => {
+    void refreshCheckInData();
+  }, [refreshCheckInData]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -303,12 +416,10 @@ export default function CheckInPage() {
         message.success(`✅ Check-in OK: ${label}`, 5);
         setLastResult(data.data);
 
-        // Update stats (prefer pax if present)
-        setStats((prev) => ({
-          ...prev,
-          checkedIn: prev.checkedIn + 1,
-          pending: Math.max(0, prev.pending - 1),
-        }));
+        // Re-read counters and the log from the server rather than guessing
+        // locally: an order scan admits several tickets at once, and other
+        // staff are scanning at the same door.
+        void refreshCheckInData();
 
         // Play success sound
         new Audio("/sounds/success.mp3").play().catch(() => {});
@@ -368,15 +479,97 @@ export default function CheckInPage() {
     }
   };
 
+  const logColumns: ColumnsType<CheckInRecord> = [
+    {
+      title: "Thời gian",
+      dataIndex: "checkedInAt",
+      key: "checkedInAt",
+      width: 150,
+      render: (v: string) => (
+        <span className="font-mono text-xs">{formatScanTime(v)}</span>
+      ),
+    },
+    {
+      title: "Mã vé",
+      dataIndex: "ticketCode",
+      key: "ticketCode",
+      width: 150,
+      render: (v: string | null) =>
+        v ? (
+          <span className="font-mono text-xs font-semibold">{v}</span>
+        ) : (
+          <span className="text-gray-400 text-xs">—</span>
+        ),
+    },
+    {
+      title: "Loại vé",
+      dataIndex: "typeName",
+      key: "typeName",
+      width: 110,
+      render: (v: string) => <Tag>{v}</Tag>,
+    },
+    {
+      title: "Người tham dự",
+      key: "attendee",
+      render: (_: unknown, r: CheckInRecord) => (
+        <div className="leading-tight">
+          <div className="text-sm font-medium">
+            {r.attendeeName || r.customerName}
+          </div>
+          <div className="text-xs text-gray-500">
+            {r.attendeeEmail || r.orderNumber}
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: "Đơn hàng",
+      dataIndex: "orderNumber",
+      key: "orderNumber",
+      width: 130,
+      render: (v: string) => <span className="font-mono text-xs">{v}</span>,
+    },
+    {
+      title: "Nhân viên quét",
+      dataIndex: "checkedInBy",
+      key: "checkedInBy",
+      width: 140,
+      render: (v: string | null) =>
+        v || <span className="text-gray-400 text-xs">(không rõ)</span>,
+    },
+  ];
+
   return (
     <AdminLayout>
-      <div className="max-w-2xl mx-auto py-6 px-4">
+      <div className="max-w-5xl mx-auto py-6 px-4">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-4 flex items-center gap-2">
-            <ScanOutlined className="text-blue-500" />
-            QR Code Check-In
-          </h1>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <ScanOutlined className="text-blue-500" />
+              QR Code Check-In
+            </h1>
+            <div className="flex items-center gap-2">
+              {events.length > 1 && (
+                <Select
+                  value={eventId ?? undefined}
+                  onChange={setEventId}
+                  style={{ minWidth: 260 }}
+                  options={events.map((e) => ({
+                    value: e.id,
+                    label: `${e.name}${e.status !== "PUBLISHED" ? ` (${e.status})` : ""}`,
+                  }))}
+                />
+              )}
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => void refreshCheckInData()}
+                loading={loadingLog}
+              >
+                Làm mới
+              </Button>
+            </div>
+          </div>
 
           {/* Compact Stats */}
           <div className="grid grid-cols-3 gap-3 mb-4">
@@ -511,6 +704,43 @@ export default function CheckInPage() {
               </div>
             </Card>
           )}
+        </Card>
+
+        {/* Admitted tickets. One row per QR scanned, newest first — an order
+            scanned as a whole contributes one row per ticket it admitted. */}
+        <Card
+          className="mt-6"
+          title={
+            <div className="flex items-center gap-2">
+              <CheckCircleOutlined className="text-green-600" />
+              <span>Lịch sử check-in</span>
+              <span className="text-gray-400 font-normal text-sm">
+                ({records.length})
+              </span>
+            </div>
+          }
+        >
+          <Table<CheckInRecord>
+            rowKey="id"
+            size="small"
+            loading={loadingLog}
+            columns={logColumns}
+            dataSource={records}
+            scroll={{ x: 900 }}
+            pagination={{
+              pageSize: 20,
+              showSizeChanger: true,
+              showTotal: (t) => `${t} vé đã vào`,
+            }}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="Chưa có vé nào được check-in"
+                />
+              ),
+            }}
+          />
         </Card>
       </div>
     </AdminLayout>

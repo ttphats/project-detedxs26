@@ -6,6 +6,42 @@ import {
   ensureTicketUnitsForOrder,
 } from '../../utils/ticket-unit.js'
 import {buildTicketLines, humanizeSeatType} from '../../utils/ticket-lines.js'
+import {createAuditLog} from '../audit.service.js'
+
+/** Who performed a scan, for the audit trail. */
+export interface CheckInActor {
+  userId: string
+  roleName?: string
+  ipAddress?: string
+  userAgent?: string
+}
+
+/**
+ * Record a scan in the audit log.
+ *
+ * Check-in previously left no trace beyond `order_items.checked_in_at`, so
+ * there was no way to see who admitted whom, when, or from which device —
+ * and nothing at all for a scan of an already-used or invalid ticket.
+ * Failures are logged too, since a burst of them at the door is exactly what
+ * an organiser needs to see.
+ */
+async function logScan(
+  actor: CheckInActor,
+  outcome: 'CHECK_IN' | 'CHECK_IN_FAILED',
+  metadata: Record<string, unknown>,
+  entityId?: string,
+) {
+  await createAuditLog({
+    userId: actor.userId,
+    userRole: actor.roleName || 'STAFF',
+    action: outcome,
+    entity: 'TICKET',
+    entityId,
+    metadata,
+    ipAddress: actor.ipAddress,
+    userAgent: actor.userAgent,
+  })
+}
 
 function normalizeScanInput(raw: string): {kind: 'TICKET'; ticketCode: string} | {kind: 'ORDER'; orderNumber: string} {
   const s = String(raw || '').trim()
@@ -17,19 +53,31 @@ function normalizeScanInput(raw: string): {kind: 'TICKET'; ticketCode: string} |
   return {kind: 'ORDER', orderNumber: s.toUpperCase()}
 }
 
-export async function checkIn(scanValue: string, adminUserId: string) {
+export async function checkIn(scanValue: string, actor: CheckInActor) {
   await ensureOrderItemTicketColumns()
   const target = normalizeScanInput(scanValue)
-  if (target.kind === 'TICKET') return checkInTicketUnit(target.ticketCode, adminUserId)
-  return checkInOrderLegacy(target.orderNumber, adminUserId)
+  try {
+    if (target.kind === 'TICKET') return await checkInTicketUnit(target.ticketCode, actor)
+    return await checkInOrderLegacy(target.orderNumber, actor)
+  } catch (err: any) {
+    // A rejected scan is the interesting one at the door — a duplicate, an
+    // unpaid order, an unknown code — so it goes into the log as well.
+    await logScan(actor, 'CHECK_IN_FAILED', {
+      scanValue,
+      mode: target.kind,
+      reason: err?.message || 'Unknown error',
+    })
+    throw err
+  }
 }
 
 // keep export name used by controller
-export async function checkInOrder(orderNumber: string, adminUserId: string) {
-  return checkIn(orderNumber, adminUserId)
+export async function checkInOrder(orderNumber: string, actor: CheckInActor) {
+  return checkIn(orderNumber, actor)
 }
 
-async function checkInTicketUnit(ticketCode: string, adminUserId: string) {
+async function checkInTicketUnit(ticketCode: string, actor: CheckInActor) {
+  const adminUserId = actor.userId
   const row = await queryOne<{
     id: string
     order_id: string
@@ -79,6 +127,21 @@ async function checkInTicketUnit(ticketCode: string, adminUserId: string) {
   const typeName = (row.ticket_type_name && String(row.ticket_type_name).trim()) || humanizeSeatType(row.seat_type)
   const progress = await getOrderTicketProgress(row.order_id)
 
+  await logScan(
+    actor,
+    'CHECK_IN',
+    {
+      mode: 'TICKET',
+      ticketCode: row.ticket_code,
+      orderNumber: row.order_number,
+      customerName: row.customer_name,
+      typeName,
+      seatNumber: row.seat_number,
+      eventName: row.event_name,
+    },
+    row.id,
+  )
+
   return {
     success: true,
     mode: 'TICKET' as const,
@@ -99,7 +162,8 @@ async function checkInTicketUnit(ticketCode: string, adminUserId: string) {
   }
 }
 
-async function checkInOrderLegacy(orderNumber: string, adminUserId: string) {
+async function checkInOrderLegacy(orderNumber: string, actor: CheckInActor) {
+  const adminUserId = actor.userId
   const order = await prisma.order.findUnique({
     where: {orderNumber},
     include: {event: true, orderItems: true},
@@ -122,6 +186,20 @@ async function checkInOrderLegacy(orderNumber: string, adminUserId: string) {
   )
   await syncOrderCheckedIn(order.id, adminUserId)
   const progress = await getOrderTicketProgress(order.id)
+
+  await logScan(
+    actor,
+    'CHECK_IN',
+    {
+      mode: 'ORDER',
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      ticketsCheckedIn: pending.map((p) => p.ticket_code),
+      count: pending.length,
+      eventName: order.event.name,
+    },
+    order.id,
+  )
 
   return {
     success: true,
@@ -269,34 +347,60 @@ export async function getCheckInStats(eventId: string) {
   }
 }
 
-export async function getCheckedInList(eventId: string) {
+/**
+ * Every ticket admitted for an event, most recent first.
+ *
+ * Keyed on the ticket rather than the order: `orders.checked_in_at` is only
+ * stamped once every ticket on an order is in, so an order-level query hides
+ * a group that has half arrived. Ticket type is resolved through the seat and
+ * through `order_items.ticket_type_id`, so both booking flows are named, and
+ * the attendee is shown where one was captured at checkout.
+ */
+export async function getCheckedInList(eventId: string, limit = 500) {
   await ensureOrderItemTicketColumns()
   const rows = await query<{
-    ticket_code: string
+    id: string
+    ticket_code: string | null
     checked_in_at: Date
-    seat_number: string
-    seat_type: string
+    seat_number: string | null
+    seat_type: string | null
+    price: number
     order_number: string
     customer_name: string
+    attendee_name: string | null
+    attendee_email: string | null
     ticket_type_name: string | null
+    staff_name: string | null
+    staff_username: string | null
   }>(
-    `SELECT oi.ticket_code, oi.checked_in_at, oi.seat_number, oi.seat_type,
-            o.order_number, o.customer_name, tt.name AS ticket_type_name
+    `SELECT oi.id, oi.ticket_code, oi.checked_in_at, oi.seat_number, oi.seat_type, oi.price,
+            o.order_number, o.customer_name,
+            oi.attendee_name, oi.attendee_email,
+            COALESCE(tt.name, tt2.name) AS ticket_type_name,
+            u.full_name AS staff_name, u.username AS staff_username
      FROM order_items oi
      JOIN orders o ON o.id = oi.order_id
      LEFT JOIN seats s ON s.id = oi.seat_id
      LEFT JOIN ticket_types tt ON tt.id = s.ticket_type_id
+     LEFT JOIN ticket_types tt2 ON tt2.id = oi.ticket_type_id
+     LEFT JOIN users u ON u.id = oi.checked_in_by
      WHERE o.event_id = ? AND o.status = 'PAID' AND oi.checked_in_at IS NOT NULL
      ORDER BY oi.checked_in_at DESC
-     LIMIT 200`,
-    [eventId],
+     LIMIT ?`,
+    [eventId, limit],
   )
   return rows.map((r) => ({
+    id: r.id,
     ticketCode: r.ticket_code,
     checkedInAt: r.checked_in_at,
-    typeName: (r.ticket_type_name && String(r.ticket_type_name).trim()) || humanizeSeatType(r.seat_type),
+    typeName:
+      (r.ticket_type_name && String(r.ticket_type_name).trim()) || humanizeSeatType(r.seat_type),
     seatNumber: r.seat_number,
+    price: Number(r.price),
     orderNumber: r.order_number,
     customerName: r.customer_name,
+    attendeeName: r.attendee_name,
+    attendeeEmail: r.attendee_email,
+    checkedInBy: r.staff_name || r.staff_username || null,
   }))
 }

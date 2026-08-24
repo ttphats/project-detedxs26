@@ -2,7 +2,6 @@ import {FastifyRequest, FastifyReply} from 'fastify'
 import {z} from 'zod'
 import * as checkinService from '../../services/admin/checkin.service.js'
 import {UnauthorizedError, ForbiddenError, BadRequestError} from '../../utils/errors.js'
-import {prisma} from '../../db/prisma.js'
 import {requireAdmin} from '../../utils/auth.js'
 
 // Accept ticket unit code (TKT-xxx) OR legacy orderNumber
@@ -44,7 +43,13 @@ export async function checkIn(request: FastifyRequest, reply: FastifyReply) {
   const body = checkInSchema.parse(request.body)
   const scanValue = body.ticketCode || body.code || body.orderNumber || ''
 
-  const result = await checkinService.checkIn(scanValue, user.userId)
+  // Who scanned, from where — recorded against every scan, successful or not.
+  const result = await checkinService.checkIn(scanValue, {
+    userId: user.userId,
+    roleName: user.roleName,
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  })
 
   return reply.send({
     success: true,
@@ -114,36 +119,18 @@ export async function getCheckedInList(request: FastifyRequest, reply: FastifyRe
   }
 
   const {eventId} = request.params as {eventId: string}
+  const {limit} = request.query as {limit?: string}
 
-  const orders = await prisma.order.findMany({
-    where: {
-      eventId,
-      status: 'PAID',
-      checkedInAt: {not: null},
-    },
-    include: {
-      orderItems: true,
-      checkedInByUser: {
-        select: {
-          fullName: true,
-          username: true,
-        },
-      },
-    },
-    orderBy: {
-      checkedInAt: 'desc',
-    },
-  })
+  // One row per admitted ticket. The previous order-level query required
+  // orders.checked_in_at, which is only stamped once every ticket on the order
+  // is in — so a group that had half arrived did not appear at all.
+  const records = await checkinService.getCheckedInList(
+    eventId,
+    Math.min(Number(limit) || 500, 1000),
+  )
 
   return reply.send({
     success: true,
-    data: orders.map((order: any) => ({
-      orderNumber: order.orderNumber,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      seatNumbers: order.orderItems.map((item: any) => item.seatNumber),
-      checkedInAt: order.checkedInAt,
-      checkedInBy: order.checkedInByUser?.fullName,
-    })),
+    data: records,
   })
 }
