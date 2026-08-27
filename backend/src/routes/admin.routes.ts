@@ -75,6 +75,14 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
     {preHandler},
     speakerRegisterController.updateSubmissionStatus
   )
+  // Soft delete, super admin only (enforced in the controller). Four segments,
+  // so it never competes with the three-segment '/admin/speakers/:id' below,
+  // which deletes a Speaker profile — a different entity entirely.
+  fastify.delete(
+    '/admin/speakers/submissions/:id',
+    {preHandler},
+    speakerRegisterController.deleteSubmission
+  )
 
   // Dashboard
   fastify.get('/admin/dashboard/stats', {preHandler}, dashboardController.getStats)

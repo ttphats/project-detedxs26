@@ -417,6 +417,10 @@ model SpeakerSubmission {
   status    String   @default("PENDING") @db.VarChar(50) // 'PENDING' | 'REVIEWED' | 'ACCEPTED' | 'REJECTED'
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  // Soft delete: a super admin can remove an application from the admin list
+  // without destroying the applicant's submission. Who deleted it is recorded
+  // in audit_logs rather than here, so this stays a single nullable column.
+  deletedAt DateTime? @map("deleted_at")
 
   @@index([status])
   @@map("speaker_submissions")

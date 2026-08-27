@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AdminLayout } from "@/components/admin";
 import {
   Table,
@@ -59,6 +60,7 @@ const roleColors: Record<string, string> = {
 };
 
 export default function UsersPage() {
+  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,15 +101,29 @@ export default function UsersPage() {
         },
       );
       const data = await res.json();
-      if (data.success) {
-        setUsers(data.data.users || []);
-        setRoles(data.data.roles || []);
-        setPagination((prev) => ({
-          ...prev,
-          page,
-          total: data.data.pagination?.total || 0,
-        }));
+
+      // A failed request used to fall through silently. That mattered here
+      // more than most places: the role list arrives on this same response, so
+      // a failure emptied the "Vai trò" dropdown and made account creation
+      // impossible, with nothing on screen explaining why.
+      if (!res.ok || !data.success) {
+        if (res.status === 401) {
+          message.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+          localStorage.removeItem("token");
+          router.push("/admin/login");
+          return;
+        }
+        message.error(data?.error || "Không thể tải danh sách người dùng");
+        return;
       }
+
+      setUsers(data.data.users || []);
+      setRoles(data.data.roles || []);
+      setPagination((prev) => ({
+        ...prev,
+        page,
+        total: data.data.pagination?.total || 0,
+      }));
     } catch (error) {
       message.error("Failed to fetch users");
     } finally {

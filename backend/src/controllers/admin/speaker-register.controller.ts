@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import * as speakerService from '../../services/admin/speaker-register.service.js';
 import { UnauthorizedError, ForbiddenError, NotFoundError } from '../../utils/errors.js';
-import { requireAdmin } from '../../utils/auth.js';
+import { requireAdmin, requireSuperAdmin } from '../../utils/auth.js';
 
 // ==========================================
 // PUBLIC CONTROLLERS
@@ -170,10 +170,55 @@ export async function updateSubmissionStatus(request: FastifyRequest, reply: Fas
     return reply.status(400).send({ success: false, error: 'Trạng thái không hợp lệ' });
   }
 
-  const sub = await speakerService.updateSubmissionStatus(id, status);
-  return reply.send({
-    success: true,
-    data: sub,
-    message: 'Cập nhật trạng thái duyệt diễn giả thành công'
-  });
+  try {
+    const sub = await speakerService.updateSubmissionStatus(id, status);
+    return reply.send({
+      success: true,
+      data: sub,
+      message: 'Cập nhật trạng thái duyệt diễn giả thành công'
+    });
+  } catch (error: any) {
+    if (error?.message === 'Submission not found') {
+      throw new NotFoundError('Không tìm thấy đơn ứng tuyển');
+    }
+    throw error;
+  }
+}
+
+/**
+ * DELETE /api/admin/speakers/submissions/:id
+ *
+ * Super admin only. Hiding the button in the UI is convenience — this check is
+ * what actually enforces it, since the endpoint can be called directly.
+ */
+export async function deleteSubmission(request: FastifyRequest, reply: FastifyReply) {
+  const user = request.user;
+  if (!user) throw new UnauthorizedError();
+
+  try {
+    requireSuperAdmin(user);
+  } catch {
+    throw new ForbiddenError('Chỉ Super Admin mới có quyền xóa đơn ứng tuyển');
+  }
+
+  const { id } = request.params as { id: string };
+
+  try {
+    const result = await speakerService.softDeleteSubmission(
+      id,
+      { userId: user.userId, roleName: user.roleName },
+      request.ip,
+      request.headers['user-agent']
+    );
+    return reply.send({
+      success: true,
+      data: result,
+      message: 'Đã xóa đơn ứng tuyển diễn giả'
+    });
+  } catch (error: any) {
+    if (error?.message === 'Submission not found') {
+      throw new NotFoundError('Không tìm thấy đơn ứng tuyển');
+    }
+    throw error;
+  }
 }
