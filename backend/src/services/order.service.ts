@@ -661,6 +661,9 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
       event_venue: string
       event_date: Date
       expires_at: string | null
+      discount_amount: number | null
+      promo_code: string | null
+      promotion_id: string | null
     }
   >(
     `SELECT o.*, e.name as event_name, e.venue as event_venue, e.event_date
@@ -770,6 +773,14 @@ export async function getOrderByNumber(orderNumber: string, accessToken: string)
     },
     status: order.status,
     totalAmount: Number(order.total_amount),
+    // The discount is applied when the order is created, so total_amount is
+    // already net. Return the parts too, otherwise every screen after ticket
+    // selection can only show a final number with no sign a promo was
+    // applied — which reads as the discount having been lost.
+    discountAmount: Number(order.discount_amount || 0),
+    subtotal: Number(order.total_amount) + Number(order.discount_amount || 0),
+    promoCode: order.promo_code || null,
+    promotionId: order.promotion_id || null,
     expiresAt: order.expires_at,
     timeRemaining,
     customerName: order.customer_name,

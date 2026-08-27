@@ -401,6 +401,9 @@ model SpeakerSubmission {
   status    String   @default("PENDING") @db.VarChar(50) // 'PENDING' | 'REVIEWED' | 'ACCEPTED' | 'REJECTED'
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  // Mirrors backend/prisma/schema.prisma — kept in step so the two clients
+  // do not drift. See that file for why the actor lives in audit_logs.
+  deletedAt DateTime? @map("deleted_at")
 
   @@index([status])
   @@map("speaker_submissions")

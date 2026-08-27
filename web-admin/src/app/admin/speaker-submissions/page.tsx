@@ -13,6 +13,7 @@ import {
   Popconfirm,
   message,
   Select,
+  Modal,
 } from 'antd'
 import {
   ReloadOutlined,
@@ -20,6 +21,7 @@ import {
   CheckOutlined,
   CloseOutlined,
   LoadingOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 
@@ -45,6 +47,11 @@ export default function SpeakerSubmissionsPage() {
   // Drawer states
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [selectedSubmission, setSelectedSubmission] = useState<SpeakerSubmission | null>(null)
+
+  // Deleting is super-admin only. This hides the button; the server enforces it.
+  const [currentUserRole, setCurrentUserRole] = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const isSuperAdmin = currentUserRole === 'SUPER_ADMIN'
 
   const fetchFields = async () => {
     try {
@@ -83,7 +90,76 @@ export default function SpeakerSubmissionsPage() {
   useEffect(() => {
     fetchFields()
     fetchSubmissions()
+
+    // Same source the users screen reads the role from.
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr)
+        setCurrentUserRole(user.roleName || user.role || '')
+      } catch (e) {
+        console.error('Failed to parse user:', e)
+      }
+    }
   }, [])
+
+  /**
+   * Soft-delete an application. The row is hidden from this list but kept in
+   * the database, and the audit log records who removed it — so a mis-click is
+   * recoverable rather than final.
+   */
+  const handleDeleteSubmission = (record: SpeakerSubmission) => {
+    const applicant =
+      record.answers?.fullName || record.answers?.name || 'ứng viên này'
+
+    Modal.confirm({
+      title: 'Xác nhận xóa đơn ứng tuyển',
+      content: (
+        <div>
+          <p>
+            Xóa đơn ứng tuyển của <strong>{applicant}</strong>?
+          </p>
+          <p className="text-gray-500 mt-2">
+            Đơn sẽ bị ẩn khỏi danh sách nhưng vẫn được lưu lại để đối chiếu, và
+            hệ thống ghi nhận người đã xóa.
+          </p>
+        </div>
+      ),
+      okText: 'Xóa',
+      cancelText: 'Hủy',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setDeletingId(record.id)
+        try {
+          const token = localStorage.getItem('token')
+          const res = await fetch(
+            `/api/admin/speakers/submissions/${record.id}`,
+            {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` }
+            }
+          )
+          const data = await res.json()
+          if (!res.ok || !data.success) {
+            // Surfaces the 403 if someone reaches the endpoint without rights.
+            message.error(data?.error || 'Không thể xóa đơn ứng tuyển')
+            return
+          }
+          message.success('Đã xóa đơn ứng tuyển')
+          if (selectedSubmission?.id === record.id) {
+            setIsDrawerOpen(false)
+            setSelectedSubmission(null)
+          }
+          fetchSubmissions()
+        } catch (error) {
+          console.error('Failed to delete submission:', error)
+          message.error('Không thể xóa đơn ứng tuyển')
+        } finally {
+          setDeletingId(null)
+        }
+      }
+    })
+  }
 
   const handleUpdateStatus = async (id: string, status: string) => {
     try {
@@ -185,7 +261,7 @@ export default function SpeakerSubmissionsPage() {
     {
       title: 'Actions',
       key: 'actions',
-      width: 200,
+      width: 290,
       render: (_, record) => (
         <Space>
           <Button size="small" type="primary" icon={<EyeOutlined />} onClick={() => handleViewDetails(record)}>
@@ -198,6 +274,17 @@ export default function SpeakerSubmissionsPage() {
               style={{ color: '#0958d9', borderColor: '#91caff' }}
             >
               Mark Under Review
+            </Button>
+          )}
+          {isSuperAdmin && (
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deletingId === record.id}
+              onClick={() => handleDeleteSubmission(record)}
+            >
+              Delete
             </Button>
           )}
         </Space>

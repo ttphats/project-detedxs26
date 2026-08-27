@@ -36,6 +36,17 @@ export interface CheckoutState {
   accessToken: string
   tickets: PurchasedTicket[]
   attendees: AttendeeInfo[]
+  /**
+   * Promotion applied at ticket selection.
+   *
+   * The order's stored total is already net of it, so without carrying the
+   * parts a later step can only add ticket prices up and show a figure that
+   * silently disagrees with what the buyer was quoted. Optional: orders
+   * placed before this existed carry no promo.
+   */
+  subtotal?: number
+  discountAmount?: number
+  promoCode?: string | null
 }
 
 /** Save checkout state to sessionStorage */

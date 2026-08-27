@@ -20,6 +20,7 @@ import {
   ChevronUp,
   X,
   CalendarClock,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components";
 import {
@@ -931,6 +932,14 @@ export default function TicketClassPage({
         };
       });
 
+      // Prefer the order's own figures: the server applied the promotion, so
+      // its numbers are authoritative. Fall back to what this page quoted.
+      const orderSubtotal =
+        Number(orderData.data.subtotal) ||
+        tickets.reduce((sum, t) => sum + Number(t.price), 0);
+      const orderDiscount =
+        Number(orderData.data.discountAmount) || discountInfo?.amount || 0;
+
       const checkoutStateData: CheckoutState = {
         eventId: id,
         eventName: event?.name ?? "",
@@ -939,6 +948,9 @@ export default function TicketClassPage({
         accessToken,
         tickets,
         attendees: [],
+        subtotal: orderSubtotal,
+        discountAmount: orderDiscount,
+        promoCode: orderData.data.promoCode || promoCode.trim() || null,
       };
       saveCheckoutState(checkoutStateData);
 
@@ -1423,9 +1435,17 @@ export default function TicketClassPage({
                         VND
                       </span>
                     </p>
-                    {discountInfo && (
+                    {/* The promo field lives inside the cart sheet, so on a
+                        phone there is nothing telling a buyer a code can be
+                        used at all. Say so here, where the price is. */}
+                    {discountInfo ? (
                       <p className="text-[10px] text-emerald-400/90 mt-1 font-medium">
-                        −{formatPrice(discountInfo.amount)} discount
+                        −{formatPrice(discountInfo.amount)} discount applied
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-gray-500 mt-1 font-medium flex items-center gap-1">
+                        <Tag className="w-2.5 h-2.5 text-[#e62b1e]" />
+                        Have a promo code? Tap to apply
                       </p>
                     )}
                   </div>

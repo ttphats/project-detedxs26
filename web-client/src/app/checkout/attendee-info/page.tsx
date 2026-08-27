@@ -240,10 +240,14 @@ function AttendeeInfoContent() {
     );
   }
 
-  const totalPrice = checkoutState.tickets.reduce(
-    (sum, ticket) => sum + Number(ticket.price),
-    0,
-  );
+  // Ticket prices are the list price. Any promotion was applied when the order
+  // was created, so summing them alone shows a figure higher than the buyer
+  // was quoted a step earlier and makes the discount look lost.
+  const subtotal =
+    Number(checkoutState.subtotal) ||
+    checkoutState.tickets.reduce((sum, ticket) => sum + Number(ticket.price), 0);
+  const discountAmount = Number(checkoutState.discountAmount) || 0;
+  const totalPrice = Math.max(0, subtotal - discountAmount);
 
   return (
     <div className="min-h-screen bg-black pt-24 pb-12">
@@ -447,6 +451,19 @@ function AttendeeInfoContent() {
                 </span>
               </div>
               <div className="text-right">
+                {discountAmount > 0 && (
+                  <div className="mb-1">
+                    <p className="text-xs text-gray-500 line-through leading-none">
+                      {subtotal.toLocaleString()} VND
+                    </p>
+                    <p className="text-[11px] font-semibold text-emerald-400 leading-none mt-1">
+                      −{discountAmount.toLocaleString()} VND
+                      {checkoutState.promoCode
+                        ? ` · ${checkoutState.promoCode}`
+                        : " discount"}
+                    </p>
+                  </div>
+                )}
                 <p className="text-xs text-gray-400">Total</p>
                 <p className="text-2xl font-black text-red-500">
                   {totalPrice.toLocaleString()} VND

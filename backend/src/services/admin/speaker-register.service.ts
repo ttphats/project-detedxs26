@@ -1,5 +1,45 @@
 import { prisma } from '../../db/prisma.js';
 import { randomUUID } from 'crypto';
+import { execute, query } from '../../db/mysql.js';
+import { createAuditLog } from '../audit.service.js';
+
+let deletedAtColumnEnsured = false;
+
+/**
+ * Ensure `speaker_submissions.deleted_at` exists (idempotent).
+ *
+ * The Prisma model declares the column, so every read of this table selects
+ * it — including the public applicant form. A database that lags the schema
+ * would therefore break registration, not just the admin list. Raw SQL is used
+ * deliberately: it bypasses the Prisma client, so it still works on exactly
+ * the databases that need repairing.
+ *
+ * Failures are warned and swallowed. Nothing is masked by that — if the column
+ * really is missing, the Prisma call immediately after fails loudly.
+ */
+async function ensureDeletedAtColumn(): Promise<void> {
+  if (deletedAtColumnEnsured) return;
+  try {
+    const rows = await query<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'speaker_submissions'
+         AND COLUMN_NAME = 'deleted_at'`
+    );
+    if (!rows[0] || Number(rows[0].cnt) === 0) {
+      // No AFTER clause: appending lets MySQL 8 add it instantly, with no
+      // table rebuild and no lock.
+      await execute(
+        `ALTER TABLE speaker_submissions ADD COLUMN deleted_at DATETIME NULL DEFAULT NULL`,
+        []
+      );
+      console.log('[speaker-register] added column speaker_submissions.deleted_at');
+    }
+    deletedAtColumnEnsured = true;
+  } catch (err) {
+    console.warn('[speaker-register] ensure deleted_at:', err);
+  }
+}
 
 export interface SpeakerConfigInput {
   title: string;
@@ -181,6 +221,9 @@ export async function deleteField(id: string) {
  * Public: Candidate submits registration answers
  */
 export async function createSubmission(answers: any) {
+  // This is the public applicant path. The Prisma model now selects deleted_at,
+  // so the column has to exist here too — not just on the admin screens.
+  await ensureDeletedAtColumn();
   const id = randomUUID();
   const answersString = JSON.stringify(answers);
 
@@ -205,7 +248,9 @@ export async function createSubmission(answers: any) {
  * Admin: List candidate registration submissions
  */
 export async function listSubmissions() {
+  await ensureDeletedAtColumn();
   const subs = await prisma.speakerSubmission.findMany({
+    where: { deletedAt: null },
     orderBy: { createdAt: 'desc' }
   });
 
@@ -230,6 +275,15 @@ export async function listSubmissions() {
  * Admin: Approve/Reject candidate submission
  */
 export async function updateSubmissionStatus(id: string, status: string) {
+  await ensureDeletedAtColumn();
+
+  // A reviewer with the drawer already open could otherwise re-status an
+  // application a super admin has just deleted.
+  const existing = await prisma.speakerSubmission.findFirst({
+    where: { id, deletedAt: null }
+  });
+  if (!existing) throw new Error('Submission not found');
+
   const sub = await prisma.speakerSubmission.update({
     where: { id },
     data: { status }
@@ -249,4 +303,66 @@ export async function updateSubmissionStatus(id: string, status: string) {
     created_at: sub.createdAt,
     updated_at: sub.updatedAt
   };
+}
+
+/**
+ * Admin: Soft-delete a candidate submission (super admin only — enforced in
+ * the controller).
+ *
+ * The row is kept and hidden rather than destroyed, so a mis-click costs
+ * nothing: `UPDATE speaker_submissions SET deleted_at = NULL WHERE id = ?`
+ * brings it back. The audit entry carries a full snapshot of the answers, so
+ * what was removed is recoverable even from the audit trail alone.
+ */
+export async function softDeleteSubmission(
+  id: string,
+  adminUser: { userId: string; roleName: string },
+  ipAddress?: string,
+  userAgent?: string
+) {
+  await ensureDeletedAtColumn();
+
+  // Read before deleting: the snapshot must capture the pre-delete state, and
+  // this makes a second delete of the same row a clean 404 rather than a
+  // silent success.
+  const existing = await prisma.speakerSubmission.findFirst({
+    where: { id, deletedAt: null }
+  });
+  if (!existing) throw new Error('Submission not found');
+
+  await prisma.speakerSubmission.update({
+    where: { id },
+    data: { deletedAt: new Date() }
+  });
+
+  let answersObj: Record<string, any> = {};
+  try {
+    answersObj = JSON.parse(existing.answers);
+  } catch {
+    answersObj = {};
+  }
+
+  await createAuditLog({
+    userId: adminUser.userId,
+    userRole: adminUser.roleName,
+    action: 'DELETE',
+    entity: 'SPEAKER_SUBMISSION',
+    entityId: id,
+    // oldValue is what the audit detail view renders, and it is a Text column,
+    // so the whole submission fits — this is the recovery copy.
+    oldValue: {
+      status: existing.status,
+      answers: answersObj,
+      createdAt: existing.createdAt
+    },
+    // metadata stays scannable in the audit list.
+    metadata: {
+      applicantName: answersObj.fullName || answersObj.name || null,
+      applicantEmail: answersObj.email || null
+    },
+    ipAddress,
+    userAgent
+  });
+
+  return { id, status: existing.status };
 }
