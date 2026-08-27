@@ -370,6 +370,13 @@ function CheckoutContent() {
       : isTicketClass
         ? ticketLines.reduce((s, l) => s + l.lineTotal, 0)
         : selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
+
+  // Promotion applied when the order was created. Read from the order rather
+  // than the checkout store so a reload — which clears sessionStorage — still
+  // shows it.
+  const discountAmount = Number(orderData?.discountAmount) || 0;
+  const promoCode: string | null = orderData?.promoCode || null;
+  const subtotal = Number(orderData?.subtotal) || totalPrice + discountAmount;
   const transferContent = `Ticket payment order ${orderCode}`;
 
   const formatENDate = (dateStr: string) => {
@@ -974,6 +981,33 @@ function CheckoutContent() {
                         </div>
                       ))}
                 </div>
+
+                {/* The order's total is already net of any promotion, so
+                    without these two rows the discount simply vanishes from
+                    the buyer's view at the last step. */}
+                {discountAmount > 0 && (
+                  <div className="px-4 space-y-2 mb-3 text-sm">
+                    <div className="flex justify-between items-center text-gray-400">
+                      <span>Subtotal</span>
+                      <span className="tabular-nums">
+                        {subtotal.toLocaleString("en-US")} VND
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-emerald-400">
+                      <span className="flex items-center gap-1.5">
+                        Discount
+                        {promoCode && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-bold uppercase tracking-wide">
+                            {promoCode}
+                          </span>
+                        )}
+                      </span>
+                      <span className="tabular-nums font-semibold">
+                        −{discountAmount.toLocaleString("en-US")} VND
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-4 bg-linear-to-r from-red-600/20 to-transparent rounded-xl mb-6">
                   <div className="flex justify-between items-center">
