@@ -65,6 +65,35 @@ export default function GalleryPage() {
       const columns = gsap.utils.toArray<HTMLElement>("[data-column]");
       if (columns.length === 0) return;
 
+      // Touch has no hover, so on a phone a press is what brings a photo's
+      // colour back. Delegated from the scroll area rather than bound to each
+      // tile: a season renders up to 34 of them and they are all replaced
+      // when the season changes.
+      //
+      // Set up outside the matchMedia below so it survives reduced-motion —
+      // that preference is about movement, not about withholding the one
+      // interaction the page has.
+      let held: HTMLElement | null = null;
+      const release = () => {
+        if (!held) return;
+        delete held.dataset.held;
+        held = null;
+      };
+      const hold = (event: Event) => {
+        const tile = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+          "[data-photo]",
+        );
+        if (!tile || tile === held) return;
+        release();
+        held = tile;
+        tile.dataset.held = "true";
+      };
+      area.addEventListener("touchstart", hold, {passive: true});
+      // touchend covers a normal lift; touchcancel covers the browser taking
+      // the gesture over, which is what a scroll from inside a tile does.
+      area.addEventListener("touchend", release);
+      area.addEventListener("touchcancel", release);
+
       const mm = gsap.matchMedia();
       mm.add(
         {
@@ -135,6 +164,13 @@ export default function GalleryPage() {
         },
         scrollAreaRef,
       );
+
+      return () => {
+        release();
+        area.removeEventListener("touchstart", hold);
+        area.removeEventListener("touchend", release);
+        area.removeEventListener("touchcancel", release);
+      };
     },
     {
       scope: scrollAreaRef,
@@ -190,7 +226,11 @@ export default function GalleryPage() {
       {[...photos, ...photos].map((photo, i) => (
         <div
           key={`${photo.src}-${i}`}
-          className="group relative shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] transition-all duration-500 hover:border-red-500/60 hover:shadow-[0_0_10px_rgba(230,43,30,0.5),0_0_30px_rgba(230,43,30,0.35),0_0_60px_rgba(230,43,30,0.2)]"
+          /* data-photo is what the delegated touch handler looks for, and
+             data-held is what it sets while a finger is down — the touch
+             counterpart of :hover, driving the same reveal. */
+          data-photo
+          className="group relative shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] transition-all duration-500 hover:border-red-500/60 hover:shadow-[0_0_10px_rgba(230,43,30,0.5),0_0_30px_rgba(230,43,30,0.35),0_0_60px_rgba(230,43,30,0.2)] data-[held=true]:border-red-500/60 data-[held=true]:shadow-[0_0_10px_rgba(230,43,30,0.5),0_0_30px_rgba(230,43,30,0.35),0_0_60px_rgba(230,43,30,0.2)]"
           style={{height: heightFor(i)}}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -209,15 +249,15 @@ export default function GalleryPage() {
                by 1.6% rather than the 0.4% a tighter zoom left. The sources
                are 2048px wide against ~336px tiles, so the crop costs
                nothing in sharpness. */
-            className="w-full h-full object-cover scale-[1.32] grayscale group-hover:grayscale-0 transition-all duration-500"
+            className="w-full h-full object-cover scale-[1.32] grayscale group-hover:grayscale-0 group-data-[held=true]:grayscale-0 transition-all duration-500"
           />
-          {/* Red wash on hover, so colour returning reads as the neon
+          {/* Red wash on reveal, so colour returning reads as the neon
               catching the photograph rather than a plain filter toggle. */}
           <div
             aria-hidden
-            className="absolute inset-0 bg-gradient-to-t from-red-950/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+            className="absolute inset-0 bg-gradient-to-t from-red-950/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 group-data-[held=true]:opacity-100 transition-opacity duration-500"
           />
-          <span className="absolute bottom-3 left-3 text-[10px] font-bold uppercase tracking-wider text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 neon-text-red">
+          <span className="absolute bottom-3 left-3 text-[10px] font-bold uppercase tracking-wider text-white opacity-0 group-hover:opacity-100 group-data-[held=true]:opacity-100 transition-opacity duration-300 neon-text-red">
             {photo.category}
           </span>
         </div>
@@ -289,8 +329,16 @@ export default function GalleryPage() {
               <p className="text-gray-400 text-base leading-relaxed max-w-md mb-3">
                 {season.blurb}
               </p>
+              {/* The instruction has to name the input the reader actually
+                  has, so it keys off hover capability rather than width — a
+                  narrow desktop window still has a pointer. */}
               <p className="text-xs uppercase tracking-widest text-gray-600 mb-12">
-                Hover a photo to see it in colour
+                <span className="[@media(hover:hover)]:hidden">
+                  Hold a photo to see it in colour
+                </span>
+                <span className="hidden [@media(hover:hover)]:inline">
+                  Hover a photo to see it in colour
+                </span>
               </p>
             </div>
 
