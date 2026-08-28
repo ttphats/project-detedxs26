@@ -72,6 +72,7 @@ export default function Header() {
               { href: "/#program", label: "Timeline" },
               { href: "/#speakers", label: "Speakers" },
               { href: "/#partners", label: "Partners" },
+              { href: "/gallery", label: "Gallery" },
             ].map((item) => (
               <a
                 key={item.href}
@@ -130,6 +131,7 @@ export default function Header() {
                 { href: "/#program", label: "Timeline" },
                 { href: "/#speakers", label: "Speakers" },
                 { href: "/#partners", label: "Partners" },
+                { href: "/gallery", label: "Gallery" },
                 { href: "/privacy", label: "Privacy Policy" },
                 { href: "/terms", label: "Terms & Conditions" },
               ].map((item, index) => {
