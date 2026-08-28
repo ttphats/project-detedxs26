@@ -1174,8 +1174,6 @@ export default function TicketClassPage({
     );
   }
 
-  const dateLabel = [event.date, event.time].filter(Boolean).join(" · ");
-
   return (
     // pb accounts for MobileBottomNav (~4.25rem) + cart sticky bar (~5rem)
     <div className="min-h-screen bg-[#08080a] pt-20 sm:pt-24 pb-44 lg:pb-16">
@@ -1218,11 +1216,6 @@ export default function TicketClassPage({
                 {event.venue ? ` · ${event.venue}` : ""}
               </p>
             </div>
-            {dateLabel && (
-              <p className="text-gray-600 text-xs sm:text-sm font-medium tracking-wide uppercase">
-                {dateLabel}
-              </p>
-            )}
           </div>
         </motion.header>
 
