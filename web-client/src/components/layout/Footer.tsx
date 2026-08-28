@@ -60,6 +60,14 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
+                <Link
+                  href="/gallery"
+                  className="text-gray-400 hover:text-white transition-colors uppercase font-medium tracking-wide"
+                >
+                  Gallery
+                </Link>
+              </li>
+              <li>
                 <a
                   href="https://www.ted.com"
                   target="_blank"
