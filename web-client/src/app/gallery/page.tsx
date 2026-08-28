@@ -5,6 +5,7 @@ import Link from "next/link";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ArrowLeft, Camera } from "lucide-react";
+import { NeonBackground } from "@/components";
 import { GALLERY_SEASONS, photoAlt, type GalleryPhoto } from "@/lib/gallery-data";
 
 gsap.registerPlugin(useGSAP);
@@ -193,7 +194,15 @@ export default function GalleryPage() {
       {/* Background is the home page's own treatment — the same .blob,
           .grid-pattern and .animate-float classes from globals.css — so the
           gallery reads as part of the site rather than a page of its own. */}
-      <div aria-hidden className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+      {/* z-0, not -z-10: a negative z-index child paints *behind* this
+          section's own bg-black, which hid the entire layer. Content above
+          sits at z-10. */}
+      <div aria-hidden className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        {/* Orbiting neon orbs, counter-rotating rings and an occasional
+            light sweep — the layer that keeps the page alive while the
+            columns drift. */}
+        <NeonBackground />
+
         <div className="blob blob-red w-150 h-150 -top-40 -right-40 animate-morph" />
         <div
           className="blob blob-orange w-100 h-100 bottom-20 left-20 animate-morph"
@@ -217,7 +226,7 @@ export default function GalleryPage() {
         />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
         <Link
           href="/"
           className="inline-flex items-center gap-2 text-gray-400 hover:text-red-500 transition-colors group mb-8"
