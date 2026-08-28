@@ -6,8 +6,11 @@
  * percent-encoded in a URL and are a common source of images that load on
  * Windows and 404 on the Linux server.
  *
- * Each season carries its own blurb: the year buttons switch the whole story,
+ * Each season carries its own copy: the year buttons switch the whole story,
  * not just the pictures, so a visitor landing on 2023 reads about 2023.
+ *
+ * The wording is the organisers' own, kept verbatim rather than paraphrased —
+ * these are the published themes for each edition.
  */
 
 export interface GalleryPhoto {
@@ -18,9 +21,11 @@ export interface GalleryPhoto {
 
 export interface GallerySeason {
   year: string;
-  /** Event theme for that edition, shown under the year. */
+  /** Edition number and its theme, shown under the year. */
   theme: string;
-  /** One-paragraph retrospective shown beside the grid. */
+  /** The theme's one-line hook, set larger than the description. */
+  tagline: string;
+  /** The published description of what the theme asks of you. */
   blurb: string;
   photos: GalleryPhoto[];
 }
@@ -28,9 +33,10 @@ export interface GallerySeason {
 export const GALLERY_SEASONS: GallerySeason[] = [
   {
     year: "2023",
-    theme: "Season 03",
+    theme: "Season 03 · With or Without?",
+    tagline: "Finding balance between what to keep and what to let go.",
     blurb:
-      "The season that filled the hall. Eight frames of a packed auditorium, an exhibition floor that never emptied, and the tea breaks where the real conversations happened.",
+      "Inspired by the Japanese concept of “Ma”, the idea of space and pause, Season 3 explores the “with” and “without” in our lives. The theme encourages us to pause, reflect, and make conscious choices: what should we hold on to, what should we let go of, and how can we find the answer that is right for ourselves?",
     photos: [
       {src: "/gallery/2023/2023-event-experience.jpg", category: "Event experience"},
       {src: "/gallery/2023/2023-event-experience-1.jpg", category: "Event experience"},
@@ -50,9 +56,10 @@ export const GALLERY_SEASONS: GallerySeason[] = [
   },
   {
     year: "2024",
-    theme: "Season 04",
+    theme: "Season 04 · Start Small",
+    tagline: "Big Things Start Small.",
     blurb:
-      "A tighter, sharper edition. Fewer frames, more focus — the stage, the exhibition, and an audience that leaned in for every talk.",
+      "Season 4 encourages us to begin with the smallest things, reminding us that big goals do not necessarily require a big first step. Sometimes, a small action is all it takes to set meaningful change in motion and gradually create something bigger over time.",
     photos: [
       {src: "/gallery/2024/2024-event-experience-1.jpg", category: "Event experience"},
       {src: "/gallery/2024/2024-event-experience-2.jpg", category: "Event experience"},
@@ -67,9 +74,10 @@ export const GALLERY_SEASONS: GallerySeason[] = [
   },
   {
     year: "2025",
-    theme: "Season 05",
+    theme: "Season 05 · All The Way",
+    tagline: "Go All The Way, Come What May.",
     blurb:
-      "The biggest season yet, and the first with hands-on workshops — ceramics and scented candles alongside the talks, the exhibition and the hall.",
+      "After taking the first step with “Start Small”, Season 5 asks a bigger question: “Do we dare to go all the way?” All The Way is about the perseverance, courage, and determination to keep moving forward, even when the results are yet to be seen and the journey is filled with doubts, challenges, or moments of solitude. You do not have to be fast or perfect, what matters is that you do not give up.",
     photos: [
       {src: "/gallery/2025/2025-event-experience-1.jpg", category: "Event experience"},
       {src: "/gallery/2025/2025-event-experience.jpg", category: "Event experience"},

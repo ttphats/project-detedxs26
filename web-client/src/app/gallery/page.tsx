@@ -326,6 +326,11 @@ export default function GalleryPage() {
               <p className="text-sm font-bold uppercase tracking-[0.3em] text-red-500 mb-4 neon-text-red">
                 {season.theme}
               </p>
+              {/* The theme's hook, set above the description so the eye lands
+                  on the idea before the paragraph explaining it. */}
+              <p className="text-lg sm:text-xl font-semibold text-white leading-snug max-w-md mb-3">
+                {season.tagline}
+              </p>
               <p className="text-gray-400 text-base leading-relaxed max-w-md mb-3">
                 {season.blurb}
               </p>
