@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useRef, useMemo } from "react";
-import Link from "next/link";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { ArrowLeft, Camera } from "lucide-react";
+import { Camera } from "lucide-react";
 import { NeonBackground } from "@/components";
 import { GALLERY_SEASONS, photoAlt, type GalleryPhoto } from "@/lib/gallery-data";
 
@@ -13,8 +12,11 @@ gsap.registerPlugin(useGSAP);
 /** Newest season is what the page should open on. */
 const DEFAULT_YEAR = GALLERY_SEASONS[GALLERY_SEASONS.length - 1].year;
 
-/** Seconds for a column to travel one full copy of its photos. */
-const SCROLL_DURATION = 40;
+/**
+ * Seconds for a column to travel one full copy of its photos. Slow enough
+ * that the drift reads as atmosphere rather than a carousel.
+ */
+const SCROLL_DURATION = 80;
 
 /**
  * Varied tile heights, derived from the index rather than random so the
@@ -78,9 +80,12 @@ export default function GalleryPage() {
             return;
           }
 
-          const tweens = columns.map((col) => {
+          // Each column is paused independently: reaching for a photo should
+          // hold that column still and leave the other one drifting, so the
+          // page never freezes wholesale.
+          const cleanups = columns.map((col) => {
             const down = col.dataset.column === "down";
-            return gsap.fromTo(
+            const tween = gsap.fromTo(
               col,
               {yPercent: down ? -50 : 0},
               {
@@ -90,23 +95,24 @@ export default function GalleryPage() {
                 repeat: -1,
               },
             );
+
+            const pause = () => tween.pause();
+            const resume = () => tween.resume();
+            col.addEventListener("mouseenter", pause);
+            col.addEventListener("mouseleave", resume);
+            // Touch has no hover, so a press holds that column still.
+            col.addEventListener("touchstart", pause, {passive: true});
+            col.addEventListener("touchend", resume);
+
+            return () => {
+              col.removeEventListener("mouseenter", pause);
+              col.removeEventListener("mouseleave", resume);
+              col.removeEventListener("touchstart", pause);
+              col.removeEventListener("touchend", resume);
+            };
           });
 
-          // Pause while the visitor is looking at something.
-          const pause = () => tweens.forEach((t) => t.pause());
-          const resume = () => tweens.forEach((t) => t.resume());
-          area.addEventListener("mouseenter", pause);
-          area.addEventListener("mouseleave", resume);
-          // Touch has no hover, so a tap holds the columns still.
-          area.addEventListener("touchstart", pause, {passive: true});
-          area.addEventListener("touchend", resume);
-
-          return () => {
-            area.removeEventListener("mouseenter", pause);
-            area.removeEventListener("mouseleave", resume);
-            area.removeEventListener("touchstart", pause);
-            area.removeEventListener("touchend", resume);
-          };
+          return () => cleanups.forEach((fn) => fn());
         },
         scrollAreaRef,
       );
@@ -226,15 +232,7 @@ export default function GalleryPage() {
         />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-gray-400 hover:text-red-500 transition-colors group mb-8"
-        >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          Home
-        </Link>
-
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           {/* Left: the season's story */}
           <div className="lg:col-span-5">
@@ -260,7 +258,7 @@ export default function GalleryPage() {
                 {season.blurb}
               </p>
               <p className="mt-5 text-xs uppercase tracking-widest text-gray-600">
-                {season.photos.length} photos · hover to pause
+                Hover a photo to see it in colour
               </p>
             </div>
 
@@ -297,12 +295,15 @@ export default function GalleryPage() {
               being cut off. */}
           <div
             ref={scrollAreaRef}
-            className="lg:col-span-7 relative h-[560px] lg:h-[819px] overflow-hidden"
+            /* Tall enough to run from just under the nav bar to just above
+               the footer, with the fade tightened to the edges so photos are
+               still arriving and leaving right at the boundaries. */
+            className="lg:col-span-7 relative h-[70vh] lg:h-[calc(100vh-8rem)] overflow-hidden"
             style={{
               maskImage:
-                "linear-gradient(to bottom, transparent, black 6%, black 94%, transparent)",
+                "linear-gradient(to bottom, transparent, black 3%, black 97%, transparent)",
               WebkitMaskImage:
-                "linear-gradient(to bottom, transparent, black 6%, black 94%, transparent)",
+                "linear-gradient(to bottom, transparent, black 3%, black 97%, transparent)",
             }}
           >
             <div className="grid grid-cols-2 gap-4">
