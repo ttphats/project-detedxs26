@@ -330,14 +330,21 @@ export default function GalleryPage() {
 
                   Not .neon-text-red here: that stacks three glows at full
                   opacity, which reads as a halo at 14px but smears the
-                  letterforms at this size. One soft, low-opacity halo keeps
-                  the neon suggestion and leaves the text crisp. */}
+                  letterforms at this size.
+
+                  A tight core glow plus a wider soft one instead. The tight
+                  one is what actually reads as neon — a single wide blur
+                  just looks like out-of-focus red — and holding both under
+                  full opacity keeps the letterforms crisp. */}
               <p
                 /* text-balance so the wrap falls near the separator rather
                    than stranding a word — "Season 05 ·" / "All The Way"
                    instead of "…All The" / "Way". */
                 className="text-2xl sm:text-3xl font-black uppercase tracking-[0.08em] leading-tight text-balance text-red-500 mb-4"
-                style={{textShadow: "0 0 14px rgba(230, 43, 30, 0.4)"}}
+                style={{
+                  textShadow:
+                    "0 0 5px rgba(230, 43, 30, 0.6), 0 0 16px rgba(230, 43, 30, 0.4)",
+                }}
               >
                 {season.theme}
               </p>
