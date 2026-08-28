@@ -253,59 +253,58 @@ export default function GalleryPage() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          {/* Left: the season's story.
-              On desktop the column runs the full height of the photo window
-              and becomes a flex column, so the copy sits at the top and the
-              season row is pushed to the bottom by `mt-auto` — the wide band
-              of air between them is the layout doing the spacing rather than
-              a hardcoded margin. Below lg it stays a simple stack. */}
-          <div className="lg:col-span-5 lg:h-[calc(100vh-8rem)] lg:flex lg:flex-col">
+          {/* Left: the season's story */}
+          <div className="lg:col-span-5">
             <div ref={copyRef}>
               {/* The year is the page's neon sign: the site's glow-text
                   animation, matching the hero headline. */}
-              {/* Vertical rhythm follows the mock: the year, its sub-head and
-                  the blurb form one tight cluster at the top of the column.
-                  The gap before the season row is not set here — on desktop
-                  it is whatever is left over once the row is pinned to the
-                  bottom; on mobile the hint's own mb-12 supplies it. */}
-              <h1 className="text-[76px] sm:text-[110px] font-black leading-none tracking-tighter text-red-600 tabular-nums italic animate-glow-text mb-3">
+              {/* Vertical rhythm follows the mock: title tight to its
+                  sub-head, a 16px gap to the sub-head, then 48px of air
+                  before the season row. */}
+              <h1 className="text-[76px] sm:text-[110px] font-black leading-none tracking-tighter text-red-600 tabular-nums italic animate-glow-text mb-2">
                 {season.year}
               </h1>
-              <p className="text-sm font-bold uppercase tracking-[0.3em] text-red-500 mb-6 neon-text-red">
+              <p className="text-sm font-bold uppercase tracking-[0.3em] text-red-500 mb-4 neon-text-red">
                 {season.theme}
               </p>
-              <p className="text-gray-400 text-base leading-relaxed max-w-md mb-4">
+              <p className="text-gray-400 text-base leading-relaxed max-w-md mb-3">
                 {season.blurb}
               </p>
-              <p className="text-xs uppercase tracking-widest text-gray-600 mb-12 lg:mb-0">
+              <p className="text-xs uppercase tracking-widest text-gray-600 mb-12">
                 Hover a photo to see it in colour
               </p>
             </div>
 
-            {/* Season switcher — bottom of the column on desktop. */}
-            <div className="pt-4 border-t border-white/10 lg:mt-auto">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 mb-3">
-                Season
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {GALLERY_SEASONS.map((s) => {
-                  const active = s.year === activeYear;
-                  return (
-                    <button
-                      key={s.year}
-                      type="button"
-                      onClick={() => setActiveYear(s.year)}
-                      aria-pressed={active}
-                      className={`px-4 py-2 rounded-lg text-sm font-bold tabular-nums transition-all duration-300 ${
-                        active
-                          ? "bg-red-600 text-white neon-border scale-105"
-                          : "border border-white/10 text-gray-400 hover:text-white hover:border-red-500/40 hover:bg-white/[0.04] active:scale-95"
-                      }`}
-                    >
-                      {s.year}
-                    </button>
-                  );
-                })}
+            {/* Season switcher — the label shares the line with the years,
+                so the whole control reads as one row. It still wraps on a
+                narrow screen, hence flex-wrap and the split gap. */}
+            <div className="pt-4 border-t border-white/10">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.25em] text-gray-400">
+                  Season
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {GALLERY_SEASONS.map((s) => {
+                    const active = s.year === activeYear;
+                    return (
+                      <button
+                        key={s.year}
+                        type="button"
+                        onClick={() => setActiveYear(s.year)}
+                        aria-pressed={active}
+                        className={`px-4 py-2 rounded-lg text-[15px] font-bold tabular-nums tracking-wide transition-all duration-300 ${
+                          active
+                            ? // No scale on the active year: in a single row it
+                              // nudges its neighbours about. The glow carries it.
+                              "bg-red-600 text-white neon-border shadow-lg shadow-red-600/30"
+                            : "border border-white/10 text-gray-300 hover:text-white hover:border-red-500/40 hover:bg-white/[0.06] active:scale-95"
+                        }`}
+                      >
+                        {s.year}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
