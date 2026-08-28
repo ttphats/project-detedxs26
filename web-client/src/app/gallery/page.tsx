@@ -323,12 +323,16 @@ export default function GalleryPage() {
               <h1 className="text-[76px] sm:text-[110px] font-black leading-none tracking-tighter text-red-600 tabular-nums italic animate-glow-text mb-2">
                 {season.year}
               </h1>
-              <p className="text-sm font-bold uppercase tracking-[0.3em] text-red-500 mb-4 neon-text-red">
+              {/* The theme outranks its slogan, so it is set larger. The
+                  letter-spacing comes down as the size goes up — 0.3em was
+                  fine at 14px but would push this line past the column and
+                  wrap it. */}
+              <p className="text-xl sm:text-2xl font-black uppercase tracking-[0.08em] leading-tight text-red-500 mb-4 neon-text-red">
                 {season.theme}
               </p>
               {/* The theme's hook, set above the description so the eye lands
                   on the idea before the paragraph explaining it. */}
-              <p className="text-lg sm:text-xl font-semibold text-white leading-snug max-w-md mb-3">
+              <p className="text-base sm:text-lg font-semibold text-white leading-snug max-w-md mb-3">
                 {season.tagline}
               </p>
               <p className="text-gray-400 text-base leading-relaxed max-w-md mb-3">
