@@ -3,7 +3,6 @@
 import { useState, useRef, useMemo } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { Camera } from "lucide-react";
 import { NeonBackground } from "@/components";
 import { GALLERY_SEASONS, photoAlt, type GalleryPhoto } from "@/lib/gallery-data";
 
@@ -254,39 +253,37 @@ export default function GalleryPage() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          {/* Left: the season's story */}
-          <div className="lg:col-span-5">
-            {/* glass-red is the site's own pill treatment, as on the hero. */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 glass-red rounded-full mb-6">
-              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              <Camera className="w-3.5 h-3.5 text-red-500" />
-              <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-red-400">
-                Gallery
-              </span>
-            </div>
-
+          {/* Left: the season's story.
+              On desktop the column runs the full height of the photo window
+              and becomes a flex column, so the copy sits at the top and the
+              season row is pushed to the bottom by `mt-auto` — the wide band
+              of air between them is the layout doing the spacing rather than
+              a hardcoded margin. Below lg it stays a simple stack. */}
+          <div className="lg:col-span-5 lg:h-[calc(100vh-8rem)] lg:flex lg:flex-col">
             <div ref={copyRef}>
               {/* The year is the page's neon sign: the site's glow-text
                   animation, matching the hero headline. */}
-              {/* Vertical rhythm follows the mock: title tight to its
-                  sub-head, a 16px gap to the sub-head, then 48px of air
-                  before the season row. */}
-              <h1 className="text-[76px] sm:text-[110px] font-black leading-none tracking-tighter text-red-600 tabular-nums italic animate-glow-text mb-2">
+              {/* Vertical rhythm follows the mock: the year, its sub-head and
+                  the blurb form one tight cluster at the top of the column.
+                  The gap before the season row is not set here — on desktop
+                  it is whatever is left over once the row is pinned to the
+                  bottom; on mobile the hint's own mb-12 supplies it. */}
+              <h1 className="text-[76px] sm:text-[110px] font-black leading-none tracking-tighter text-red-600 tabular-nums italic animate-glow-text mb-3">
                 {season.year}
               </h1>
-              <p className="text-sm font-bold uppercase tracking-[0.3em] text-red-500 mb-4 neon-text-red">
+              <p className="text-sm font-bold uppercase tracking-[0.3em] text-red-500 mb-6 neon-text-red">
                 {season.theme}
               </p>
-              <p className="text-gray-400 text-base leading-relaxed max-w-md mb-3">
+              <p className="text-gray-400 text-base leading-relaxed max-w-md mb-4">
                 {season.blurb}
               </p>
-              <p className="text-xs uppercase tracking-widest text-gray-600 mb-12">
+              <p className="text-xs uppercase tracking-widest text-gray-600 mb-12 lg:mb-0">
                 Hover a photo to see it in colour
               </p>
             </div>
 
-            {/* Season switcher */}
-            <div className="pt-4 border-t border-white/10">
+            {/* Season switcher — bottom of the column on desktop. */}
+            <div className="pt-4 border-t border-white/10 lg:mt-auto">
               <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 mb-3">
                 Season
               </p>
