@@ -198,7 +198,18 @@ export default function GalleryPage() {
             src={photo.src}
             alt={photoAlt(photo, season.year)}
             loading="lazy"
-            className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
+            /* Zoomed past the watermarks. The sources carry a TEDx lockup in
+               the top-left — reaching 6.8% of the height in the 2023 batch,
+               8.3% in 2024, 10.5% in 2025 — and a "powered by SKILLCETERA"
+               strip in the bottom-right from ~91.9%. Opposite corners, so
+               shifting the crop one way would only expose the other; a
+               symmetric zoom is what clears both.
+
+               1.32 trims 12.1% off every edge, clearing the deepest lockup
+               by 1.6% rather than the 0.4% a tighter zoom left. The sources
+               are 2048px wide against ~336px tiles, so the crop costs
+               nothing in sharpness. */
+            className="w-full h-full object-cover scale-[1.32] grayscale group-hover:grayscale-0 transition-all duration-500"
           />
           {/* Red wash on hover, so colour returning reads as the neon
               catching the photograph rather than a plain filter toggle. */}
