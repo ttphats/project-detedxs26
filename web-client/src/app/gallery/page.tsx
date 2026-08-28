@@ -13,10 +13,11 @@ gsap.registerPlugin(useGSAP);
 const DEFAULT_YEAR = GALLERY_SEASONS[GALLERY_SEASONS.length - 1].year;
 
 /**
- * Seconds for a column to travel one full copy of its photos. Slow enough
- * that the drift reads as atmosphere rather than a carousel.
+ * Drift speed in pixels per second. Expressed as a speed rather than a
+ * duration so seasons with different photo counts move at the same pace.
+ * Slow enough that it reads as atmosphere rather than a carousel.
  */
-const SCROLL_DURATION = 80;
+const SCROLL_SPEED = 42;
 
 /**
  * Varied tile heights, derived from the index rather than random so the
@@ -85,12 +86,31 @@ export default function GalleryPage() {
           // page never freezes wholesale.
           const cleanups = columns.map((col) => {
             const down = col.dataset.column === "down";
+
+            // Measure one copy exactly, rather than assuming yPercent: -50.
+            // Half the column is NOT one copy: with a flex gap between every
+            // child, half the total overshoots by gap/2, and that error is
+            // what made the loop jump each time it came round. The offset
+            // between the first item and the first item of the duplicate set
+            // is the true period.
+            const items = Array.from(col.children) as HTMLElement[];
+            const half = items.length / 2;
+            const distance =
+              half >= 1 && items[half]
+                ? items[half].offsetTop - items[0].offsetTop
+                : col.offsetHeight / 2;
+
+            // Duration from distance so every season drifts at the same
+            // speed — a nine-photo season would otherwise race a
+            // seventeen-photo one.
+            const duration = distance / SCROLL_SPEED;
+
             const tween = gsap.fromTo(
               col,
-              {yPercent: down ? -50 : 0},
+              {y: down ? -distance : 0},
               {
-                yPercent: down ? 0 : -50,
-                duration: SCROLL_DURATION,
+                y: down ? 0 : -distance,
+                duration,
                 ease: "none",
                 repeat: -1,
               },
@@ -248,22 +268,25 @@ export default function GalleryPage() {
             <div ref={copyRef}>
               {/* The year is the page's neon sign: the site's glow-text
                   animation, matching the hero headline. */}
-              <h1 className="text-[76px] sm:text-[110px] font-black leading-[0.85] tracking-tighter text-red-600 tabular-nums italic animate-glow-text">
+              {/* Vertical rhythm follows the mock: title tight to its
+                  sub-head, a 16px gap to the sub-head, then 48px of air
+                  before the season row. */}
+              <h1 className="text-[76px] sm:text-[110px] font-black leading-none tracking-tighter text-red-600 tabular-nums italic animate-glow-text mb-2">
                 {season.year}
               </h1>
-              <p className="text-sm font-bold uppercase tracking-[0.3em] text-red-500 mt-2 mb-5 neon-text-red">
+              <p className="text-sm font-bold uppercase tracking-[0.3em] text-red-500 mb-4 neon-text-red">
                 {season.theme}
               </p>
-              <p className="text-gray-400 text-base leading-relaxed max-w-md">
+              <p className="text-gray-400 text-base leading-relaxed max-w-md mb-3">
                 {season.blurb}
               </p>
-              <p className="mt-5 text-xs uppercase tracking-widest text-gray-600">
+              <p className="text-xs uppercase tracking-widest text-gray-600 mb-12">
                 Hover a photo to see it in colour
               </p>
             </div>
 
             {/* Season switcher */}
-            <div className="mt-8 pt-6 border-t border-white/10">
+            <div className="pt-4 border-t border-white/10">
               <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 mb-3">
                 Season
               </p>
