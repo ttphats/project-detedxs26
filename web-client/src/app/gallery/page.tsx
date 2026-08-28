@@ -226,7 +226,12 @@ export default function GalleryPage() {
   );
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
+    // -mb-20 cancels the pb-20 that layout.tsx puts on <main> to clear the
+    // fixed mobile nav. On this page the photo window is meant to run right
+    // up to the footer, and its own mask already fades the last photos out,
+    // so that 80px of reserved space would just be a gap. Restored at md,
+    // where the nav is hidden and the padding is zero anyway.
+    <div className="min-h-screen bg-black text-white overflow-hidden -mb-20 md:mb-0">
       {/* Background is the home page's own treatment — the same .blob,
           .grid-pattern and .animate-float classes from globals.css — so the
           gallery reads as part of the site rather than a page of its own. */}
@@ -262,8 +267,11 @@ export default function GalleryPage() {
         />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+      {/* Stacked (below lg) the photo window sits 1px clear of the season row
+          above it and the footer below, so the drift reads as a band running
+          the width of the screen. The desktop gaps are unchanged. */}
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-px lg:pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-x-10 gap-y-px lg:gap-y-10 items-center">
           {/* Left: the season's story */}
           <div className="lg:col-span-5">
             <div ref={copyRef}>
