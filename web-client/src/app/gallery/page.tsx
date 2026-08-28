@@ -249,7 +249,7 @@ export default function GalleryPage() {
                by 1.6% rather than the 0.4% a tighter zoom left. The sources
                are 2048px wide against ~336px tiles, so the crop costs
                nothing in sharpness. */
-            className="w-full h-full object-cover scale-[1.32] grayscale group-hover:grayscale-0 group-data-[held=true]:grayscale-0 transition-all duration-500"
+            className="w-full h-full object-cover scale-[1.32] transition-all duration-500"
           />
           {/* Red wash on reveal, so colour returning reads as the neon
               catching the photograph rather than a plain filter toggle. */}
@@ -334,10 +334,10 @@ export default function GalleryPage() {
                   narrow desktop window still has a pointer. */}
               <p className="text-xs uppercase tracking-widest text-gray-600 mb-12">
                 <span className="[@media(hover:hover)]:hidden">
-                  Hold a photo to see it in colour
+                  Hold a photo to pause the column
                 </span>
                 <span className="hidden [@media(hover:hover)]:inline">
-                  Hover a photo to see it in colour
+                  Hover a photo to pause the column
                 </span>
               </p>
             </div>
