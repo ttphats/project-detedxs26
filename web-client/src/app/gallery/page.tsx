@@ -326,8 +326,19 @@ export default function GalleryPage() {
               {/* The theme outranks its slogan, so it is set larger. The
                   letter-spacing comes down as the size goes up — 0.3em was
                   fine at 14px but would push this line past the column and
-                  wrap it. */}
-              <p className="text-xl sm:text-2xl font-black uppercase tracking-[0.08em] leading-tight text-red-500 mb-4 neon-text-red">
+                  wrap it.
+
+                  Not .neon-text-red here: that stacks three glows at full
+                  opacity, which reads as a halo at 14px but smears the
+                  letterforms at this size. One soft, low-opacity halo keeps
+                  the neon suggestion and leaves the text crisp. */}
+              <p
+                /* text-balance so the wrap falls near the separator rather
+                   than stranding a word — "Season 05 ·" / "All The Way"
+                   instead of "…All The" / "Way". */
+                className="text-2xl sm:text-3xl font-black uppercase tracking-[0.08em] leading-tight text-balance text-red-500 mb-4"
+                style={{textShadow: "0 0 14px rgba(230, 43, 30, 0.4)"}}
+              >
                 {season.theme}
               </p>
               {/* The theme's hook, set above the description so the eye lands
