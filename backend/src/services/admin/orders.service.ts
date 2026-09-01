@@ -40,7 +40,7 @@ export async function listOrders(input: ListOrdersInput) {
     ]
   }
 
-  const [orders, total, pending, paid, cancelled] = await Promise.all([
+  const [orders, total, pending, paid, cancelled, revenueResult] = await Promise.all([
     prisma.order.findMany({
       where,
       include: {
@@ -56,6 +56,12 @@ export async function listOrders(input: ListOrdersInput) {
     prisma.order.count({where: {...where, status: 'PENDING'}}),
     prisma.order.count({where: {...where, status: 'PAID'}}),
     prisma.order.count({where: {...where, status: 'CANCELLED'}}),
+    // Full PAID total, not the current page — the admin "Doanh thu" card
+    // used to sum only the 20 rows this endpoint returns.
+    prisma.order.aggregate({
+      _sum: {totalAmount: true},
+      where: {...where, status: 'PAID'},
+    }),
   ])
 
   // Resolve ticket type names via seats.ticket_type_id (no Prisma relation on Seat)
@@ -78,6 +84,7 @@ export async function listOrders(input: ListOrdersInput) {
       pending,
       paid,
       cancelled,
+      totalRevenue: Number(revenueResult._sum.totalAmount || 0),
     },
   }
 }

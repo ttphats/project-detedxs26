@@ -140,6 +140,8 @@ interface Summary {
   pendingOrders: number;
   paidOrders: number;
   cancelledOrders: number;
+  /** Sum of PAID totalAmount across every matching order, not the current page. */
+  totalRevenue: number;
 }
 
 const statusColors: Record<string, string> = {
@@ -175,6 +177,7 @@ export default function OrdersPage() {
     pendingOrders: 0,
     paidOrders: 0,
     cancelledOrders: 0,
+    totalRevenue: 0,
   });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [detailModal, setDetailModal] = useState<Order | null>(null);
@@ -228,9 +231,7 @@ export default function OrdersPage() {
           router.push("/admin/login");
           return;
         }
-        message.error(
-          data?.error || "Không thể tải danh sách đơn hàng",
-        );
+        message.error(data?.error || "Không thể tải danh sách đơn hàng");
         return;
       }
 
@@ -761,10 +762,7 @@ export default function OrdersPage() {
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
   };
 
-  // Calculate revenue from PAID orders only
-  const totalRevenue = orders
-    .filter((o) => o.status === "PAID")
-    .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  const totalRevenue = Number(summary.totalRevenue || 0);
 
   const columns: ColumnsType<Order> = [
     {
@@ -1234,13 +1232,19 @@ export default function OrdersPage() {
                       render: (_: unknown, t: OrderTicket) =>
                         t.attendeeName ? (
                           <div className="leading-tight">
-                            <div className="text-sm font-medium">{t.attendeeName}</div>
+                            <div className="text-sm font-medium">
+                              {t.attendeeName}
+                            </div>
                             <div className="text-xs text-gray-500">
-                              {[t.attendeeEmail, t.attendeePhone].filter(Boolean).join(" · ")}
+                              {[t.attendeeEmail, t.attendeePhone]
+                                .filter(Boolean)
+                                .join(" · ")}
                             </div>
                           </div>
                         ) : (
-                          <span className="text-gray-400 text-xs">(chưa có)</span>
+                          <span className="text-gray-400 text-xs">
+                            (chưa có)
+                          </span>
                         ),
                     },
                     {

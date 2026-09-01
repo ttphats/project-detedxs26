@@ -66,11 +66,12 @@ export async function listEvents(status?: string) {
     ],
   })
 
-  // Get additional stats
+  // Get additional stats. Booked tickets come from PAID order_items, not
+  // SOLD seats — ticket-class orders never create a seat row.
   const eventsWithStats = await Promise.all(
     events.map(async (event: any) => {
-      const bookedSeats = await prisma.seat.count({
-        where: {eventId: event.id, status: 'SOLD'},
+      const bookedSeats = await prisma.orderItem.count({
+        where: {order: {eventId: event.id, status: 'PAID'}},
       })
 
       return {

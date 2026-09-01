@@ -10,7 +10,11 @@ export interface DashboardStats {
 }
 
 /**
- * Get dashboard statistics
+ * Get dashboard statistics.
+ *
+ * Tickets sold come from PAID order_items, not SOLD seats. Ticket-class
+ * orders have no seat row, so a seat count silently under-reports sales.
+ * Revenue stays PAID-only so it matches the ticket-types "Đã bán" figure.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   const [
@@ -23,7 +27,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   ] = await Promise.all([
     prisma.event.count(),
     prisma.order.count(),
-    prisma.seat.count({ where: { status: 'SOLD' } }),
+    prisma.orderItem.count({
+      where: { order: { status: 'PAID' } },
+    }),
     prisma.order.aggregate({
       _sum: { totalAmount: true },
       where: { status: 'PAID' },
