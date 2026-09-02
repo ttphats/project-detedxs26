@@ -17,7 +17,9 @@ vi.mock('../config/env.js', () => ({config: {telegram}}))
 
 vi.stubGlobal('fetch', fetchMock)
 
-const {notifyNewSpeakerSubmission} = await import('../services/telegram.service.js')
+const {notifyNewSpeakerSubmission, sendTelegramMessage} = await import(
+  '../services/telegram.service.js'
+)
 
 /** The text Telegram would have received on the most recent call. */
 function sentText(): string {
@@ -193,5 +195,60 @@ describe('notifyNewSpeakerSubmission — delivery', () => {
     await expect(notifyNewSpeakerSubmission({id: 'sub-16', answers: seeded})).resolves.toBe(
       false
     )
+  })
+})
+
+function lastBody(): Record<string, unknown> {
+  const [, init] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1]
+  return JSON.parse(init.body)
+}
+
+describe('sendTelegramMessage — transport', () => {
+  it('disables web page preview on the Bot API payload', async () => {
+    await sendTelegramMessage('hello')
+    expect(lastBody().disable_web_page_preview).toBe(true)
+  })
+
+  it('aborts a hung request with a timeout signal', async () => {
+    await sendTelegramMessage('hello')
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    expect(init.signal.aborted).toBe(false)
+  })
+
+  it('skips the request when the text is blank', async () => {
+    await expect(sendTelegramMessage('   ')).resolves.toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('caps text at Telegram’s 4096-character limit', async () => {
+    await sendTelegramMessage('x'.repeat(5000))
+    expect(String(lastBody().text).length).toBeLessThanOrEqual(4096)
+  })
+
+  it('retries once on 5xx then succeeds', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ok: false, status: 500, text: async () => 'oops'})
+      .mockResolvedValueOnce({ok: true, text: async () => 'ok'})
+    await expect(sendTelegramMessage('hello')).resolves.toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries once on 429 then succeeds', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ok: false, status: 429, text: async () => 'slow'})
+      .mockResolvedValueOnce({ok: true, text: async () => 'ok'})
+    await expect(sendTelegramMessage('hello')).resolves.toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry a 400', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => "can't parse entities",
+    })
+    await expect(sendTelegramMessage('hello')).resolves.toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

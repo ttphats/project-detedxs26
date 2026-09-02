@@ -8,8 +8,20 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/** Telegram's hard cap on sendMessage text. Last-resort slice; callers should cap first. */
+const TELEGRAM_MAX_TEXT = 4096;
+/** Hang-forever is worse than a missed ping. */
+const TELEGRAM_TIMEOUT_MS = 8000;
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
 /**
  * Sends a text message to the configured Telegram chat using HTML formatting.
+ *
+ * Fail-open: missing config, blank text, 4xx, 5xx and network errors all
+ * resolve false rather than throwing. 429/5xx get one immediate retry.
  */
 export async function sendTelegramMessage(text: string): Promise<boolean> {
   const { botToken, chatId } = config.telegram;
@@ -19,26 +31,52 @@ export async function sendTelegramMessage(text: string): Promise<boolean> {
     return false;
   }
 
-  try {
-    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  const trimmed = (text ?? '').trim();
+  if (!trimmed) {
+    console.log('[TELEGRAM] Empty message. Skipping notification.');
+    return false;
+  }
+
+  const payload = trimmed.length > TELEGRAM_MAX_TEXT ? trimmed.slice(0, TELEGRAM_MAX_TEXT) : trimmed;
+  const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  const body = JSON.stringify({
+    chat_id: chatId,
+    text: payload,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  });
+
+  const attempt = async (): Promise<{ok: true} | {ok: false; status: number; errText: string}> => {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-      }),
+      body,
+      signal: AbortSignal.timeout(TELEGRAM_TIMEOUT_MS),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      console.error(`[TELEGRAM] Failed to send Telegram message: ${response.status} - ${errText}`);
+      return {ok: false, status: response.status, errText: await response.text()};
+    }
+    return {ok: true};
+  };
+
+  try {
+    let result = await attempt();
+    if (!result.ok && isRetryableStatus(result.status)) {
+      console.error(
+        `[TELEGRAM] Failed to send Telegram message: ${result.status} - ${result.errText}; retrying once`,
+      );
+      result = await attempt();
+    }
+
+    if (!result.ok) {
+      console.error(`[TELEGRAM] Failed to send Telegram message: ${result.status} - ${result.errText}`);
       return false;
     }
 
+    console.log(`[TELEGRAM] sent len=${payload.length}`);
     return true;
   } catch (error) {
     console.error('[TELEGRAM] Error sending Telegram message:', error);
