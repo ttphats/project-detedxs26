@@ -235,6 +235,18 @@ export async function createSubmission(answers: any) {
     }
   });
 
+  // Courtesy ping for the review team, after the row is committed. Fired and
+  // forgotten: the applicant has already been served, and a Telegram outage
+  // must not turn their successful application into an error.
+  try {
+    const { notifyNewSpeakerSubmission } = await import('../telegram.service.js');
+    notifyNewSpeakerSubmission({ id: sub.id, answers }).catch((err) =>
+      console.error('[TELEGRAM] Failed to send speaker submission notification:', err)
+    );
+  } catch (err) {
+    console.error('[SPEAKER-REGISTER] Failed to prepare Telegram notification:', err);
+  }
+
   return {
     id: sub.id,
     answers: answers,
