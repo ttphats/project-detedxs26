@@ -282,9 +282,15 @@ export default function EmailTemplatesPage() {
     setActionLoading(id);
     try {
       const token = localStorage.getItem("token");
+      // The endpoint takes the desired state in the body — sending none left
+      // `active` undefined, so the update was a no-op.
       const res = await fetch(`/api/admin/email-templates/${id}/activate`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ active: true }),
       });
       const data = await res.json();
       if (data.success) {
@@ -305,9 +311,16 @@ export default function EmailTemplatesPage() {
     setActionLoading(id);
     try {
       const token = localStorage.getItem("token");
+      // POST with active:false, not DELETE — the backend registers only POST
+      // on this path, so DELETE was returning 404 and deactivation never
+      // worked.
       const res = await fetch(`/api/admin/email-templates/${id}/activate`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ active: false }),
       });
       const data = await res.json();
       if (data.success) {
