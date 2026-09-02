@@ -82,6 +82,32 @@ export async function createTemplate(input: CreateTemplateInput) {
   });
 }
 
+/** `name` is UNIQUE (email_templates_name_key), and VarChar(100). */
+const NAME_MAX = 100;
+
+/**
+ * A free name to file the superseded version under.
+ *
+ * The old row is kept as history rather than deleted, so it still holds the
+ * name the new version wants. Move it aside — "Vé hợp lệ" becomes "Vé hợp lệ
+ * (v2)" — and the live template keeps the clean name.
+ */
+async function archivedName(base: string, version: number): Promise<string> {
+  const build = (suffix: string) =>
+    base.slice(0, Math.max(0, NAME_MAX - suffix.length)) + suffix;
+
+  let candidate = build(` (v${version})`);
+  for (let n = 2; n < 50; n++) {
+    const clash = await prisma.emailTemplate.findUnique({
+      where: { name: candidate },
+      select: { id: true },
+    });
+    if (!clash) break;
+    candidate = build(` (v${version}-${n})`);
+  }
+  return candidate;
+}
+
 /**
  * Update email template
  * If template is active, clone it as new version
@@ -98,29 +124,42 @@ export async function updateTemplate(id: string, input: UpdateTemplateInput) {
       ...extractVariables(input.htmlContent || template.htmlContent),
     ];
 
-    // Deactivate old template
-    await prisma.emailTemplate.update({
-      where: { id },
-      data: { isActive: false, isDefault: false },
-    });
+    const nextName = input.name || template.name;
+    // Only move the old row aside when the new version reuses its name; an
+    // edit that also renames leaves the old name free anyway.
+    const freedName =
+      nextName === template.name
+        ? await archivedName(template.name, template.version)
+        : template.name;
 
-    // Create new version
-    return prisma.emailTemplate.create({
-      data: {
-        id: newId,
-        name: input.name || template.name,
-        purpose: template.purpose,
-        category: template.category,
-        subject: input.subject || template.subject,
-        htmlContent: input.htmlContent || template.htmlContent,
-        textContent: input.textContent || template.textContent,
-        description: input.description || template.description,
-        variables: JSON.stringify([...new Set(variables)]),
-        version: template.version + 1,
-        isActive: true,
-        isDefault: true,
-      },
-    });
+    // One transaction: the old version was previously deactivated before the
+    // clone was written, so a failure here (a duplicate name, most often)
+    // left the purpose with no active template at all and stopped those
+    // emails going out.
+    const [, created] = await prisma.$transaction([
+      prisma.emailTemplate.update({
+        where: { id },
+        data: { isActive: false, isDefault: false, name: freedName },
+      }),
+      prisma.emailTemplate.create({
+        data: {
+          id: newId,
+          name: nextName,
+          purpose: template.purpose,
+          category: template.category,
+          subject: input.subject || template.subject,
+          htmlContent: input.htmlContent || template.htmlContent,
+          textContent: input.textContent || template.textContent,
+          description: input.description || template.description,
+          variables: JSON.stringify([...new Set(variables)]),
+          version: template.version + 1,
+          isActive: true,
+          isDefault: true,
+        },
+      }),
+    ]);
+
+    return created;
   }
 
   // Otherwise just update

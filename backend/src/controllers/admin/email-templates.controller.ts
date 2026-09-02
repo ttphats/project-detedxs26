@@ -44,13 +44,24 @@ export async function create(request: FastifyRequest, reply: FastifyReply) {
   try { requireAdmin(user); } catch { throw new ForbiddenError(); }
 
   const body = request.body as templatesService.CreateTemplateInput;
-  const template = await templatesService.createTemplate(body);
 
-  return reply.status(201).send({
-    success: true,
-    data: template,
-    message: 'Template created successfully',
-  });
+  try {
+    const template = await templatesService.createTemplate(body);
+    return reply.status(201).send({
+      success: true,
+      data: template,
+      message: 'Template created successfully',
+    });
+  } catch (error: any) {
+    // Template names are unique. Without this the admin sees a bare 500 and
+    // no way to tell that the name is simply taken.
+    if (error?.code === 'P2002') {
+      throw new BadRequestError(
+        `A template named "${body.name}" already exists. Choose a different name.`
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -69,6 +80,11 @@ export async function update(request: FastifyRequest, reply: FastifyReply) {
     return reply.send({ success: true, data: template, message: 'Template updated successfully' });
   } catch (error: any) {
     if (error.message === 'Template not found') throw new NotFoundError(error.message);
+    if (error?.code === 'P2002') {
+      throw new BadRequestError(
+        `A template named "${body.name}" already exists. Choose a different name.`
+      );
+    }
     throw error;
   }
 }
@@ -121,9 +137,16 @@ export async function activate(request: FastifyRequest, reply: FastifyReply) {
   try { requireAdmin(user); } catch { throw new ForbiddenError(); }
 
   const { id } = request.params as { id: string };
-  const { active } = request.body as { active: boolean };
+  const body = (request.body ?? {}) as { active?: boolean };
 
-  const template = await templatesService.activateTemplate(id, active);
+  // Destructuring the body directly threw on a bodyless POST, and an absent
+  // `active` reached Prisma as undefined — which it ignores, so the call
+  // reported success while changing nothing. Require the flag instead.
+  if (typeof body.active !== 'boolean') {
+    throw new BadRequestError('Body must include "active": true or false.');
+  }
+
+  const template = await templatesService.activateTemplate(id, body.active);
   return reply.send({ success: true, data: template });
 }
 

@@ -1,6 +1,13 @@
 /**
  * Multi-ticket confirmation email HTML (model B: 1 QR per ticket unit).
  * Used when TICKET_CONFIRMED is sent after PAID.
+ *
+ * Font stacks here must lead with a face that carries Vietnamese. Helvetica
+ * and Helvetica Neue cover Latin-1 but not Vietnamese Extended (U+1EA0–1EF9)
+ * nor ư/ơ/đ, so a client picking one of those renders most of the text in it
+ * and substitutes a different font for just the accented letters — "CỬA" and
+ * "Loại vé" come out visibly mismatched. Arial carries the full range, and
+ * Segoe UI / Tahoma / Roboto cover the clients that lack it.
  */
 
 export type EmailTicketUnit = {
@@ -126,7 +133,7 @@ export function buildTicketConfirmationEmailHtml(data: TicketConfirmEmailInput):
   return `<!DOCTYPE html>
 <html lang="vi"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Vé điện tử - ${esc(data.eventName)}</title></head>
-<body style="margin:0;padding:0;background:#f4f4f4;font-family:Helvetica,Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,'Segoe UI',Tahoma,Roboto,sans-serif;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4f4f4;">
 <tr><td align="center" style="padding:32px 16px;">
   <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;">
