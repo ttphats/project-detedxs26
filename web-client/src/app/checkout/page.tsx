@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { formatVNDate } from "@/lib/date-utils";
 import {
   loadCheckoutState,
+  findMissingCheckoutInfo,
   type AttendeeInfo,
 } from "@/lib/checkout-store";
 import {
@@ -82,6 +83,23 @@ function CheckoutContent() {
   const [event, setEvent] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [orderData, setOrderData] = useState<any>(null);
+
+  /**
+   * What still has to be filled in before payment can be claimed.
+   *
+   * Checked against the order's own item count rather than the attendee rows
+   * alone, so an order that never reached the holder-details step cannot slip
+   * through with an empty list.
+   */
+  const expectedAttendees: number | undefined = Array.isArray(orderData?.items)
+    ? orderData.items.length
+    : undefined;
+  const missingInfo = findMissingCheckoutInfo(
+    formData,
+    attendees,
+    expectedAttendees,
+  );
+  const canConfirmPayment = missingInfo.length === 0 && !isExpired;
 
   // Debug URL params
   console.log("[CHECKOUT] URL params:", {
@@ -404,8 +422,10 @@ function CheckoutContent() {
    * chance to re-check their details before it goes to the organisers.
    */
   const handleConfirmPayment = () => {
-    if (!formData.name || !formData.email || !formData.phone) {
-      toast.error("Please fill in all required fields");
+    // Re-checked here and not only through the disabled button: the button
+    // could be enabled by a stale render, and the claim is irreversible.
+    if (missingInfo.length > 0) {
+      toast.error(`Still missing: ${missingInfo.join(", ")}`);
       return;
     }
 
@@ -1042,9 +1062,38 @@ function CheckoutContent() {
                   </div>
                 )}
 
+                {/* A disabled button with no explanation is a dead end, so
+                    say exactly what is outstanding and link back to the step
+                    that fixes it. */}
+                {missingInfo.length > 0 && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                      <div className="text-sm">
+                        <p className="text-amber-300 font-semibold mb-1">
+                          Complete your details before confirming payment
+                        </p>
+                        <ul className="text-amber-200/80 list-disc list-inside space-y-0.5">
+                          {missingInfo.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                        {attendees.length > 0 || expectedAttendees ? (
+                          <Link
+                            href={`/checkout/attendee-info?event=${encodeURIComponent(eventId || "")}&order=${encodeURIComponent(orderNumber || "")}&token=${encodeURIComponent(accessToken || "")}`}
+                            className="inline-block mt-2 text-amber-300 underline hover:text-amber-200"
+                          >
+                            Edit ticket holder details
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <button
                   onClick={handleConfirmPayment}
-                  disabled={isProcessing}
+                  disabled={isProcessing || !canConfirmPayment}
                   className="relative w-full py-4 px-6 rounded-xl font-bold text-white flex items-center justify-center gap-2 bg-linear-to-r from-red-600 to-red-500 shadow-xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {/* Shine effect */}
