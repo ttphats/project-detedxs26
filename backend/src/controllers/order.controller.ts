@@ -3,6 +3,7 @@ import * as orderService from '../services/order.service.js'
 import * as settingsService from '../services/settings.service.js'
 import {successResponse} from '../utils/helpers.js'
 import {BadRequestError} from '../utils/errors.js'
+import {findMissingOrderInfo} from '../utils/order-completeness.js'
 
 async function assertTicketSalesOpen() {
   // Local checkout stays usable even if an admin previewed the closed state.
@@ -102,8 +103,20 @@ export async function confirmPayment(
   const {orderNumber, accessToken, customerName, customerEmail, customerPhone, attendees} =
     request.body
 
-  if (!orderNumber || !accessToken || !customerName || !customerEmail || !customerPhone) {
+  if (!orderNumber || !accessToken) {
     throw new BadRequestError('Missing required fields')
+  }
+
+  // An order with gaps is not a valid order. Enforced here as well as in the
+  // browser because the client gate is only a courtesy — this endpoint is
+  // reachable directly, and a half-filled order costs an organiser a manual
+  // chase, or leaves a holder with no ticket email at all.
+  const missing = findMissingOrderInfo(
+    {name: customerName, email: customerEmail, phone: customerPhone},
+    attendees ?? []
+  )
+  if (missing.length > 0) {
+    throw new BadRequestError(`Order is incomplete: ${missing.join(', ')}`)
   }
 
   const result = await orderService.confirmPayment({
