@@ -824,72 +824,21 @@ export default function Home() {
 
         {/* Speaker Grid - Space-saving Horizontal Layout */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {speakers.map((speaker, index) => (
               <div
                 key={speaker.id}
-                onClick={() => setActiveSpeakerId(activeSpeakerId === speaker.id ? null : speaker.id)}
-                className={`group relative h-[450px] rounded-2xl overflow-hidden bg-zinc-950 border shadow-2xl transition-all duration-500 cursor-pointer lg:cursor-default ${
-                  activeSpeakerId === speaker.id
-                    ? "border-red-500/50"
-                    : "border-white/10 hover:border-red-500/50"
-                }`}
+                className="group relative rounded-2xl overflow-hidden bg-zinc-950 border border-white/10 hover:border-red-500 shadow-2xl hover:shadow-[0_0_50px_rgba(255,0,0,0.9)] transition-all duration-500 flex items-center justify-center hover:scale-[1.03] hover:-translate-y-2 z-10 hover:z-20"
               >
-                {/* Glow effect on hover */}
-                <div className={`absolute -inset-0.5 bg-red-600/10 rounded-2xl blur-lg transition-opacity duration-500 ${activeSpeakerId === speaker.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
-
                 {/* Speaker Image */}
                 <img
                   src={speaker.image}
                   alt={speaker.name}
-                  className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${activeSpeakerId === speaker.id ? 'grayscale-0 scale-105' : 'grayscale group-hover:grayscale-0 group-hover:scale-105'}`}
+                  className="relative z-10 w-full h-auto block object-cover transition-transform duration-500"
                 />
-
-                {/* Image Gradient overlay */}
-                <div className={`absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent transition-opacity duration-500 ${activeSpeakerId === speaker.id ? 'opacity-45' : 'opacity-85 group-hover:opacity-45'}`} />
-
-                {/* Number badge */}
-                <div className="absolute top-4 left-4 z-10 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-lg shadow-red-600/30">
-                  {String(index + 1).padStart(2, "0")}
-                </div>
-
-                {/* Slide-up Content Panel */}
-                <div className={`absolute bottom-0 left-0 right-0 p-5 bg-zinc-950/95 backdrop-blur-md border-t border-white/10 transition-transform duration-500 ease-out flex flex-col h-full justify-between ${activeSpeakerId === speaker.id ? 'translate-y-0' : 'translate-y-[calc(100%-80px)] group-hover:translate-y-0'}`}>
-
-                  {/* Header info (always visible at the bottom of the card) */}
-                  <div>
-                    <div className="flex flex-col gap-1 mb-4">
-                      <p className="text-red-500 font-bold uppercase tracking-wider text-[11px]">
-                        {speaker.topic}
-                      </p>
-                      <h3 className={`text-lg sm:text-xl font-black uppercase tracking-tight transition-colors leading-tight ${activeSpeakerId === speaker.id ? 'text-red-500' : 'text-white group-hover:text-red-500'}`}>
-                        {speaker.name}
-                      </h3>
-                    </div>
-
-                    {/* Expanded info (visible when panel slides up) */}
-                    <div className={`space-y-3 transition-opacity duration-500 delay-100 overflow-y-auto max-h-[250px] pr-1 scrollbar-thin ${activeSpeakerId === speaker.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                      <p className="text-white/90 text-xs font-semibold italic border-l-2 border-red-500 pl-2 leading-relaxed">
-                        {speaker.bio}
-                      </p>
-                      <p className="text-gray-400 text-xs leading-relaxed">
-                        {speaker.title}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Footer action / badge inside panel (visible when hovered) */}
-                  <div className={`transition-opacity duration-500 delay-200 pt-2 border-t border-white/5 flex items-center justify-between ${activeSpeakerId === speaker.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                    <span className="text-[10px] text-gray-500 uppercase tracking-widest">
-                      {speaker.company || "TEDx Speaker"}
-                    </span>
-                    <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                      Keynote Talk
-                    </span>
-                  </div>
-
-                </div>
+                
+                {/* Brighter glowing shine overlay */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/20 via-transparent to-red-500/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-20 mix-blend-overlay" />
               </div>
             ))}
           </div>
