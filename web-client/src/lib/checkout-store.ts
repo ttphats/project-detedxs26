@@ -87,10 +87,16 @@ export interface CheckoutState {
   eventId: string
   eventName: string
   eventDate: string
-  orderNumber: string
-  accessToken: string
+  sessionId?: string
+  orderNumber?: string
+  accessToken?: string
   tickets: PurchasedTicket[]
   attendees: AttendeeInfo[]
+  /**
+   * Representative buyer collected on the attendee-info step.
+   * Carried here so the payment page can display it read-only.
+   */
+  representativeBuyer?: ContactInfo
   /**
    * Promotion applied at ticket selection.
    *
@@ -102,6 +108,7 @@ export interface CheckoutState {
   subtotal?: number
   discountAmount?: number
   promoCode?: string | null
+  promotionId?: string
 }
 
 /** Save checkout state to sessionStorage */
@@ -142,5 +149,13 @@ export function saveAttendees(attendees: AttendeeInfo[]): void {
   const state = loadCheckoutState()
   if (!state) return
   state.attendees = attendees
+  saveCheckoutState(state)
+}
+
+/** Update only the representative buyer portion of the state */
+export function saveRepresentativeBuyer(buyer: ContactInfo): void {
+  const state = loadCheckoutState()
+  if (!state) return
+  state.representativeBuyer = buyer
   saveCheckoutState(state)
 }

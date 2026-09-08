@@ -846,71 +846,6 @@ export default function TicketClassPage({
     }
     setIsCheckingOut(true);
     try {
-      const res = await fetch(`${apiUrl}/orders/create-pending-by-type`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId: id,
-          sessionId,
-          promoCode: promoCode.trim() || undefined,
-          promotionId: selectedPromoId || undefined,
-          items: cartItems.map((i) => ({
-            ticketTypeId: i.id,
-            quantity: i.qty,
-          })),
-        }),
-      });
-      const raw = await res.text();
-      let data: {
-        success?: boolean;
-        error?: string;
-        message?: string;
-        data?: { orderNumber?: string; accessToken?: string };
-      } = {};
-      try {
-        data = raw ? JSON.parse(raw) : {};
-      } catch {
-        console.error("[CHECKOUT] Non-JSON response:", res.status, raw);
-        throw new Error(
-          res.ok
-            ? "Invalid server response"
-            : `Failed to create order (HTTP ${res.status}).`,
-        );
-      }
-      if (!res.ok || !data.success) {
-        console.error("[CHECKOUT] Server error:", res.status, data);
-        throw new Error(
-          data.error ||
-            data.message ||
-            `Failed to create order (HTTP ${res.status}).`,
-        );
-      }
-      if (!data.data?.orderNumber || !data.data?.accessToken) {
-        throw new Error("Invalid server response: missing order token");
-      }
-      const { orderNumber, accessToken } = data.data;
-
-      // Fetch the order back for its individual ticket rows. Attendee-info
-      // needs one row per ticket (order_items.id) so each person can be
-      // attached to a specific ticket rather than the order as a whole.
-      const orderRes = await fetch(
-        `${apiUrl}/orders/${orderNumber}?token=${encodeURIComponent(accessToken)}`,
-      );
-      const orderData = await orderRes.json();
-      if (!orderRes.ok || !orderData.success) {
-        throw new Error("Order created but failed to load its details.");
-      }
-
-      const orderItems = (orderData.data.items || []) as Array<{
-        id: string;
-        ticketTypeId: string | null;
-        ticketTypeName: string | null;
-        seatType?: string | null;
-        price: number;
-      }>;
-
-      // Carry the admin-assigned colour of each ticket type through to the
-      // attendee step, so every form is tinted like the card it came from.
       const colourByTypeId = new Map(
         (event?.ticketTypes ?? []).map((tt) => [tt.id, tt.color]),
       );
@@ -918,46 +853,40 @@ export default function TicketClassPage({
         (event?.ticketTypes ?? []).map((tt) => [tt.name, tt.color]),
       );
 
-      const tickets: PurchasedTicket[] = orderItems.map((t) => {
-        const name = t.ticketTypeName || t.seatType || "Ticket";
-        return {
-          id: t.id,
-          ticketTypeId: t.ticketTypeId ?? "",
-          ticketTypeName: name,
-          price: Number(t.price),
-          color:
-            (t.ticketTypeId ? colourByTypeId.get(t.ticketTypeId) : undefined) ??
-            colourByName.get(name) ??
-            null,
-        };
+      const tickets: PurchasedTicket[] = cartItems.flatMap(item => {
+        const color = colourByTypeId.get(item.id) ?? colourByName.get(item.name) ?? null;
+        // Expand quantity into individual tickets so attendee-info gets one form per ticket
+        return Array.from({ length: item.qty }).map((_, i) => ({
+          id: `${item.id}-${i}-${Date.now()}`, // Temporary local ID
+          ticketTypeId: item.id,
+          ticketTypeName: item.name,
+          price: item.price,
+          color,
+        }));
       });
 
-      // Prefer the order's own figures: the server applied the promotion, so
-      // its numbers are authoritative. Fall back to what this page quoted.
-      const orderSubtotal =
-        Number(orderData.data.subtotal) ||
-        tickets.reduce((sum, t) => sum + Number(t.price), 0);
-      const orderDiscount =
-        Number(orderData.data.discountAmount) || discountInfo?.amount || 0;
+      const orderSubtotal = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const orderDiscount = discountInfo?.amount || 0;
 
       const checkoutStateData: CheckoutState = {
         eventId: id,
         eventName: event?.name ?? "",
         eventDate: event?.date ?? "",
-        orderNumber,
-        accessToken,
+        sessionId,
         tickets,
         attendees: [],
         subtotal: orderSubtotal,
         discountAmount: orderDiscount,
-        promoCode: orderData.data.promoCode || promoCode.trim() || null,
+        promoCode: promoCode.trim() || undefined,
+        promotionId: selectedPromoId || undefined,
       };
+
       saveCheckoutState(checkoutStateData);
 
       sessionStorage.setItem("navigating_to_checkout", "true");
-      // Full navigation so the next step loads order params cleanly (mobile-safe)
+      // Full navigation to attendee-info (no order or token params since order is deferred)
       window.location.replace(
-        `/checkout/attendee-info?event=${encodeURIComponent(id)}&order=${encodeURIComponent(orderNumber)}&token=${encodeURIComponent(accessToken)}`,
+        `/checkout/attendee-info?event=${encodeURIComponent(id)}`,
       );
     } catch (err: unknown) {
       console.error("[CHECKOUT] error:", err);
@@ -966,10 +895,6 @@ export default function TicketClassPage({
           ? err.message
           : "Failed to proceed to checkout. Please try again.",
       );
-      // The order can be refused because stock ran out while this page sat
-      // open. Without re-reading it the cards keep offering the type and the
-      // same click keeps failing, with nothing on screen explaining why.
-      void refreshAvailability();
       setIsCheckingOut(false);
     }
   };

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { formatVNDate } from "@/lib/date-utils";
 import {
   loadCheckoutState,
+  saveCheckoutState,
   findMissingCheckoutInfo,
   type AttendeeInfo,
 } from "@/lib/checkout-store";
@@ -72,6 +73,7 @@ function CheckoutContent() {
   const accessToken = searchParams.get("token"); // Access token from create-pending
 
   const [formData, setFormData] = useState({ name: "", email: "", phone: "" });
+  const [buyerLoaded, setBuyerLoaded] = useState(false);
   const [attendees, setAttendees] = useState<AttendeeInfo[]>([]);
   const [showPayConfirm, setShowPayConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -145,28 +147,77 @@ function CheckoutContent() {
       setLoading(true);
       setOrderError(null);
 
-      // Legacy seat flow: no pending order yet — load event only
-      if (!orderNumber || !accessToken) {
-        console.log("[CHECKOUT] No order number - using legacy flow");
-        if (eventId) {
-          try {
-            const res = await fetch(`${apiUrl}/events/${eventId}`);
-            const data = await res.json();
-            if (!cancelled && data.success && data.data) {
-              setEvent(data.data);
+      const checkoutState = loadCheckoutState();
+      let activeOrderNum = orderNumber || checkoutState?.orderNumber;
+      let activeToken = accessToken || checkoutState?.accessToken;
+
+      if (!activeOrderNum || !activeToken) {
+        if (!checkoutState || !checkoutState.tickets?.length) {
+          console.log("[CHECKOUT] No order number and no checkout state - using legacy flow");
+          if (eventId) {
+            try {
+              const res = await fetch(`${apiUrl}/events/${eventId}`);
+              const data = await res.json();
+              if (!cancelled && data.success && data.data) {
+                setEvent(data.data);
+              }
+            } catch (err) {
+              console.error("Error fetching event:", err);
             }
-          } catch (err) {
-            console.error("Error fetching event:", err);
           }
+          if (!cancelled) setLoading(false);
+          return;
         }
-        if (!cancelled) setLoading(false);
-        return;
+
+        // Deferred order creation: create the order now
+        try {
+          const itemsMap = new Map<string, number>();
+          checkoutState.tickets.forEach((t) => {
+            itemsMap.set(t.ticketTypeId, (itemsMap.get(t.ticketTypeId) || 0) + 1);
+          });
+          const itemsList = Array.from(itemsMap.entries()).map(([id, qty]) => ({
+            ticketTypeId: id,
+            quantity: qty,
+          }));
+
+          console.log("[CHECKOUT] Creating deferred order");
+          const createRes = await fetch(`${apiUrl}/orders/create-pending-by-type`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventId: checkoutState.eventId || eventId,
+              sessionId: checkoutState.sessionId || `session_${Date.now()}`,
+              promoCode: checkoutState.promoCode || undefined,
+              promotionId: checkoutState.promotionId || undefined,
+              items: itemsList,
+            }),
+          });
+          const createData = await createRes.json();
+          if (!createRes.ok || !createData.success) {
+            throw new Error(createData.error || "Failed to create order");
+          }
+
+          activeOrderNum = createData.data.orderNumber;
+          activeToken = createData.data.accessToken;
+
+          checkoutState.orderNumber = activeOrderNum;
+          checkoutState.accessToken = activeToken;
+          // Note: we don't map order_items IDs yet, we will map them after fetching the order
+          saveCheckoutState(checkoutState);
+        } catch (err) {
+          console.error("Error creating order:", err);
+          if (!cancelled) {
+            setOrderError(err instanceof Error ? err.message : "Error creating order");
+            setLoading(false);
+          }
+          return;
+        }
       }
 
       try {
-        console.log("[CHECKOUT] Fetching order:", orderNumber);
+        console.log("[CHECKOUT] Fetching order:", activeOrderNum);
         const res = await fetch(
-          `${apiUrl}/orders/${orderNumber}?token=${encodeURIComponent(accessToken)}`,
+          `${apiUrl}/orders/${activeOrderNum}?token=${encodeURIComponent(activeToken!)}`,
         );
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);
@@ -183,7 +234,7 @@ function CheckoutContent() {
         if (data.data.status !== "PENDING") {
           console.log("[CHECKOUT] Order is not PENDING, redirecting...");
           router.replace(
-            `/order-waiting?order=${orderNumber}&token=${accessToken}`,
+            `/order-waiting?order=${activeOrderNum}&token=${activeToken}`,
           );
           return;
         }
@@ -191,18 +242,37 @@ function CheckoutContent() {
         setOrderData(data.data);
         setOrderCode(data.data.orderNumber);
 
-        // Attendee details were collected on the previous step. Pull them in
-        // so they can be confirmed here and sent with the payment, and use
-        // the first attendee as the default billing contact.
-        const checkoutState = loadCheckoutState();
+        // Map temporary local attendee orderItemIds to actual backend order item IDs
+        if (checkoutState && checkoutState.attendees && data.data.items) {
+          const usedItemIds = new Set<string>();
+          checkoutState.attendees.forEach((attendee) => {
+            // Find a matching order item from backend that hasn't been mapped yet
+            const matchingItem = data.data.items.find(
+              (item: any) =>
+                (item.ticketTypeId === attendee.ticketTypeName || // Fallback matching by name
+                 checkoutState.tickets.find((t) => t.id === attendee.orderItemId)?.ticketTypeId === item.ticketTypeId) &&
+                !usedItemIds.has(item.id)
+            );
+            if (matchingItem) {
+              attendee.orderItemId = matchingItem.id;
+              usedItemIds.add(matchingItem.id);
+            }
+          });
+          saveCheckoutState(checkoutState);
+        }
+
         if (checkoutState?.attendees?.length) {
           setAttendees(checkoutState.attendees);
+        }
+        // Load representative buyer from store (set in attendee-info step)
+        if (checkoutState?.representativeBuyer) {
+          setFormData(checkoutState.representativeBuyer);
+          setBuyerLoaded(true);
+        } else if (checkoutState?.attendees?.[0]) {
+          // Fallback: use first attendee as buyer if store has no explicit buyer
           const first = checkoutState.attendees[0];
-          setFormData((prev) =>
-            prev.name || prev.email || prev.phone
-              ? prev
-              : { name: first.name, email: first.email, phone: first.phone },
-          );
+          setFormData({ name: first.name, email: first.email, phone: first.phone });
+          setBuyerLoaded(true);
         }
         setTimeLeft(
           typeof data.data.timeRemaining === "number"
@@ -210,7 +280,7 @@ function CheckoutContent() {
             : COUNTDOWN_DURATION,
         );
 
-        if (data.data.customerName) {
+        if (!buyerLoaded && data.data.customerName) {
           setFormData({
             name: data.data.customerName || "",
             email: data.data.customerEmail || "",
@@ -429,7 +499,11 @@ function CheckoutContent() {
       return;
     }
 
-    if (!orderNumber || !accessToken) {
+    const state = loadCheckoutState();
+    const activeOrderNum = orderNumber || state?.orderNumber;
+    const activeToken = accessToken || state?.accessToken;
+
+    if (!activeOrderNum || !activeToken) {
       setOrderError(
         "Missing order information. Please return to the seat selection page.",
       );
@@ -440,7 +514,11 @@ function CheckoutContent() {
   };
 
   const submitPayment = async () => {
-    if (!orderNumber || !accessToken) return;
+    const state = loadCheckoutState();
+    const activeOrderNum = orderNumber || state?.orderNumber;
+    const activeToken = accessToken || state?.accessToken;
+
+    if (!activeOrderNum || !activeToken) return;
 
     setIsProcessing(true);
     setOrderError(null);
@@ -455,8 +533,8 @@ function CheckoutContent() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          orderNumber,
-          accessToken,
+          orderNumber: activeOrderNum,
+          accessToken: activeToken,
           customerName: formData.name,
           customerEmail: formData.email,
           customerPhone: formData.phone,
@@ -481,10 +559,10 @@ function CheckoutContent() {
         throw new Error(data.error || "Failed to confirm payment");
       }
 
-      console.log("[CHECKOUT] Payment confirmed for order:", orderNumber);
+      console.log("[CHECKOUT] Payment confirmed for order:", activeOrderNum);
 
       // Navigate to waiting page where we poll for admin confirmation
-      const waitingPath = `/order-waiting?order=${orderNumber}&token=${accessToken}`;
+      const waitingPath = `/order-waiting?order=${activeOrderNum}&token=${activeToken}`;
       router.replace(waitingPath);
     } catch (error: unknown) {
       console.error("Payment confirmation error:", error);
@@ -707,65 +785,29 @@ function CheckoutContent() {
               </div>
             )}
 
-            {/* Customer Info */}
+            {/* Representative Customer (read-only — collected in Step 2) */}
             <div className="glass-panel rounded-2xl p-6 animate-fade-in relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 rounded-full blur-2xl" />
-
-              <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
-                <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-red-500" />
-                </div>
-                Representative Customer
-              </h2>
-
-              <div className="space-y-4 relative">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-white placeholder-gray-500 transition-all"
-                    placeholder="John Doe"
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Email *
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={(e) =>
-                        setFormData({ ...formData, email: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-white placeholder-gray-500 transition-all"
-                      placeholder="email@example.com"
-                    />
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                  <div className="w-10 h-10 bg-red-600/20 rounded-xl flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 text-red-500" />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Phone Number *
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      value={formData.phone}
-                      onChange={(e) =>
-                        setFormData({ ...formData, phone: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-white placeholder-gray-500 transition-all"
-                      placeholder="e.g. 0901234567"
-                    />
-                  </div>
-                </div>
+                  Representative Buyer
+                </h2>
+                <Link
+                  href={`/checkout/attendee-info?event=${encodeURIComponent(eventId || "")}&order=${encodeURIComponent(orderNumber || "")}&token=${encodeURIComponent(accessToken || "")}`}
+                  className="text-xs font-semibold text-red-400 hover:text-red-300 transition-colors shrink-0"
+                >
+                  Edit
+                </Link>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                <p className="text-white font-semibold">{formData.name || <span className="text-gray-500 italic">Not provided</span>}</p>
+                <p className="text-gray-400 text-sm mt-0.5 break-all">
+                  {formData.email}
+                  {formData.phone && <><span className="mx-2 text-gray-600">·</span>{formData.phone}</>}
+                </p>
               </div>
             </div>
 
