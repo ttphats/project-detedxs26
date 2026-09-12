@@ -39,6 +39,12 @@ export class ConflictError extends AppError {
   }
 }
 
+export class PayloadTooLargeError extends AppError {
+  constructor(message: string) {
+    super(413, message);
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message: string) {
     super(422, message);

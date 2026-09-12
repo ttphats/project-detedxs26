@@ -1322,17 +1322,16 @@ export default function TicketClassPage({
                     {/* Stepper */}
                     <div className="pt-3">
                       <div className="flex items-center justify-center">
-                        {/* Plus sits left and minus right, matching the
-                            layout supplied by the team. */}
+                        {/* Minus left, plus right. */}
                         <div className="inline-flex items-center rounded-xl border border-white/[0.12] bg-white/[0.04] overflow-hidden">
                           <button
                             type="button"
-                            onClick={(e) => bumpQtyAnimated(e, tt.id, 1)}
-                            disabled={isSoldOut || qty >= maxAllowed}
-                            aria-label={`Increase ${tt.name}`}
+                            onClick={(e) => bumpQtyAnimated(e, tt.id, -1)}
+                            disabled={qty <= 0 || isSoldOut}
+                            aria-label={`Decrease ${tt.name}`}
                             className="w-11 h-10 sm:w-12 sm:h-11 flex items-center justify-center text-white/85 hover:bg-white/[0.07] active:bg-white/[0.1] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                           >
-                            <Plus className="w-4 h-4" strokeWidth={2.5} />
+                            <Minus className="w-4 h-4" strokeWidth={2.5} />
                           </button>
                           <div
                             aria-live="polite"
@@ -1342,12 +1341,12 @@ export default function TicketClassPage({
                           </div>
                           <button
                             type="button"
-                            onClick={(e) => bumpQtyAnimated(e, tt.id, -1)}
-                            disabled={qty <= 0 || isSoldOut}
-                            aria-label={`Decrease ${tt.name}`}
+                            onClick={(e) => bumpQtyAnimated(e, tt.id, 1)}
+                            disabled={isSoldOut || qty >= maxAllowed}
+                            aria-label={`Increase ${tt.name}`}
                             className="w-11 h-10 sm:w-12 sm:h-11 flex items-center justify-center text-white/85 hover:bg-white/[0.07] active:bg-white/[0.1] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                           >
-                            <Minus className="w-4 h-4" strokeWidth={2.5} />
+                            <Plus className="w-4 h-4" strokeWidth={2.5} />
                           </button>
                         </div>
                       </div>
@@ -1559,7 +1558,8 @@ export default function TicketClassPage({
                         </div>
                       </div>
 
-                      {/* Quiet qty control */}
+                      {/* Quiet qty control — minus left, plus right, matching
+                          the stepper on the ticket cards above. */}
                       <div className="inline-flex items-center rounded-lg border border-white/[0.08] bg-white/[0.03] overflow-hidden">
                         <button
                           type="button"

@@ -59,10 +59,12 @@ async function main() {
     contentSecurityPolicy: false,
   })
 
-  // Register multipart for file uploads
+  // Register multipart for file uploads. This is the hard transport backstop —
+  // it sits above MAX_IMAGE_BYTES so an oversize image is rejected by the
+  // upload controller with a readable message rather than aborting mid-stream.
   await fastify.register(multipart, {
     limits: {
-      fileSize: 10 * 1024 * 1024, // 10MB
+      fileSize: 20 * 1024 * 1024, // 20MB
       files: 50, // Max 50 files at once
     },
   })

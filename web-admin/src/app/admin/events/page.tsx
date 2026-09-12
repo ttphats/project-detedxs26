@@ -30,6 +30,11 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import {
+  compressImageFile,
+  formatBytes,
+  UPLOAD_LIMIT_BYTES,
+} from "@/lib/image-compress";
 
 interface Event {
   id: string;
@@ -197,9 +202,17 @@ export default function EventsPage() {
   ) => {
     setUploading(true);
     try {
+      const upload = await compressImageFile(file);
+      if (upload.size > UPLOAD_LIMIT_BYTES) {
+        message.error(
+          `Ảnh quá nặng (${formatBytes(upload.size)}). Tối đa ${formatBytes(UPLOAD_LIMIT_BYTES)}.`,
+        );
+        return false;
+      }
+
       const token = localStorage.getItem("token");
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", upload);
       formData.append("subfolder", "events");
 
       const res = await fetch("/api/admin/upload", {

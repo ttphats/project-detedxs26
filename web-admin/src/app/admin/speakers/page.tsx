@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AdminLayout } from "@/components/admin";
 import {
   Table,
@@ -30,6 +31,11 @@ import {
   LoadingOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
+import {
+  compressImageFile,
+  formatBytes,
+  UPLOAD_LIMIT_BYTES,
+} from "@/lib/image-compress";
 
 interface Speaker {
   id: string;
@@ -52,6 +58,7 @@ interface Event {
 }
 
 export default function SpeakersPage() {
+  const router = useRouter();
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +85,16 @@ export default function SpeakersPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      console.log("[SPEAKERS] API response:", data);
+      if (!res.ok || !data.success) {
+        if (res.status === 401) {
+          message.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+          localStorage.removeItem("token");
+          router.push("/admin/login");
+          return;
+        }
+        message.error(data?.error || "Không thể tải danh sách diễn giả");
+        return;
+      }
       if (data.success && data.data) {
         setSpeakers(data.data.speakers || []);
         setEvents(data.data.events || []);
@@ -120,29 +136,38 @@ export default function SpeakersPage() {
       const token = localStorage.getItem("token");
       const payload = { ...values, event_id: selectedEvent };
 
-      if (editingId) {
-        await fetch(`/api/admin/speakers/${editingId}`, {
-          method: "PUT",
+      const res = await fetch(
+        editingId ? `/api/admin/speakers/${editingId}` : "/api/admin/speakers",
+        {
+          method: editingId ? "PUT" : "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(payload),
-        });
-        message.success("Cập nhật thành công");
-      } else {
-        await fetch("/api/admin/speakers", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
-        });
-        message.success("Tạo mới thành công");
+        },
+      );
+      const data = await res.json().catch(() => null);
+
+      // The response used to be thrown away, so a rejected save — an expired
+      // token, most often — still announced success and closed the modal while
+      // the edit was silently dropped. Keep the modal open on failure so the
+      // work that was just typed survives.
+      if (!res.ok || !data?.success) {
+        if (res.status === 401) {
+          message.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+          localStorage.removeItem("token");
+          router.push("/admin/login");
+          return;
+        }
+        message.error(data?.error || "Lưu thất bại, vui lòng thử lại");
+        return;
       }
+
+      message.success(editingId ? "Cập nhật thành công" : "Tạo mới thành công");
       setIsModalOpen(false);
       setEditingId(null);
+      setImageUrl("");
       fetchData(selectedEvent);
     } catch (error) {
       message.error("Có lỗi xảy ra");
@@ -159,9 +184,17 @@ export default function SpeakersPage() {
   const handleImageUpload = async (file: File) => {
     setUploading(true);
     try {
+      const upload = await compressImageFile(file);
+      if (upload.size > UPLOAD_LIMIT_BYTES) {
+        message.error(
+          `Ảnh quá nặng (${formatBytes(upload.size)}). Tối đa ${formatBytes(UPLOAD_LIMIT_BYTES)}.`,
+        );
+        return false;
+      }
+
       const token = localStorage.getItem("token");
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", upload);
       formData.append("subfolder", "speakers");
 
       const res = await fetch("/api/admin/upload", {
@@ -208,7 +241,7 @@ export default function SpeakersPage() {
   const handleToggleActive = async (id: string, is_active: boolean) => {
     try {
       const token = localStorage.getItem("token");
-      await fetch(`/api/admin/speakers/${id}`, {
+      const res = await fetch(`/api/admin/speakers/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -216,6 +249,12 @@ export default function SpeakersPage() {
         },
         body: JSON.stringify({ is_active }),
       });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        message.error(data?.error || "Không thể đổi trạng thái hiển thị");
+      }
+      // Refetch either way: on failure this snaps the toggle back to the
+      // value the server actually holds.
       fetchData(selectedEvent);
     } catch (error) {
       message.error("Có lỗi xảy ra");
@@ -377,6 +416,11 @@ export default function SpeakersPage() {
           }}
           footer={null}
           width={600}
+          // Without this the Form stays mounted between opens, and antd only
+          // reads initialValues on mount — so reopening a speaker showed the
+          // values left over from the previous edit rather than what is
+          // actually stored.
+          destroyOnHidden
         >
           <Form
             form={form}
