@@ -1,6 +1,11 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import * as uploadService from '../../services/upload.service.js';
-import { UnauthorizedError, ForbiddenError, BadRequestError } from '../../utils/errors.js';
+import {
+  UnauthorizedError,
+  ForbiddenError,
+  BadRequestError,
+  PayloadTooLargeError,
+} from '../../utils/errors.js';
 import { requireAdmin } from '../../utils/auth.js';
 
 /**
@@ -23,12 +28,25 @@ export async function uploadImage(request: FastifyRequest, reply: FastifyReply) 
     throw new BadRequestError('Invalid file type. Only JPEG, PNG, WebP, GIF allowed.');
   }
 
-  // Get file buffer
-  const buffer = await data.toBuffer();
+  // Get file buffer. Past the multipart fileSize limit the stream aborts here,
+  // so translate that into the same message the size check below would give.
+  let buffer: Buffer;
+  try {
+    buffer = await data.toBuffer();
+  } catch (error: any) {
+    if (error?.code === 'FST_REQ_FILE_TOO_LARGE') {
+      throw new PayloadTooLargeError(
+        `File too large. Maximum ${uploadService.formatBytes(uploadService.MAX_IMAGE_BYTES)} allowed.`
+      );
+    }
+    throw error;
+  }
 
   // Validate file size
   if (!uploadService.validateImageSize(buffer.length)) {
-    throw new BadRequestError('File too large. Maximum 5MB allowed.');
+    throw new PayloadTooLargeError(
+      `File too large. Maximum ${uploadService.formatBytes(uploadService.MAX_IMAGE_BYTES)} allowed.`
+    );
   }
 
   // Convert to base64

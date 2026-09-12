@@ -90,10 +90,24 @@ export function validateImageType(mimeType: string): boolean {
 }
 
 /**
- * Validate file size (max 5MB)
+ * Largest image the API accepts.
+ *
+ * The admin UI downscales before uploading (web-admin/src/lib/image-compress.ts),
+ * so this only has to be generous enough for direct API callers and for formats
+ * that skip compression, such as animated GIFs. Keep UPLOAD_LIMIT_BYTES there in
+ * sync, and keep the multipart fileSize limit in src/index.ts above this so an
+ * oversize body fails here with a readable message instead of mid-stream.
+ */
+export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+export function formatBytes(bytes: number): string {
+  return `${Math.round(bytes / 1024 / 1024)}MB`;
+}
+
+/**
+ * Validate file size
  */
 export function validateImageSize(size: number): boolean {
-  const maxSize = 5 * 1024 * 1024; // 5MB
-  return size <= maxSize;
+  return size <= MAX_IMAGE_BYTES;
 }
 

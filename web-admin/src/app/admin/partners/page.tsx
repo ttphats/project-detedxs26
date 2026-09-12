@@ -35,6 +35,7 @@ import {
   PlayCircleOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import {compressImageFile, formatBytes, UPLOAD_LIMIT_BYTES} from '@/lib/image-compress'
 
 interface Partner {
   id: string
@@ -145,9 +146,17 @@ export default function PartnersPage() {
   const handleLogoUpload = async (file: File) => {
     setUploadingLogo(true)
     try {
+      const upload = await compressImageFile(file)
+      if (upload.size > UPLOAD_LIMIT_BYTES) {
+        message.error(
+          `Ảnh quá nặng (${formatBytes(upload.size)}). Tối đa ${formatBytes(UPLOAD_LIMIT_BYTES)}.`
+        )
+        return false
+      }
+
       const token = localStorage.getItem('token')
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', upload)
       formData.append('subfolder', 'partners')
 
       const res = await fetch('/api/admin/upload', {
@@ -176,9 +185,17 @@ export default function PartnersPage() {
   const handleBannerUpload = async (file: File) => {
     setUploadingBanner(true)
     try {
+      const upload = await compressImageFile(file)
+      if (upload.size > UPLOAD_LIMIT_BYTES) {
+        message.error(
+          `Ảnh quá nặng (${formatBytes(upload.size)}). Tối đa ${formatBytes(UPLOAD_LIMIT_BYTES)}.`
+        )
+        return false
+      }
+
       const token = localStorage.getItem('token')
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', upload)
       formData.append('subfolder', 'partners/banners')
 
       const res = await fetch('/api/admin/upload', {
@@ -495,7 +512,7 @@ export default function PartnersPage() {
               <Input placeholder="VD: https://fpt.com.vn" />
             </Form.Item>
 
-            <Divider orientation={"left" as any} style={{ marginTop: 8, marginBottom: 12 }}>
+            <Divider titlePlacement="left" style={{ marginTop: 8, marginBottom: 12 }}>
               <span className="text-sm font-semibold text-gray-700">
                 🏷️ Partner Logo <span className="font-normal text-gray-400">(used in Partners & Sponsors section)</span>
               </span>
@@ -543,7 +560,7 @@ export default function PartnersPage() {
             </Form.Item>
 
             {/* === BANNER UPLOAD (Spotlight Slideshow) === */}
-            <Divider orientation={"left" as any} style={{ marginTop: 8, marginBottom: 12 }}>
+            <Divider titlePlacement="left" style={{ marginTop: 8, marginBottom: 12 }}>
               <span className="text-sm font-semibold text-gray-700">
                 🎞️ Spotlight Banner <span className="font-normal text-gray-400">(displayed in Spotlight Slideshow on homepage)</span>
               </span>

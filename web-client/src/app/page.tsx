@@ -81,11 +81,13 @@ const getTimelineTypeStyle = (type: string) => {
 };
 
 // Helper function to render vector SVG logos for partners
-const getPartnerLogo = (id: string, tier: 'diamond' | 'gold' | 'silver', logoUrl?: string | null, name?: string) => {
-  const sizeClass =
-    tier === 'diamond' ? 'h-14 sm:h-16 max-w-full object-contain' :
-      tier === 'gold' ? 'h-10 sm:h-12 max-w-full object-contain' :
-        'h-7 sm:h-8 max-w-full object-contain';
+const getPartnerLogo = (id: string, _tier: 'diamond' | 'gold' | 'silver', logoUrl?: string | null, name?: string) => {
+  // Fill the whole card rather than capping the logo at a fixed height.
+  // A fixed h-* held wide logos well below the frame: with object-contain and
+  // a ~3:1 logo, width binds first, so the height cap only ever added dead
+  // space. Letting it take the full box makes every logo as large as its frame
+  // allows; the tier hierarchy comes from the card sizes in the grids below.
+  const sizeClass = 'w-full h-full object-contain';
 
   if (logoUrl) {
     return <img src={logoUrl} alt={name || id} className={sizeClass} style={{ objectFit: 'contain' }} />;
@@ -823,8 +825,8 @@ export default function Home() {
         </div>
 
         {/* Speaker Grid - Space-saving Horizontal Layout */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {speakers.map((speaker, index) => (
               <div
                 key={speaker.id}
@@ -964,7 +966,7 @@ export default function Home() {
                       href={partner.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group relative flex items-center justify-center p-3 sm:p-4 w-[140px] sm:w-[180px] md:w-[200px] h-24 sm:h-28 rounded-xl border border-cyan-500/20 bg-white/5 backdrop-blur-md partner-card partner-card-diamond shine-effect mobile-tap-feedback"
+                      className="group relative flex items-center justify-center p-1.5 sm:p-2 w-[170px] sm:w-[215px] md:w-[240px] h-28 sm:h-32 rounded-xl border border-cyan-500/20 bg-white/5 backdrop-blur-md partner-card partner-card-diamond shine-effect mobile-tap-feedback"
                     >
                       {/* Glow backing */}
                       <div className="absolute inset-0 rounded-xl bg-cyan-500/0 group-hover:bg-cyan-500/5 transition-colors duration-500 -z-10" />
@@ -995,7 +997,7 @@ export default function Home() {
                       href={partner.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group relative flex items-center justify-center p-2 sm:p-3 w-[110px] sm:w-[140px] md:w-[160px] h-20 sm:h-24 rounded-xl border border-amber-500/10 bg-white/5 backdrop-blur-md partner-card partner-card-gold shine-effect mobile-tap-feedback"
+                      className="group relative flex items-center justify-center p-1 sm:p-1.5 w-[135px] sm:w-[170px] md:w-[195px] h-24 sm:h-28 rounded-xl border border-amber-500/10 bg-white/5 backdrop-blur-md partner-card partner-card-gold shine-effect mobile-tap-feedback"
                     >
                       <div className="absolute inset-0 rounded-xl bg-amber-500/0 group-hover:bg-amber-500/5 transition-colors duration-500 -z-10" />
                       <div className="filter grayscale contrast-125 opacity-50 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center w-full h-full">
@@ -1024,7 +1026,7 @@ export default function Home() {
                       href={partner.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group relative flex items-center justify-center p-1.5 sm:p-2 w-[80px] sm:w-[100px] md:w-[120px] lg:w-[130px] h-16 sm:h-20 rounded-lg border border-white/5 bg-white/5 backdrop-blur-md partner-card partner-card-silver shine-effect mobile-tap-feedback"
+                      className="group relative flex items-center justify-center p-1 w-[100px] sm:w-[125px] md:w-[145px] lg:w-[160px] h-20 sm:h-24 rounded-lg border border-white/5 bg-white/5 backdrop-blur-md partner-card partner-card-silver shine-effect mobile-tap-feedback"
                     >
                       <div className="absolute inset-0 rounded-lg bg-white/0 group-hover:bg-white/5 transition-colors duration-500 -z-10" />
                       <div className="filter grayscale contrast-125 opacity-40 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center w-full h-full">
