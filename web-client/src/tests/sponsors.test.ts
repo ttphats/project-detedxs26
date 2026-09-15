@@ -71,6 +71,35 @@ describe('mergeSponsors', () => {
     expect(merged).toHaveLength(SPONSOR_BASELINE.length);
   });
 
+  it('links every sponsor that has a confirmed website, and no one else', () => {
+    const links = Object.fromEntries(
+      SPONSOR_BASELINE.filter((s) => s.website).map((s) => [s.name, s.website]),
+    );
+    expect(links).toEqual({
+      'NET Corp': 'https://netenglish.edu.vn/',
+      Onto: 'https://onto.vn',
+      'Thalic Voice': 'https://thalic.edu.vn/',
+      Cake: 'https://www.cake.me/',
+      Okkas: 'https://dongphucokkas.com/',
+      'Bánh Mì Que Chip': 'https://www.facebook.com/BMQCHip.vn',
+      'Diệp Trương Phát': 'https://dtpfoods.vn/',
+    });
+    // Goodblend has no confirmed link yet and stays unlinked.
+    expect(SPONSOR_BASELINE.filter((s) => !s.website).map((s) => s.name)).toEqual(['Goodblend']);
+  });
+
+  it('prefers the curated website over one stored in the database', () => {
+    const fromDb: Sponsor = {
+      id: 'db-3',
+      name: 'onto',
+      tier: 'silver',
+      website: 'https://old-onto.example',
+    };
+    const [onto] = mergeSponsors([fromDb]);
+    expect(onto.id).toBe('db-3');
+    expect(onto.website).toBe('https://onto.vn');
+  });
+
   it('falls back to the database logo when the baseline has none for that sponsor', () => {
     const fromDb: Sponsor = {
       id: 'db-2',
