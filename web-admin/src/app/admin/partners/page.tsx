@@ -37,10 +37,29 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import {compressImageFile, formatBytes, UPLOAD_LIMIT_BYTES} from '@/lib/image-compress'
 
+/**
+ * Sponsor categories, in the order the public site displays them. The tier
+ * column is a free string, so this list is the source of truth for what an
+ * admin can pick — keep it in step with SPONSOR_CATEGORIES in
+ * web-client/src/lib/sponsors.ts.
+ */
+const SPONSOR_TIERS = [
+  { value: 'organizer', label: 'Organizer', color: 'red' },
+  { value: 'diamond', label: 'Diamond Sponsor', color: 'cyan' },
+  { value: 'strategic', label: 'Strategic Partner', color: 'purple' },
+  { value: 'gold', label: 'Gold Sponsor', color: 'gold' },
+  { value: 'silver', label: 'Silver Sponsor', color: 'blue' },
+  { value: 'bronze', label: 'Bronze Sponsor', color: 'orange' },
+  { value: 'professional', label: 'Professional Partner', color: 'geekblue' },
+  { value: 'uniform', label: 'Uniform Partner', color: 'green' },
+  { value: 'teabreak', label: 'Teabreak Partner', color: 'magenta' },
+  { value: 'media', label: 'Media Partner', color: 'default' },
+] as const
+
 interface Partner {
   id: string
   name: string
-  tier: 'diamond' | 'gold' | 'silver'
+  tier: string
   website: string | null
   logo_url: string | null
   banner_url: string | null
@@ -284,16 +303,8 @@ export default function PartnersPage() {
   }
 
   const getTierTag = (tier: string) => {
-    switch (tier) {
-      case 'diamond':
-        return <Tag color="cyan">Diamond Sponsor</Tag>
-      case 'gold':
-        return <Tag color="gold">Gold Sponsor</Tag>
-      case 'silver':
-        return <Tag color="blue">Silver Sponsor</Tag>
-      default:
-        return <Tag color="gray">{tier}</Tag>
-    }
+    const match = SPONSOR_TIERS.find((t) => t.value === tier)
+    return <Tag color={match?.color ?? 'default'}>{match?.label ?? tier}</Tag>
   }
 
   const columns: ColumnsType<Partner> = [
@@ -501,11 +512,10 @@ export default function PartnersPage() {
               label="Sponsorship Tier"
               rules={[{ required: true, message: 'Please select a tier' }]}
             >
-              <Select placeholder="Select rank/tier">
-                <Select.Option value="diamond">Diamond Sponsor</Select.Option>
-                <Select.Option value="gold">Gold Sponsor</Select.Option>
-                <Select.Option value="silver">Silver Sponsor</Select.Option>
-              </Select>
+              <Select
+                placeholder="Select rank/tier"
+                options={SPONSOR_TIERS.map(({ value, label }) => ({ value, label }))}
+              />
             </Form.Item>
 
             <Form.Item name="website" label="Website Link">

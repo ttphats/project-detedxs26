@@ -17,7 +17,8 @@ import {
   ChevronRight,
   Clock,
 } from "lucide-react";
-import { Button } from "@/components";
+import { Button, NeonBackground, SponsorCategories } from "@/components";
+import { mergeSponsors } from "@/lib/sponsors";
 import { events as mockEvents, Speaker, TimelineItem as OriginalTimelineItem } from "@/lib/mock-data";
 import { formatVNDate, generateGoogleCalendarUrl } from "@/lib/date-utils";
 
@@ -80,115 +81,14 @@ const getTimelineTypeStyle = (type: string) => {
   );
 };
 
-// Helper function to render vector SVG logos for partners
-const getPartnerLogo = (id: string, _tier: 'diamond' | 'gold' | 'silver', logoUrl?: string | null, name?: string) => {
-  // Fill the whole card rather than capping the logo at a fixed height.
-  // A fixed h-* held wide logos well below the frame: with object-contain and
-  // a ~3:1 logo, width binds first, so the height cap only ever added dead
-  // space. Letting it take the full box makes every logo as large as its frame
-  // allows; the tier hierarchy comes from the card sizes in the grids below.
-  const sizeClass = 'w-full h-full object-contain';
-
+// Partner logo for the spotlight slideshow: the uploaded image, or the name
+// as a wordmark until one is attached. Fills its box; the box sets the size.
+const getPartnerLogo = (id: string, _tier: string, logoUrl?: string | null, name?: string) => {
   if (logoUrl) {
-    return <img src={logoUrl} alt={name || id} className={sizeClass} style={{ objectFit: 'contain' }} />;
+    return <img src={logoUrl} alt={name || id} className="w-full h-full object-contain" />;
   }
-
-  switch (id) {
-    case 'p-fpt':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg">
-          {/* FPT styled swooshes */}
-          <path className="fill-orange-500" d="M12 8c0-3.3 2.7-6 6-6h24v12H18c-3.3 0-6-2.7-6-6z" />
-          <path className="fill-green-600" d="M18 20c0-3.3 2.7-6 6-6h24v12H24c-3.3 0-6-2.7-6-6z" />
-          <path className="fill-blue-500" d="M24 32c0-3.3 2.7-6 6-6h24v12H30c-3.3 0-6-2.7-6-6z" />
-          <text x="65" y="35" className="font-black text-3xl tracking-tighter fill-white">FPT</text>
-        </svg>
-      );
-    case 'p-vinfast':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
-          {/* VinFast V logo */}
-          <path className="fill-white" d="M20 10 L52 38 L60 45 L68 38 L100 10 L88 10 L60 34 L32 10 Z" />
-          <path className="fill-red-600" d="M38 10 L54 24 L60 29 L66 24 L82 10 L74 10 L60 21 L46 10 Z" />
-        </svg>
-      );
-    case 'p-techcom':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg">
-          {/* Techcombank logo */}
-          <rect x="5" y="10" width="30" height="30" className="fill-red-600" />
-          <rect x="13" y="18" width="14" height="14" className="fill-white" />
-          <text x="44" y="32" className="font-black text-xl fill-white tracking-tighter">Techcombank</text>
-        </svg>
-      );
-    case 'p-vng':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
-          {/* VNG logo */}
-          <text x="10" y="35" className="font-black text-3xl fill-cyan-400 tracking-wider">VNG</text>
-          <circle cx="85" cy="25" r="12" className="stroke-cyan-400 stroke-2 fill-none" />
-          <circle cx="85" cy="25" r="7" className="fill-cyan-400" />
-        </svg>
-      );
-    case 'p-shopee':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 140 50" xmlns="http://www.w3.org/2000/svg">
-          {/* Shopee logo */}
-          <path className="fill-orange-500" d="M15 15v25h26V15H15zm13-10c-3.5 0-6.5 3-6.5 6.5H34c0-3.5-3-6.5-6.5-6.5z" />
-          <text x="25" y="34" className="font-black text-white text-base">S</text>
-          <text x="49" y="33" className="font-black text-2xl fill-orange-500">Shopee</text>
-        </svg>
-      );
-    case 'p-intel':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
-          {/* Intel logo */}
-          <ellipse cx="60" cy="25" rx="55" ry="22" className="stroke-blue-500 stroke-2 fill-none" />
-          <text x="32" y="33" className="font-black text-3xl fill-white italic tracking-tighter">intel</text>
-        </svg>
-      );
-    case 'p-asus':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
-          {/* ASUS logo */}
-          <text x="15" y="34" className="font-black text-3xl fill-white italic tracking-widest">ASUS</text>
-        </svg>
-      );
-    case 'p-highlands':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg">
-          {/* Highlands logo */}
-          <circle cx="25" cy="25" r="20" className="fill-red-800" />
-          <circle cx="25" cy="25" r="16" className="stroke-amber-600 stroke-2 fill-none" />
-          <text x="54" y="32" className="font-black text-lg fill-amber-600 tracking-wider">HIGHLANDS</text>
-        </svg>
-      );
-    case 'p-pepsi':
-      return (
-        <svg className={`${sizeClass}`} viewBox="0 0 140 50" xmlns="http://www.w3.org/2000/svg">
-          {/* Pepsi logo */}
-          <circle cx="25" cy="25" r="20" className="fill-blue-600" />
-          <path d="M5 25 A20 20 0 0 1 45 25 C30 30 20 20 5 25 Z" className="fill-white" />
-          <path d="M5 25 A20 20 0 0 1 25 5 C30 13 20 18 5 25 Z" className="fill-red-600" />
-          <text x="54" y="34" className="font-black text-2xl fill-white tracking-widest uppercase">pepsi</text>
-        </svg>
-      );
-    default:
-      return <span className="text-white/60 font-black text-lg">{id}</span>;
-  }
+  return <span className="text-white/80 font-black text-lg uppercase tracking-tight text-center">{name || id}</span>;
 };
-
-const fallbackPartners = [
-  { id: 'p-fpt', name: 'FPT', tier: 'diamond' as const, logo_url: null, banner_url: null, website: 'https://fpt.com.vn' },
-  { id: 'p-vinfast', name: 'VinFast', tier: 'diamond' as const, logo_url: null, banner_url: null, website: 'https://vinfastauto.com' },
-  { id: 'p-techcom', name: 'Techcombank', tier: 'diamond' as const, logo_url: null, banner_url: null, website: 'https://techcombank.com' },
-  { id: 'p-vng', name: 'VNG', tier: 'gold' as const, logo_url: null, banner_url: null, website: 'https://vng.com.vn' },
-  { id: 'p-shopee', name: 'Shopee', tier: 'gold' as const, logo_url: null, banner_url: null, website: 'https://shopee.vn' },
-  { id: 'p-intel', name: 'Intel', tier: 'gold' as const, logo_url: null, banner_url: null, website: 'https://intel.vn' },
-  { id: 'p-asus', name: 'ASUS', tier: 'silver' as const, logo_url: null, banner_url: null, website: 'https://asus.com' },
-  { id: 'p-highlands', name: 'Highlands Coffee', tier: 'silver' as const, logo_url: null, banner_url: null, website: 'https://highlandscoffee.com.vn' },
-  { id: 'p-pepsi', name: 'Pepsi', tier: 'silver' as const, logo_url: null, banner_url: null, website: 'https://pepsi.com' },
-];
 
 // ====================================================================
 // PartnerSlideshow — full-width spotlight, one partner at a time
@@ -518,7 +418,11 @@ export default function Home() {
   const slidePartners = partners.filter((p) => p.show_in_marquee === true);
 
   return (
-    <div className="bg-black overflow-hidden">
+    // overflow-x-clip, not overflow-hidden: `hidden` turns this into a scroll
+    // container, which captures every position:sticky descendant (the neon
+    // band's pinned layer) and stops it following the viewport. `clip` still
+    // hides horizontal overflow from the marquee and blobs without doing that.
+    <div className="bg-black overflow-x-clip">
       {/* Hero Section - Creative with animations */}
       <section className="relative min-h-auto sm:min-h-screen overflow-hidden">
         {/* Animated Background Elements */}
@@ -800,8 +704,47 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Speakers through Partners share one background: the gallery page's
+          neon treatment — NeonBackground plus the .blob / .grid-pattern /
+          .animate-float layers from globals.css. The gallery pins its layer
+          with position:fixed; here it is sticky inside an absolute wrapper,
+          so it stays pinned to the viewport only while this band is on
+          screen and never bleeds into the hero or the footer. */}
+      <div className="relative bg-black">
+        {/* No overflow-hidden on this wrapper: sticky sticks to its nearest
+            overflow≠visible ancestor, and this wrapper never scrolls, so
+            clipping here would park the layer at the top of the band. The
+            h-screen child does its own clipping. */}
+        <div aria-hidden className="absolute inset-0 pointer-events-none z-0">
+          <div className="sticky top-0 h-screen w-full overflow-hidden">
+            <NeonBackground />
+
+            <div className="blob blob-red w-150 h-150 -top-40 -right-40 animate-morph" />
+            <div
+              className="blob blob-orange w-100 h-100 bottom-20 left-20 animate-morph"
+              style={{animationDelay: "2s"}}
+            />
+            <div className="absolute inset-0 grid-pattern opacity-50" />
+
+            {/* Drifting motes, as on the hero. */}
+            <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-red-500 rounded-full animate-float opacity-60" />
+            <div
+              className="absolute top-1/3 right-1/3 w-1 h-1 bg-red-400 rounded-full animate-float"
+              style={{animationDelay: "1s"}}
+            />
+            <div
+              className="absolute bottom-1/4 left-1/3 w-3 h-3 bg-red-600/50 rounded-full animate-float"
+              style={{animationDelay: "2s"}}
+            />
+            <div
+              className="absolute top-2/3 right-1/4 w-2 h-2 bg-orange-500/40 rounded-full animate-float"
+              style={{animationDelay: "3s"}}
+            />
+          </div>
+        </div>
+
       {/* Speaker Lineup Section - TEDx Hanoi Style */}
-      <section id="speakers" className="bg-black relative overflow-hidden">
+      <section id="speakers" className="relative z-10 overflow-hidden">
         {/* Section Header */}
         <div className="py-20 border-b border-white/10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -824,13 +767,30 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Speaker Grid - Space-saving Horizontal Layout */}
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {speakers.map((speaker, index) => (
+        {/* Speaker Grid — on desktop, a first row of five and a second row of
+            six, every poster the same size. The desktop grid has 60 columns
+            and each poster spans 10, so six fill a row exactly; the first
+            poster starts at column 6, which pushes row one in by half a
+            poster at each end and centres its five. The sixth poster no
+            longer fits on row one and wraps. A full second row of six then
+            fills edge to edge; a short second row is given the same column-6
+            start as row one, so its posters sit directly under row one's
+            rather than snapping to the left edge. Below lg the spans do not
+            apply and it flows as a normal 4 / 3 / 2-across grid. */}
+        {/* Wider than the page's usual max-w-7xl: six posters have to share a
+            row, and at 1280px they came out under 190px each. */}
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-5 lg:px-6 py-12">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-[repeat(60,minmax(0,1fr))] gap-3">
+            {speakers.map((speaker, index) => {
+              const secondRowIsShort = speakers.length > 5 && speakers.length < 11;
+              const startsUnderRowOne =
+                index === 0 || (index === 5 && secondRowIsShort);
+              return (
               <div
                 key={speaker.id}
-                className="group relative rounded-2xl overflow-hidden bg-zinc-950 border border-white/10 hover:border-red-500 shadow-2xl hover:shadow-[0_0_50px_rgba(255,0,0,0.9)] transition-all duration-500 flex items-center justify-center hover:scale-[1.03] hover:-translate-y-2 z-10 hover:z-20"
+                className={`group relative rounded-2xl overflow-hidden bg-zinc-950 border border-white/10 hover:border-red-500 shadow-2xl hover:shadow-[0_0_50px_rgba(255,0,0,0.9)] transition-all duration-500 flex items-center justify-center hover:scale-[1.03] hover:-translate-y-2 z-10 hover:z-20 lg:col-span-10 ${
+                  startsUnderRowOne ? "lg:col-start-6" : ""
+                }`}
               >
                 {/* Speaker Image */}
                 <img
@@ -842,7 +802,8 @@ export default function Home() {
                 {/* Brighter glowing shine overlay */}
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/20 via-transparent to-red-500/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-20 mix-blend-overlay" />
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -850,7 +811,7 @@ export default function Home() {
       {/* Program/Timeline Section - Only show when there are published timeline items */}
       {timeline.length > 0 && <section
         id="program"
-        className="py-12 sm:py-24 bg-black relative overflow-hidden"
+        className="py-12 sm:py-24 relative z-10 overflow-hidden"
       >
         {/* Background decoration - removed for horizontal layout */}
 
@@ -923,16 +884,13 @@ export default function Home() {
       {/* Partner Spotlight Slideshow */}
       <PartnerSlideshow partners={slidePartners} />
 
-      {/* Partners/Sponsors Section */}
+      {/* Partners/Sponsors Section — white logo tiles on the shared neon
+          band, so every mark sits on the light background it was drawn for. */}
       <section
         id="partners"
-        className="py-16 sm:py-28 bg-black relative overflow-hidden border-t border-white/5"
+        className="py-16 sm:py-28 relative z-10 overflow-hidden border-t border-white/5"
       >
-        {/* Subtle background glow elements */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-red-600/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-1/4 left-1/3 w-72 h-72 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           {/* Section Header */}
           <div className="text-center mb-16 sm:mb-24 animate-fade-in-up">
             <p className="text-red-600 font-bold uppercase tracking-widest mb-3 text-xs sm:text-sm">
@@ -947,98 +905,13 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-16 sm:gap-24">
-            {/* Diamond Tier */}
-            <div>
-              <div className="flex items-center gap-4 justify-center mb-6">
-                <div className="h-[1px] bg-cyan-500/20 flex-grow max-w-[120px] hidden sm:block" />
-                <h3 className="text-center font-black text-cyan-400 text-base sm:text-lg uppercase tracking-widest flex items-center gap-2">
-                  <span className="text-cyan-500">✦</span> Diamond Sponsors <span className="text-cyan-500">✦</span>
-                </h3>
-                <div className="h-[1px] bg-cyan-500/20 flex-grow max-w-[120px] hidden sm:block" />
-              </div>
-              <div className="flex flex-wrap justify-center gap-4 sm:gap-6 max-w-4xl mx-auto">
-                {partners
-                  .filter((p) => p.tier === "diamond")
-                  .map((partner) => (
-                    <a
-                      key={partner.id}
-                      href={partner.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group relative flex items-center justify-center p-1.5 sm:p-2 w-[170px] sm:w-[215px] md:w-[240px] h-28 sm:h-32 rounded-xl border border-cyan-500/20 bg-white/5 backdrop-blur-md partner-card partner-card-diamond shine-effect mobile-tap-feedback"
-                    >
-                      {/* Glow backing */}
-                      <div className="absolute inset-0 rounded-xl bg-cyan-500/0 group-hover:bg-cyan-500/5 transition-colors duration-500 -z-10" />
-                      {/* Logo container */}
-                      <div className="filter grayscale contrast-125 opacity-55 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center w-full h-full">
-                        {getPartnerLogo(partner.id, partner.tier, partner.logo_url, partner.name)}
-                      </div>
-                    </a>
-                  ))}
-              </div>
-            </div>
-
-            {/* Gold Tier */}
-            <div>
-              <div className="flex items-center gap-4 justify-center mb-6">
-                <div className="h-[1px] bg-amber-500/20 flex-grow max-w-[120px] hidden sm:block" />
-                <h3 className="text-center font-black text-amber-400 text-base sm:text-lg uppercase tracking-widest flex items-center gap-2">
-                  <span className="text-amber-500">✦</span> Gold Sponsors <span className="text-amber-500">✦</span>
-                </h3>
-                <div className="h-[1px] bg-amber-500/20 flex-grow max-w-[120px] hidden sm:block" />
-              </div>
-              <div className="flex flex-wrap justify-center gap-3 sm:gap-4 max-w-4xl mx-auto">
-                {partners
-                  .filter((p) => p.tier === "gold")
-                  .map((partner) => (
-                    <a
-                      key={partner.id}
-                      href={partner.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group relative flex items-center justify-center p-1 sm:p-1.5 w-[135px] sm:w-[170px] md:w-[195px] h-24 sm:h-28 rounded-xl border border-amber-500/10 bg-white/5 backdrop-blur-md partner-card partner-card-gold shine-effect mobile-tap-feedback"
-                    >
-                      <div className="absolute inset-0 rounded-xl bg-amber-500/0 group-hover:bg-amber-500/5 transition-colors duration-500 -z-10" />
-                      <div className="filter grayscale contrast-125 opacity-50 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center w-full h-full">
-                        {getPartnerLogo(partner.id, partner.tier, partner.logo_url, partner.name)}
-                      </div>
-                    </a>
-                  ))}
-              </div>
-            </div>
-
-            {/* Silver Tier */}
-            <div>
-              <div className="flex items-center gap-4 justify-center mb-6">
-                <div className="h-[1px] bg-slate-400/20 flex-grow max-w-[120px] hidden sm:block" />
-                <h3 className="text-center font-black text-slate-300 text-base sm:text-lg uppercase tracking-widest flex items-center gap-2">
-                  <span className="text-slate-400">✦</span> Silver Sponsors <span className="text-slate-400">✦</span>
-                </h3>
-                <div className="h-[1px] bg-slate-400/20 flex-grow max-w-[120px] hidden sm:block" />
-              </div>
-              <div className="flex flex-wrap justify-center gap-2 sm:gap-3 max-w-5xl mx-auto">
-                {partners
-                  .filter((p) => p.tier === "silver")
-                  .map((partner) => (
-                    <a
-                      key={partner.id}
-                      href={partner.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group relative flex items-center justify-center p-1 w-[100px] sm:w-[125px] md:w-[145px] lg:w-[160px] h-20 sm:h-24 rounded-lg border border-white/5 bg-white/5 backdrop-blur-md partner-card partner-card-silver shine-effect mobile-tap-feedback"
-                    >
-                      <div className="absolute inset-0 rounded-lg bg-white/0 group-hover:bg-white/5 transition-colors duration-500 -z-10" />
-                      <div className="filter grayscale contrast-125 opacity-40 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center w-full h-full">
-                        {getPartnerLogo(partner.id, partner.tier, partner.logo_url, partner.name)}
-                      </div>
-                    </a>
-                  ))}
-              </div>
-            </div>
-          </div>
+          {/* Every confirmed sponsor, grouped by category. Database entries
+              override the baseline list by name, so attaching a logo in the
+              admin is enough to replace a wordmark. */}
+          <SponsorCategories sponsors={mergeSponsors(partners)} />
         </div>
       </section>
+      </div>
 
       {/* Why Attend TEDx Section */}
 

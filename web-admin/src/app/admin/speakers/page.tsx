@@ -401,7 +401,9 @@ export default function SpeakersPage() {
             dataSource={speakers}
             rowKey="id"
             loading={loading}
-            pagination={{ pageSize: 10 }}
+            // A single event has around a dozen speakers, and the whole lineup
+            // is easier to reorder and review on one screen than split in two.
+            pagination={false}
           />
         </Card>
 
