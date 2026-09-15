@@ -144,6 +144,14 @@ interface Summary {
   totalRevenue: number;
 }
 
+/**
+ * The table paginates client-side, so every matching order has to be fetched
+ * up front. Without an explicit limit the API applies its own default of 20
+ * (see backend listOrders) and everything past the 20th simply vanishes from
+ * the admin with no indication it exists.
+ */
+const ORDERS_FETCH_LIMIT = 1000;
+
 const statusColors: Record<string, string> = {
   PENDING: "warning",
   PENDING_CONFIRMATION: "processing",
@@ -214,6 +222,7 @@ export default function OrdersPage() {
     try {
       const token = localStorage.getItem("token");
       const params = new URLSearchParams();
+      params.set("limit", String(ORDERS_FETCH_LIMIT));
       if (statusFilter) params.set("status", statusFilter);
       if (searchText) params.set("search", searchText);
 
@@ -237,6 +246,15 @@ export default function OrdersPage() {
 
       setOrders(data.data.orders);
       setSummary(data.data.summary);
+
+      // If this ever trips, the list on screen is not the whole list. Say so
+      // loudly rather than quietly showing a subset as if it were everything.
+      const serverTotal = data.data.pagination?.total ?? 0;
+      if (serverTotal > data.data.orders.length) {
+        message.warning(
+          `Đang hiển thị ${data.data.orders.length}/${serverTotal} đơn hàng. Hãy lọc bớt để xem phần còn lại.`,
+        );
+      }
     } catch (error) {
       message.error("Không thể tải danh sách đơn hàng");
     } finally {
@@ -1138,9 +1156,15 @@ export default function OrdersPage() {
             rowKey="id"
             loading={loading}
             pagination={{
-              pageSize: 10,
+              // defaultPageSize (not pageSize) so the size changer below
+              // actually sticks — a fixed pageSize overrides the user's choice
+              // on every re-render.
+              defaultPageSize: 50,
               showSizeChanger: true,
-              showTotal: (total) => `Tổng ${total} đơn hàng`,
+              pageSizeOptions: ["20", "50", "100", "200", "500"],
+              showQuickJumper: true,
+              showTotal: (total, range) =>
+                `${range[0]}-${range[1]} / Tổng ${total} đơn hàng`,
             }}
             scroll={{ x: "max-content" }}
           />
