@@ -9,6 +9,7 @@ export const EMAIL_PURPOSE = {
   TICKET_CANCELLED: 'TICKET_CANCELLED',
   EVENT_REMINDER: 'EVENT_REMINDER',
   CHECKIN_CONFIRMATION: 'CHECKIN_CONFIRMATION',
+  EVENT_THANK_YOU: 'EVENT_THANK_YOU',
   ADMIN_NOTIFICATION: 'ADMIN_NOTIFICATION',
 } as const;
 
@@ -89,6 +90,14 @@ export const EMAIL_PURPOSE_INFO: Record<EmailPurpose, PurposeInfo> = {
     icon: '✓',
     color: 'bg-teal-100 text-teal-800',
   },
+  EVENT_THANK_YOU: {
+    key: 'EVENT_THANK_YOU',
+    title: 'Cảm ơn sau sự kiện',
+    description: 'Gửi cho người giữ vé / người tham dự sau khi sự kiện kết thúc, kèm link khảo sát cảm nhận.',
+    recipient: 'customer',
+    icon: '💚',
+    color: 'bg-emerald-100 text-emerald-800',
+  },
   ADMIN_NOTIFICATION: {
     key: 'ADMIN_NOTIFICATION',
     title: 'Thông báo nội bộ cho admin',
@@ -114,6 +123,7 @@ export const REQUIRED_VARIABLES: Record<EmailPurpose, string[]> = {
   TICKET_CANCELLED: ['customerName', 'orderNumber', 'reason'],
   EVENT_REMINDER: ['customerName', 'eventName', 'eventDate', 'eventTime', 'eventVenue', 'ticketUrl'],
   CHECKIN_CONFIRMATION: ['customerName', 'eventName', 'checkinTime', 'seatNumber'],
+  EVENT_THANK_YOU: ['customerName'],
   ADMIN_NOTIFICATION: ['subject', 'message'],
 };
 
@@ -190,6 +200,9 @@ export const MOCK_DATA: Record<EmailPurpose, Record<string, unknown>> = {
     eventName: 'TEDx Ideas Worth Spreading 2026',
     checkinTime: '18:30',
     seatNumber: 'A1',
+  },
+  EVENT_THANK_YOU: {
+    customerName: 'Nguyễn Văn A',
   },
   ADMIN_NOTIFICATION: {
     subject: 'Thông báo hệ thống',

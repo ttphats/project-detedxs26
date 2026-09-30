@@ -860,6 +860,7 @@ export default function EmailTemplatesPage() {
                         { value: "PAYMENT_PENDING", label: "Chờ thanh toán" },
                         { value: "TICKET_SENT", label: "Gửi vé" },
                         { value: "EVENT_REMINDER", label: "Nhắc nhở sự kiện" },
+                        { value: "EVENT_THANK_YOU", label: "Cảm ơn sau sự kiện" },
                         { value: "GENERAL", label: "Chung" },
                       ]}
                       style={{ width: "100%" }}
