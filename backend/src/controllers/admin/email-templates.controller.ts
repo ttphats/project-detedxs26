@@ -1,9 +1,26 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import * as templatesService from '../../services/admin/email-templates.service.js';
 import * as uploadService from '../../services/admin/template-upload.service.js';
-import { replaceVariables, extractVariables } from '../../services/email.service.js';
+import { replaceVariables, extractVariables, sendEmail } from '../../services/email.service.js';
 import { UnauthorizedError, ForbiddenError, NotFoundError, BadRequestError } from '../../utils/errors.js';
 import { requireAdmin } from '../../utils/auth.js';
+import { config } from '../../config/env.js';
+
+// Sample values for preview and test sends; caller-supplied data overrides them.
+function buildSampleData(data: Record<string, any> = {}): Record<string, any> {
+  return {
+    customerName: 'Nguyễn Văn A',
+    orderNumber: 'ORD-2026-001234',
+    eventName: 'TEDxFPT University HCMC 2026',
+    eventDate: '20/06/2026',
+    eventTime: '18:00',
+    venue: 'Nhà hát Thành phố Hồ Chí Minh',
+    totalAmount: '500.000 đ',
+    seats: 'A1, A2, A3',
+    qrCodeUrl: 'https://via.placeholder.com/200x200?text=QR+Code',
+    ...data,
+  };
+}
 
 /**
  * GET /api/admin/email-templates
@@ -167,19 +184,7 @@ export async function preview(request: FastifyRequest, reply: FastifyReply) {
   const template = await templatesService.getTemplateById(id);
   if (!template) throw new NotFoundError('Template not found');
 
-  // Use sample data for preview if no data provided
-  const sampleData: Record<string, any> = {
-    customerName: 'Nguyễn Văn A',
-    orderNumber: 'ORD-2026-001234',
-    eventName: 'TEDxFPT University HCMC 2026',
-    eventDate: '20/06/2026',
-    eventTime: '18:00',
-    venue: 'Nhà hát Thành phố Hồ Chí Minh',
-    totalAmount: '500.000 đ',
-    seats: 'A1, A2, A3',
-    qrCodeUrl: 'https://via.placeholder.com/200x200?text=QR+Code',
-    ...data,
-  };
+  const sampleData = buildSampleData(data);
 
   const subject = replaceVariables(template.subject, sampleData);
   const html = replaceVariables(template.htmlContent, sampleData);
@@ -188,6 +193,49 @@ export async function preview(request: FastifyRequest, reply: FastifyReply) {
     success: true,
     data: { subject, html, variables: extractVariables(template.htmlContent) },
   });
+}
+
+/**
+ * POST /api/admin/email-templates/:id/test
+ * Send the template, rendered with sample data, to one address. Subject is prefixed [TEST].
+ */
+export async function sendTest(request: FastifyRequest, reply: FastifyReply) {
+  const user = request.user;
+  if (!user) throw new UnauthorizedError();
+  try { requireAdmin(user); } catch { throw new ForbiddenError(); }
+
+  const { id } = request.params as { id: string };
+  const body = (request.body ?? {}) as { email?: string; data?: Record<string, any> };
+  const to = body.email?.trim();
+
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    throw new BadRequestError('A valid "email" is required.');
+  }
+
+  // The mock provider only logs, so a test send would report success without
+  // anything reaching the inbox.
+  if (config.email.provider === 'mock') {
+    throw new BadRequestError(
+      'Email sending is in mock mode. Set EMAIL_PROVIDER=resend in backend/.env and restart the backend.'
+    );
+  }
+
+  const template = await templatesService.getTemplateById(id);
+  if (!template) throw new NotFoundError('Template not found');
+
+  const sampleData = buildSampleData(body.data);
+  const result = await sendEmail({
+    to,
+    subject: `[TEST] ${replaceVariables(template.subject, sampleData)}`,
+    html: replaceVariables(template.htmlContent, sampleData),
+    text: template.textContent ? replaceVariables(template.textContent, sampleData) : undefined,
+  });
+
+  if (!result.success) {
+    throw new BadRequestError(result.error || 'Failed to send test email');
+  }
+
+  return reply.send({ success: true, data: { emailId: result.emailId } });
 }
 
 /**

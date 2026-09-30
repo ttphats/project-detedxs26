@@ -134,6 +134,7 @@ export async function registerAdminRoutes(fastify: FastifyInstance) {
     emailTemplatesController.activate
   )
   fastify.post('/admin/email-templates/:id/preview', {preHandler}, emailTemplatesController.preview)
+  fastify.post('/admin/email-templates/:id/test', {preHandler}, emailTemplatesController.sendTest)
 
   // Users
   fastify.get('/admin/users', {preHandler}, usersController.list)
